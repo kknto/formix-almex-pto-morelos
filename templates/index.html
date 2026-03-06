@@ -1,5 +1,6 @@
 ﻿<!doctype html>
 <html lang="es">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,13 +8,14 @@
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo_almex.png', v=cache_bust) }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v=cache_bust) }}">
 </head>
+
 <body>
   <header class="topbar">
     <div class="topbar__left">
       <div class="topbar__brand">
         <img class="brand-logo" src="{{ url_for('static', filename='img/logo_almex.png', v=cache_bust) }}" alt="ALMEX">
         <div>
-          <h1>Editor de Disenos de Mezclas</h1>
+          <h1>Editor de Diseños de Mezclas</h1>
           <p>Gestion operativa de formulas para planta de concreto | ALMEX</p>
         </div>
       </div>
@@ -113,128 +115,128 @@
       <section class="consulta-slide is-active" data-step="0">
         <section class="consulta-grid consulta-grid--pair">
           <article class="panel panel--consulta">
-          <div class="consulta-head">
-            <h2>Familias Mix por T.M.A.</h2>
-            <p id="updatedStamp"></p>
-          </div>
-          <div id="familiasBoard" class="familias-board"></div>
-        </article>
+            <div class="consulta-head">
+              <h2>Familias Mix por T.M.A.</h2>
+              <p id="updatedStamp"></p>
+            </div>
+            <div id="familiasBoard" class="familias-board"></div>
+          </article>
 
           <article class="panel panel--consulta">
-          <div class="consulta-head">
-            <h2>Buscador</h2>
-          </div>
-          <div class="query-form">
-            <label>Familia
-              <input id="qFamily" type="text" placeholder="Ej. 70, A100, RAPIDO...">
-            </label>
-            <label><span class="field-label">f'c <span class="field-unit">(kg/cm<sup>2</sup>)</span></span>
-              <select id="qFc"></select>
-            </label>
-            <label><span class="field-label">Edad <span class="field-unit">(dias)</span></span>
-              <select id="qEdad"></select>
-            </label>
-            <label>Tipo
-              <select id="qTipo"></select>
-            </label>
-            <label><span class="field-label">T.M.A. <span class="field-unit">(MM)</span></span>
-              <select id="qTma"></select>
-            </label>
-            <label><span class="field-label">Rev <span class="field-unit">(cm)</span></span>
-              <select id="qRev"></select>
-            </label>
-            <label>Complemento
-              <select id="qComp"></select>
-            </label>
-          </div>
-          <div class="query-actions">
-            <button id="runQueryBtn" class="btn btn--primary">Consultar</button>
-            <button id="clearQueryBtn" class="btn btn--muted">Limpiar filtros</button>
-          </div>
-          <div id="querySummary" class="meta"></div>
-          <div class="result-shell">
-            <table id="queryTable">
-              <thead>
-                <tr>
-                  <th>Familia</th>
-                  <th>Formula</th>
-                  <th>f'c <span class="th-unit">(kg/cm<sup>2</sup>)</span></th>
-                  <th>Edad <span class="th-unit">(dias)</span></th>
-                  <th>Tipo</th>
-                  <th>T.M.A. <span class="th-unit">(MM)</span></th>
-                  <th>Rev <span class="th-unit">(cm)</span></th>
-                  <th>Comp</th>
-                  <th>Fecha Modif</th>
-                </tr>
-              </thead>
-              <tbody id="queryBody"></tbody>
-            </table>
-          </div>
+            <div class="consulta-head">
+              <h2>Buscador</h2>
+            </div>
+            <div class="query-form">
+              <label>Familia
+                <input id="qFamily" type="text" placeholder="Ej. 70, A100, RAPIDO...">
+              </label>
+              <label><span class="field-label">f'c <span class="field-unit">(kg/cm<sup>2</sup>)</span></span>
+                <select id="qFc"></select>
+              </label>
+              <label><span class="field-label">Edad <span class="field-unit">(dias)</span></span>
+                <select id="qEdad"></select>
+              </label>
+              <label>Tipo
+                <select id="qTipo"></select>
+              </label>
+              <label><span class="field-label">T.M.A. <span class="field-unit">(MM)</span></span>
+                <select id="qTma"></select>
+              </label>
+              <label><span class="field-label">Rev <span class="field-unit">(cm)</span></span>
+                <select id="qRev"></select>
+              </label>
+              <label>Complemento
+                <select id="qComp"></select>
+              </label>
+            </div>
+            <div class="query-actions">
+              <button id="runQueryBtn" class="btn btn--primary">Consultar</button>
+              <button id="clearQueryBtn" class="btn btn--muted">Limpiar filtros</button>
+            </div>
+            <div id="querySummary" class="meta"></div>
+            <div class="result-shell">
+              <table id="queryTable">
+                <thead>
+                  <tr>
+                    <th>Familia</th>
+                    <th>Formula</th>
+                    <th>f'c <span class="th-unit">(kg/cm<sup>2</sup>)</span></th>
+                    <th>Edad <span class="th-unit">(dias)</span></th>
+                    <th>Tipo</th>
+                    <th>T.M.A. <span class="th-unit">(MM)</span></th>
+                    <th>Rev <span class="th-unit">(cm)</span></th>
+                    <th>Comp</th>
+                    <th>Fecha Modif</th>
+                  </tr>
+                </thead>
+                <tbody id="queryBody"></tbody>
+              </table>
+            </div>
           </article>
         </section>
       </section>
       <section class="consulta-slide" data-step="1">
         <section class="consulta-grid consulta-grid--pair">
           <article class="panel panel--consulta">
-          <div class="consulta-head">
-            <h2>Receta</h2>
-            <p id="recipeMeta"></p>
-          </div>
-          <div class="query-actions">
-            <button id="exportReportBtn" class="btn btn--secondary">Exportar Reporte</button>
-          </div>
-          <div class="result-shell">
-            <table id="recipeTable">
-              <thead>
-                <tr>
-                  <th>Componente</th>
-                  <th>Cantidad (aditivos en cc/kg-cto)</th>
-                  <th>Unidad</th>
-                  <th>Vol. Est. m³</th>
-                </tr>
-              </thead>
-              <tbody id="recipeBody"></tbody>
-            </table>
-          </div>
-          <div class="totals-line">
-            <strong>Peso por m³:</strong>
-            <span id="recipeWeight">0.00</span>
-          </div>
-        </article>
+            <div class="consulta-head">
+              <h2>Receta</h2>
+              <p id="recipeMeta"></p>
+            </div>
+            <div class="query-actions">
+              <button id="exportReportBtn" class="btn btn--secondary">Exportar Reporte</button>
+            </div>
+            <div class="result-shell">
+              <table id="recipeTable">
+                <thead>
+                  <tr>
+                    <th>Componente</th>
+                    <th>Cantidad (aditivos en cc/kg-cto)</th>
+                    <th>Unidad</th>
+                    <th>Vol. Est. m³</th>
+                  </tr>
+                </thead>
+                <tbody id="recipeBody"></tbody>
+              </table>
+            </div>
+            <div class="totals-line">
+              <strong>Peso por m³:</strong>
+              <span id="recipeWeight">0.00</span>
+            </div>
+          </article>
 
           <article class="panel panel--consulta">
-          <div class="consulta-head">
-            <h2>Costos por m³</h2>
-            <p>Agregados: (m³ x (Costo Unit. + Acarreo)). Otros componentes: Cant. Final x Costo Unit.</p>
-          </div>
-          <div class="result-shell">
-            <table id="costTable">
-              <thead>
-                <tr>
-                  <th>Componente</th>
-                  <th>Cant. Final</th>
-                  <th>m³</th>
-                  <th>U.M.</th>
-                  <th title="Costo de transporte por m³ del agregado (del banco a la planta)">Acarreo ($)</th>
-                  <th>Costo Unit. ($)</th>
-                  <th>Subtotal</th>
-                </tr>
-              </thead>
-              <tbody id="costBody"></tbody>
-            </table>
-          </div>
-          <div class="totals-line">
-            <strong>Sub-Total acarreo m³:</strong>
-            <span id="costHaulTotal">$0.00</span>
-          </div>
-          <div class="totals-line">
-            <strong>Sub-Total materiales m³:</strong>
-            <span id="costMaterialTotal">$0.00</span>
-          </div>
-          <div class="totals-line">
-            <strong>Total por m³:</strong>
-            <span id="costTotal">$0.00</span>
-          </div>
+            <div class="consulta-head">
+              <h2>Costos por m³</h2>
+              <p>Agregados: (m³ x (Costo Unit. + Acarreo)). Otros componentes: Cant. Final x Costo Unit.</p>
+            </div>
+            <div class="result-shell">
+              <table id="costTable">
+                <thead>
+                  <tr>
+                    <th>Componente</th>
+                    <th>Cant. Final</th>
+                    <th>m³</th>
+                    <th>U.M.</th>
+                    <th title="Costo de transporte por m³ del agregado (del banco a la planta)">Acarreo ($)</th>
+                    <th>Costo Unit. ($)</th>
+                    <th>Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody id="costBody"></tbody>
+              </table>
+            </div>
+            <div class="totals-line">
+              <strong>Sub-Total acarreo m³:</strong>
+              <span id="costHaulTotal">$0.00</span>
+            </div>
+            <div class="totals-line">
+              <strong>Sub-Total materiales m³:</strong>
+              <span id="costMaterialTotal">$0.00</span>
+            </div>
+            <div class="totals-line">
+              <strong>Total por m³:</strong>
+              <span id="costTotal">$0.00</span>
+            </div>
           </article>
         </section>
       </section>
@@ -488,7 +490,5 @@
   </script>
   <script src="{{ url_for('static', filename='js/app.js', v=cache_bust) }}"></script>
 </body>
+
 </html>
-
-
-
