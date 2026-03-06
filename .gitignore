@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+.app_secret_key
+mix_data.sqlite3*
+backups/
+.app_secret_key

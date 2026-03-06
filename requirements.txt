@@ -1,0 +1,6 @@
+Flask>=3.0,<4.0
+Flask-Cors
+psycopg2-binary
+gunicorn
+python-dotenv
+python-dateutil

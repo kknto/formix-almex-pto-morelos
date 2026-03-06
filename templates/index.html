@@ -1,0 +1,494 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ALMEX | Editor de Disenos de Mezclas</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo_almex.png', v=cache_bust) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v=cache_bust) }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__left">
+      <div class="topbar__brand">
+        <img class="brand-logo" src="{{ url_for('static', filename='img/logo_almex.png', v=cache_bust) }}" alt="ALMEX">
+        <div>
+          <h1>Editor de Disenos de Mezclas</h1>
+          <p>Gestion operativa de formulas para planta de concreto | ALMEX</p>
+        </div>
+      </div>
+    </div>
+    <div class="topbar__session">
+      <div class="topbar__right" id="saveState">Sin cambios</div>
+      <div class="user-chip">
+        <strong>{{ auth_boot.username }}</strong>
+        <span>{{ auth_boot.role }}</span>
+      </div>
+      <form method="post" action="{{ url_for('logout') }}">
+        <button type="submit" class="btn btn--muted btn--small">Cerrar sesion</button>
+      </form>
+    </div>
+  </header>
+
+  <nav class="view-tabs">
+    <button id="tabEditor" class="view-tab view-tab--active">Editor CSV</button>
+    <button id="tabConsulta" class="view-tab">Consulta Mix</button>
+    <button id="tabDosificador" class="view-tab">Dosificador</button>
+  </nav>
+
+  <main class="layout">
+    <section id="editorView" class="view-pane">
+      <section class="panel panel--controls">
+        <div class="controls">
+          <button id="reloadBtn" class="btn btn--muted">Recargar</button>
+          <button id="addBtn" class="btn btn--secondary">Agregar fila</button>
+          <button id="deleteBtn" class="btn btn--danger">Eliminar seleccionadas</button>
+          <button id="saveBtn" class="btn btn--primary">Guardar cambios</button>
+          <button id="historyBtn" class="btn btn--muted">Historial</button>
+          <button id="auditBtn" class="btn btn--muted">Bitacora</button>
+          <button id="backupCreateBtn" class="btn btn--muted">Crear respaldo</button>
+          <button id="backupRestoreBtn" class="btn btn--muted">Restaurar respaldo</button>
+        </div>
+        <div class="file-controls">
+          <label for="fileSelect">Archivo activo</label>
+          <select id="fileSelect"></select>
+          <label for="datasetFamilyInput">Familia</label>
+          <input id="datasetFamilyInput" type="text" maxlength="12" placeholder="Ej. 70">
+          <button id="saveFamilyBtn" class="btn btn--muted">Guardar familia</button>
+          <button id="loadSelectedBtn" class="btn btn--muted">Abrir seleccionado</button>
+          <button id="uploadBtn" class="btn btn--secondary">Cargar nuevo CSV</button>
+          <button id="deleteFileBtn" class="btn btn--danger">Eliminar CSV</button>
+          <input id="uploadInput" type="file" accept=".csv,text/csv" hidden>
+        </div>
+        <div class="search-wrap">
+          <input id="searchInput" type="search" placeholder="Buscar en cualquier columna...">
+        </div>
+        <div class="meta" id="metaInfo"></div>
+        <div class="status" id="statusBar"></div>
+      </section>
+
+      <section class="panel panel--table">
+        <div class="table-shell">
+          <table id="csvTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel panel--consulta">
+        <div class="consulta-head">
+          <h2>Control de Calidad de Agregados</h2>
+          <p id="editorQcMeta">Sincronizado con Dosificador y Consulta MIX</p>
+        </div>
+        <div class="query-actions">
+          <button id="saveQcBtn" class="btn btn--primary">Guardar Control de Calidad</button>
+        </div>
+        <div class="result-shell">
+          <table id="editorQcTable">
+            <thead>
+              <tr>
+                <th>Agregado</th>
+                <th>PVS (kg/m³)</th>
+                <th>PVC (kg/m³)</th>
+                <th>Densidad (kg/m³)</th>
+                <th>Absorcion (%)</th>
+                <th>Humedad (%) (solo dosificador)</th>
+              </tr>
+            </thead>
+            <tbody id="editorQcBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section id="consultaView" class="view-pane is-hidden">
+      <div class="consulta-slider-head">
+        <span id="consultaStepLabel" class="consulta-step-label">Paso 1 de 2</span>
+        <div class="consulta-slider-actions">
+          <button id="consultaPrevBtn" class="btn btn--muted btn--small">Anterior</button>
+          <button id="consultaNextBtn" class="btn btn--primary btn--small">Siguiente</button>
+        </div>
+      </div>
+      <section class="consulta-slide is-active" data-step="0">
+        <section class="consulta-grid consulta-grid--pair">
+          <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Familias Mix por T.M.A.</h2>
+            <p id="updatedStamp"></p>
+          </div>
+          <div id="familiasBoard" class="familias-board"></div>
+        </article>
+
+          <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Buscador</h2>
+          </div>
+          <div class="query-form">
+            <label>Familia
+              <input id="qFamily" type="text" placeholder="Ej. 70, A100, RAPIDO...">
+            </label>
+            <label><span class="field-label">f'c <span class="field-unit">(kg/cm<sup>2</sup>)</span></span>
+              <select id="qFc"></select>
+            </label>
+            <label><span class="field-label">Edad <span class="field-unit">(dias)</span></span>
+              <select id="qEdad"></select>
+            </label>
+            <label>Tipo
+              <select id="qTipo"></select>
+            </label>
+            <label><span class="field-label">T.M.A. <span class="field-unit">(MM)</span></span>
+              <select id="qTma"></select>
+            </label>
+            <label><span class="field-label">Rev <span class="field-unit">(cm)</span></span>
+              <select id="qRev"></select>
+            </label>
+            <label>Complemento
+              <select id="qComp"></select>
+            </label>
+          </div>
+          <div class="query-actions">
+            <button id="runQueryBtn" class="btn btn--primary">Consultar</button>
+            <button id="clearQueryBtn" class="btn btn--muted">Limpiar filtros</button>
+          </div>
+          <div id="querySummary" class="meta"></div>
+          <div class="result-shell">
+            <table id="queryTable">
+              <thead>
+                <tr>
+                  <th>Familia</th>
+                  <th>Formula</th>
+                  <th>f'c <span class="th-unit">(kg/cm<sup>2</sup>)</span></th>
+                  <th>Edad <span class="th-unit">(dias)</span></th>
+                  <th>Tipo</th>
+                  <th>T.M.A. <span class="th-unit">(MM)</span></th>
+                  <th>Rev <span class="th-unit">(cm)</span></th>
+                  <th>Comp</th>
+                  <th>Fecha Modif</th>
+                </tr>
+              </thead>
+              <tbody id="queryBody"></tbody>
+            </table>
+          </div>
+          </article>
+        </section>
+      </section>
+      <section class="consulta-slide" data-step="1">
+        <section class="consulta-grid consulta-grid--pair">
+          <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Receta</h2>
+            <p id="recipeMeta"></p>
+          </div>
+          <div class="query-actions">
+            <button id="exportReportBtn" class="btn btn--secondary">Exportar Reporte</button>
+          </div>
+          <div class="result-shell">
+            <table id="recipeTable">
+              <thead>
+                <tr>
+                  <th>Componente</th>
+                  <th>Cantidad (aditivos en cc/kg-cto)</th>
+                  <th>Unidad</th>
+                  <th>Vol. Est. m³</th>
+                </tr>
+              </thead>
+              <tbody id="recipeBody"></tbody>
+            </table>
+          </div>
+          <div class="totals-line">
+            <strong>Peso por m³:</strong>
+            <span id="recipeWeight">0.00</span>
+          </div>
+        </article>
+
+          <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Costos por m³</h2>
+            <p>Agregados: (m³ x (Costo Unit. + Acarreo)). Otros componentes: Cant. Final x Costo Unit.</p>
+          </div>
+          <div class="result-shell">
+            <table id="costTable">
+              <thead>
+                <tr>
+                  <th>Componente</th>
+                  <th>Cant. Final</th>
+                  <th>m³</th>
+                  <th>U.M.</th>
+                  <th title="Costo de transporte por m³ del agregado (del banco a la planta)">Acarreo ($)</th>
+                  <th>Costo Unit. ($)</th>
+                  <th>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody id="costBody"></tbody>
+            </table>
+          </div>
+          <div class="totals-line">
+            <strong>Sub-Total acarreo m³:</strong>
+            <span id="costHaulTotal">$0.00</span>
+          </div>
+          <div class="totals-line">
+            <strong>Sub-Total materiales m³:</strong>
+            <span id="costMaterialTotal">$0.00</span>
+          </div>
+          <div class="totals-line">
+            <strong>Total por m³:</strong>
+            <span id="costTotal">$0.00</span>
+          </div>
+          </article>
+        </section>
+      </section>
+    </section>
+
+    <section id="dosificadorView" class="view-pane is-hidden">
+      <section class="doser-grid doser-grid--top">
+        <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Datos de Control de Calidad</h2>
+            <p id="qcLinkedStamp">PVS/PVC/Densidad y correcciones por humedad (sincronizado con Editor CSV)</p>
+          </div>
+          <div class="query-actions">
+            <button id="saveQcHumidityBtn" class="btn btn--primary">Guardar Humedad</button>
+          </div>
+          <div class="result-shell">
+            <table id="qcTable">
+              <thead>
+                <tr>
+                  <th>Agregado</th>
+                  <th>PVS (kg/m³)</th>
+                  <th>PVC (kg/m³)</th>
+                  <th>Densidad (kg/m³)</th>
+                  <th>Absorcion (%)</th>
+                  <th>Humedad (%)</th>
+                </tr>
+              </thead>
+              <tbody id="qcBody"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Tolerancias de Carga</h2>
+            <p id="tolAccessNote">Ajustables por tipo de material</p>
+          </div>
+          <div class="doser-card">
+            <label>Cemento (± %)
+              <input id="tolCemento" type="number" min="0" step="0.1" value="1">
+            </label>
+            <label>Agregados (± %)
+              <input id="tolAgregados" type="number" min="0" step="0.1" value="3">
+            </label>
+            <label>Agua (± %)
+              <input id="tolAgua" type="number" min="0" step="0.1" value="2">
+            </label>
+            <label>Aditivo (± %)
+              <input id="tolAditivo" type="number" min="0" step="0.1" value="1">
+            </label>
+          </div>
+          <div class="doser-dose">
+            <label>Dosificacion
+              <input id="doseM3" type="number" min="0" step="0.1" value="7.0">
+            </label>
+            <span>m3</span>
+          </div>
+          <div class="consulta-head doser-params-head">
+            <h2>Parametros de Calculo</h2>
+            <p id="doserParamsMeta">Valores configurables para ajustes de dosificacion</p>
+          </div>
+          <div class="doser-card doser-card--params">
+            <label>Peso esp. cemento
+              <input id="paramCementoPesp" type="number" min="0" step="0.01" value="3.1">
+            </label>
+            <label>Aire (%)
+              <input id="paramAirePct" type="number" min="0" step="0.1" value="2">
+            </label>
+            <label>Pasa malla 200 (%)
+              <input id="paramPasa200Pct" type="number" min="0" step="0.1" value="19">
+            </label>
+            <label>PxL pond. (%)
+              <input id="paramPxlPct" type="number" min="0" step="0.1" value="6.4">
+            </label>
+            <label>Densidad agg fallback
+              <input id="paramDensidadAgg" type="number" min="0" step="0.01" value="2.2">
+            </label>
+          </div>
+          <div class="query-actions">
+            <button id="saveDoserParamsBtn" class="btn btn--muted">Guardar Parametros</button>
+          </div>
+          <div class="meta" id="doserSummary"></div>
+        </article>
+      </section>
+
+      <section class="panel panel--consulta">
+        <div class="consulta-head">
+          <h2>Mezcla / Buscador</h2>
+          <p id="doserSelectedMeta">Selecciona una mezcla para dosificar</p>
+        </div>
+        <div class="query-form query-form--doser">
+          <label>Familia
+            <input id="dFamily" type="text" placeholder="Ej. 70 o A100">
+          </label>
+          <label><span class="field-label">f'c <span class="field-unit">(kg/cm<sup>2</sup>)</span></span>
+            <select id="dFc"></select>
+          </label>
+          <label><span class="field-label">Edad <span class="field-unit">(dias)</span></span>
+            <select id="dEdad"></select>
+          </label>
+          <label>Tipo
+            <select id="dTipo"></select>
+          </label>
+          <label><span class="field-label">T.M.A. <span class="field-unit">(MM)</span></span>
+            <select id="dTma"></select>
+          </label>
+          <label><span class="field-label">Rev <span class="field-unit">(cm)</span></span>
+            <select id="dRev"></select>
+          </label>
+          <label>Complemento
+            <select id="dComp"></select>
+          </label>
+        </div>
+        <div class="query-actions">
+          <button id="dSearchBtn" class="btn btn--primary">Buscar Mezcla</button>
+          <button id="dClearBtn" class="btn btn--muted">Limpiar</button>
+          <button id="dExportReportBtn" class="btn btn--secondary">Exportar Reporte Dosificador</button>
+        </div>
+        <div class="doser-remision-row">
+          <label>No. Remision
+            <input id="dRemisionNo" type="text" maxlength="40" placeholder="Ej. R-000123">
+          </label>
+          <button id="dSaveRemisionBtn" class="btn btn--primary">Guardar Remision</button>
+          <button id="dRefreshRemisionBtn" class="btn btn--muted">Actualizar listado</button>
+        </div>
+        <div id="dRemisionMeta" class="meta"></div>
+        <div class="result-shell">
+          <table id="doserQueryTable">
+            <thead>
+              <tr>
+                <th>Familia</th>
+                <th>Formula</th>
+                <th>f'c <span class="th-unit">(kg/cm<sup>2</sup>)</span></th>
+                <th>Edad <span class="th-unit">(dias)</span></th>
+                <th>Tipo</th>
+                <th>T.M.A. <span class="th-unit">(MM)</span></th>
+                <th>Rev <span class="th-unit">(cm)</span></th>
+                <th>Comp</th>
+                <th>Fecha Modif</th>
+              </tr>
+            </thead>
+            <tbody id="doserQueryBody"></tbody>
+          </table>
+        </div>
+        <div class="result-shell">
+          <table id="doserRemisionTable">
+            <thead>
+              <tr>
+                <th>Remision</th>
+                <th>Formula</th>
+                <th>f'c</th>
+                <th>T.M.A.</th>
+                <th>m³</th>
+                <th>Peso Real</th>
+                <th>Fecha</th>
+                <th>Usuario</th>
+                <th>Accion</th>
+              </tr>
+            </thead>
+            <tbody id="doserRemisionBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="doser-grid doser-grid--bottom">
+        <article class="panel panel--consulta panel--recipe">
+          <div class="consulta-head">
+            <h2>Receta</h2>
+            <p>Cantidades por m³</p>
+          </div>
+          <div class="result-shell result-shell--recipe">
+            <table id="doserRecipeTable">
+              <thead>
+                <tr>
+                  <th>Componente</th>
+                  <th>Cantidad</th>
+                </tr>
+              </thead>
+              <tbody id="doserRecipeBody"></tbody>
+            </table>
+          </div>
+          <div class="totals-line">
+            <strong>Peso aprox por m³:</strong>
+            <span id="doserRecipeWeight">0.00</span>
+          </div>
+        </article>
+
+        <div class="doser-compare-grid">
+          <article class="panel panel--consulta">
+            <div class="consulta-head">
+              <h2>Carga Teorica Detallada</h2>
+              <p>Flujo: Diseño A, SSS, agua libre por humedad real, volumen absoluto y mezcla de prueba</p>
+            </div>
+            <div class="result-shell">
+              <table id="doserTheoreticalTable">
+                <thead>
+                  <tr>
+                    <th>Componente</th>
+                    <th>Diseño A</th>
+                    <th>Diseño SSS</th>
+                    <th>Agua libre H.R.</th>
+                    <th>Vol. Abs.</th>
+                    <th>Diseño H.R.</th>
+                    <th>Mezcla Prueba</th>
+                    <th>U.M.</th>
+                    <th>Obs.</th>
+                  </tr>
+                </thead>
+                <tbody id="doserTheoreticalBody"></tbody>
+              </table>
+            </div>
+            <div class="totals-line">
+              <strong>Peso teorico total:</strong>
+              <span id="doserTheoreticalWeight">0.00</span>
+            </div>
+          </article>
+
+          <article class="panel panel--consulta">
+            <div class="consulta-head">
+              <h2>Carga Real y Diferencial</h2>
+              <p>Estatus por tolerancia</p>
+            </div>
+            <div class="result-shell">
+              <table id="doserRealTable">
+                <thead>
+                  <tr>
+                    <th>Componente</th>
+                    <th>Teorica</th>
+                    <th>Real</th>
+                    <th>Diferencia</th>
+                    <th>Estatus</th>
+                  </tr>
+                </thead>
+                <tbody id="doserRealBody"></tbody>
+              </table>
+            </div>
+            <div class="totals-line">
+              <strong>Peso real total:</strong>
+              <span id="doserRealWeight">0.00</span>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
+  </main>
+  <div id="uiToastHost" class="ui-toast-host" aria-live="polite" aria-atomic="false"></div>
+  <div id="uiDialogHost" class="ui-dialog-host is-hidden" aria-hidden="true"></div>
+
+  <script>
+    window.APP_BOOT = {{ auth_boot | tojson }};
+  </script>
+  <script src="{{ url_for('static', filename='js/app.js', v=cache_bust) }}"></script>
+</body>
+</html>
+
+
+

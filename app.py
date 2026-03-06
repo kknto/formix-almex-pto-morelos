@@ -1,0 +1,2737 @@
+﻿import argparse
+import csv
+import hashlib
+import io
+import json
+import os
+import re
+import secrets
+import sqlite3
+import unicodedata
+from datetime import datetime, timedelta
+from functools import wraps
+from pathlib import Path
+from threading import Lock
+from uuid import uuid4
+
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+
+load_dotenv()
+
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_ROWS = 100_000
+MAX_COLUMNS = 400
+STAGING_TTL_MIN = 30
+MODES = {"new", "replace", "merge"}
+MAX_DB_SNAPSHOTS = 40
+QC_AGGREGATES = ("Fino 1", "Fino 2", "Grueso 1", "Grueso 2")
+QC_FIELDS = ("pvs", "pvc", "densidad", "absorcion", "humedad")
+DOSER_PARAM_FIELDS = (
+    "cemento_pesp",
+    "aire_pct",
+    "pasa_malla_200_pct",
+    "pxl_pond_pct",
+    "densidad_agregado_fallback",
+)
+ROLE_ALLOWED_VIEWS = {
+    "administrador": {"editor", "consulta", "dosificador"},
+    "jefe-de-planta": {"editor", "consulta", "dosificador"},
+    "dosificador": {"dosificador"},
+    "presupuestador": {"consulta"},
+}
+EDITOR_ROLES = {"administrador", "jefe-de-planta"}
+QC_HUMIDITY_ROLES = {"dosificador"}
+DOSIFICADOR_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "dosificador" in views))
+DEFAULT_USERS = (
+    {"username": "admin", "role": "administrador", "password": "Admin#2026!"},
+    {"username": "jefe_planta", "role": "jefe-de-planta", "password": "Planta#2026!"},
+    {"username": "dosificador", "role": "dosificador", "password": "Dosi#2026!"},
+    {"username": "presupuestador", "role": "presupuestador", "password": "Presu#2026!"},
+)
+AUTH_MAX_FAILED = 5
+AUTH_LOCK_MINUTES = 15
+
+CANONICAL_HEADER_ALIASES = {
+    "no": ("no", "numero", "num", "n"),
+    "formula": ("formula", "formulacion", "mix", "diseno", "diseño"),
+    "cod": ("cod", "codigo", "clave"),
+    "fc": ("fc", "fcr", "resistencia", "resistenciadiseno", "resistenciadiseño"),
+    "edad": ("edad", "dias", "dia"),
+    "tipo": ("tipo", "coloc", "colocacion", "colocación"),
+    "tma": ("tma", "tmamax", "tamanoagregado", "tamanomaximoagregado", "tamañomaximoagregado"),
+    "rev": ("rev", "revenimiento", "slump"),
+    "comp": ("comp", "complemento", "var", "aditivo"),
+    "family": ("familia", "family", "familia_mix", "fam"),
+    "fecha_modif": ("fechamodif", "fechamodificacion", "ultimafecha", "modificado"),
+}
+
+CANONICAL_HEADER_DISPLAY = {
+    "no": "No",
+    "formula": "Formula",
+    "cod": "COD",
+    "fc": "f'c",
+    "edad": "Edad",
+    "tipo": "Tipo",
+    "tma": "T.M.A.",
+    "rev": "Rev",
+    "comp": "Comp",
+    "family": "Familia",
+    "fecha_modif": "FECHA_MODIF",
+}
+DEFAULT_USER_PASSWORD = {(item["username"] or "").strip().lower(): item["password"] for item in DEFAULT_USERS}
+
+
+class ConcurrencyError(Exception):
+    pass
+
+
+def now_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def norm_header(text: str) -> str:
+    base = re.sub(r"\s*\([^)]*\)\s*$", "", (text or "").strip())
+    decomp = unicodedata.normalize("NFD", base)
+    no_acc = "".join(ch for ch in decomp if unicodedata.category(ch) != "Mn")
+    return re.sub(r"[^a-zA-Z0-9]", "", no_acc).lower()
+
+
+def sanitize_cell(value: str) -> str:
+    text = str(value).replace("\x00", "").strip()
+    if not text:
+        return ""
+    if text[0] in ("=", "@"):
+        return "'" + text
+    if text[0] in ("+", "-"):
+        if re.fullmatch(r"[+-]?\d+([.,]\d+)?", text):
+            return text
+        return "'" + text
+    return text
+
+
+def detect_encoding(raw: bytes) -> str:
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            raw.decode(enc)
+            return enc
+        except UnicodeDecodeError:
+            continue
+    return "latin-1"
+
+
+def detect_delim(text: str) -> str:
+    try:
+        return csv.Sniffer().sniff(text[:8192], delimiters=";,|\t").delimiter
+    except csv.Error:
+        return ";"
+
+
+def parse_csv_bytes(raw: bytes) -> tuple[list[str], list[list[str]], str, str]:
+    encoding = detect_encoding(raw)
+    text = raw.decode(encoding, errors="replace")
+    delim = detect_delim(text)
+    rows = list(csv.reader(io.StringIO(text), delimiter=delim))
+    if not rows:
+        return [], [], encoding, delim
+    headers = [sanitize_cell(h) for h in rows[0]]
+    width = len(headers)
+    body = []
+    for row in rows[1:]:
+        norm = (row + [""] * width)[:width]
+        body.append([sanitize_cell(v) for v in norm])
+    return headers, body, encoding, delim
+
+
+def decode_json_payload(body: bytes) -> dict:
+    last = None
+    for enc in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
+        try:
+            return json.loads(body.decode(enc))
+        except Exception as exc:
+            last = exc
+    raise ValueError(f"Invalid JSON payload: {last}")
+
+
+def content_hash(headers: list[str], rows: list[list[str]]) -> str:
+    s = json.dumps({"headers": headers, "rows": rows}, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def normalize_family_code(value: str | None, allow_empty: bool = False) -> str:
+    text = (value or "").strip().upper()
+    if not text:
+        if allow_empty:
+            return ""
+        raise ValueError("La familia es requerida.")
+    if not re.fullmatch(r"[A-Z0-9]{1,12}", text):
+        raise ValueError("Formato de familia invalido. Usa solo letras/numeros (max 12).")
+    return text
+
+
+def guess_family_from_filename(filename: str | None) -> str:
+    stem = Path((filename or "").strip()).stem.upper()
+    if not stem:
+        return ""
+    explicit = re.search(r"(?:^|[_-])FAM(?:ILIA)?[_-]?([A-Z0-9]{1,12})(?:[_-]|$)", stem)
+    if explicit:
+        try:
+            return normalize_family_code(explicit.group(1), allow_empty=False)
+        except ValueError:
+            pass
+    lead_digits = re.match(r"^\s*(\d{2,6})", stem)
+    if lead_digits:
+        digits = lead_digits.group(1)
+        if len(digits) >= 4:
+            # Common naming pattern: family + TMA (e.g. 7020 -> family 70).
+            return digits[:2]
+        return digits
+    token = re.search(r"(?:^|[_-])([A-Z]?\d{2,3})(?:[_-]|$)", stem)
+    if token:
+        candidate = token.group(1)
+        try:
+            return normalize_family_code(candidate, allow_empty=False)
+        except ValueError:
+            return ""
+    return ""
+
+
+def normalize_remision_no(value: str | None) -> str:
+    text = (value or "").strip().upper()
+    if not text:
+        raise ValueError("El numero de remision es requerido.")
+    if not re.fullmatch(r"[A-Z0-9/_-]{1,40}", text):
+        raise ValueError("Formato de remision invalido. Usa letras/numeros y - _ / (max 40).")
+    return text
+
+
+def canonical_key_for_header(header: str) -> str | None:
+    n = norm_header(header)
+    if not n:
+        return None
+    for canonical, aliases in CANONICAL_HEADER_ALIASES.items():
+        if n in {norm_header(alias) for alias in aliases}:
+            return canonical
+    return None
+
+
+def apply_header_mapping(headers: list[str]) -> tuple[list[str], list[dict[str, str]]]:
+    mapped = []
+    changes = []
+    used = set()
+    for raw in headers:
+        source = sanitize_cell(raw)
+        canonical = canonical_key_for_header(source)
+        target = source
+        if canonical:
+            candidate = CANONICAL_HEADER_DISPLAY.get(canonical, source)
+            if candidate not in used:
+                target = candidate
+        if target in used:
+            base = target or "Columna"
+            i = 2
+            while f"{base}_{i}" in used:
+                i += 1
+            target = f"{base}_{i}"
+        used.add(target)
+        mapped.append(target)
+        if source != target:
+            changes.append({"from": source, "to": target})
+    return mapped, changes
+
+
+def validate_password_policy(password: str) -> str | None:
+    text = (password or "").strip()
+    if len(text) < 10:
+        return "La contrasena debe tener al menos 10 caracteres."
+    if not re.search(r"[A-Z]", text):
+        return "La contrasena debe incluir al menos una letra mayuscula."
+    if not re.search(r"[a-z]", text):
+        return "La contrasena debe incluir al menos una letra minuscula."
+    if not re.search(r"\d", text):
+        return "La contrasena debe incluir al menos un numero."
+    if not re.search(r"[^A-Za-z0-9]", text):
+        return "La contrasena debe incluir al menos un simbolo."
+    return None
+
+
+def validate_dataset(headers: list[str], rows: list[list[str]]) -> dict:
+    errors, warnings = [], []
+    hnorm = [norm_header(h) for h in headers]
+    hset = set(hnorm)
+    if len(headers) == 0:
+        errors.append("El CSV no contiene encabezados.")
+    if len(headers) > MAX_COLUMNS:
+        errors.append(f"El CSV excede el maximo de columnas ({MAX_COLUMNS}).")
+    if len(rows) > MAX_ROWS:
+        errors.append(f"El CSV excede el maximo de filas ({MAX_ROWS}).")
+    req_groups = {
+        "formula": {"formula"},
+        "cod": {"cod"},
+        "fc": {"fc"},
+        "edad": {"edad"},
+        "coloc": {"coloc", "tipo"},
+        "tma": {"tma"},
+        "rev": {"rev"},
+        "comp": {"var", "comp", "complemento"},
+    }
+    missing = [name for name, keys in req_groups.items() if not (hset & keys)]
+    if missing:
+        errors.append(f"Faltan columnas requeridas: {', '.join(missing)}")
+    dupes = sorted({h for h in headers if headers.count(h) > 1})
+    if dupes:
+        warnings.append("Encabezados duplicados: " + ", ".join(dupes))
+    return {
+        "ok": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "stats": {"rows": len(rows), "columns": len(headers)},
+    }
+
+
+def default_qc_values() -> dict:
+    return {
+        agg: {"pvs": 0.0, "pvc": 0.0, "densidad": 0.0, "absorcion": 0.0, "humedad": 0.0}
+        for agg in QC_AGGREGATES
+    }
+
+
+def _to_qc_number(value) -> float:
+    text = str(value if value is not None else "").strip().replace(",", ".")
+    if text == "":
+        return 0.0
+    num = float(text)
+    if num < 0:
+        raise ValueError("Los valores de control de calidad no pueden ser negativos.")
+    if num > 1_000_000:
+        raise ValueError("Un valor de control de calidad excede el limite permitido.")
+    return num
+
+
+def sanitize_qc_values(values: dict | None) -> dict:
+    src = values if isinstance(values, dict) else {}
+    clean = default_qc_values()
+    for agg in QC_AGGREGATES:
+        row = src.get(agg) if isinstance(src.get(agg), dict) else {}
+        for field in QC_FIELDS:
+            clean[agg][field] = _to_qc_number(row.get(field, 0))
+    return clean
+
+
+def default_doser_params() -> dict:
+    return {
+        "cemento_pesp": 3.10,
+        "aire_pct": 2.0,
+        "pasa_malla_200_pct": 19.0,
+        "pxl_pond_pct": 6.4,
+        "densidad_agregado_fallback": 2.20,
+    }
+
+
+def sanitize_doser_params(values: dict | None) -> dict:
+    src = values if isinstance(values, dict) else {}
+    base = default_doser_params()
+    clean = {}
+    for field in DOSER_PARAM_FIELDS:
+        raw = src.get(field, base[field])
+        text = str(raw if raw is not None else "").strip().replace(",", ".")
+        num = float(text) if text else float(base[field])
+        if num < 0:
+            raise ValueError(f"Parametro invalido ({field}): no puede ser negativo.")
+        if num > 1_000_000:
+            raise ValueError(f"Parametro invalido ({field}): excede el limite permitido.")
+        clean[field] = num
+    return clean
+
+
+def normalize_username(text: str) -> str:
+    return (text or "").strip().lower()
+
+
+def parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def load_or_create_secret(base_dir: Path) -> str:
+    env_secret = os.getenv("APP_SECRET_KEY", "").strip()
+    if env_secret:
+        return env_secret
+    path = base_dir / ".app_secret_key"
+    if path.exists():
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            return text
+    key = secrets.token_hex(32)
+    path.write_text(key, encoding="utf-8")
+    return key
+
+
+
+class PostgresStore:
+    def __init__(self, db_url: str):
+        self.db_url = db_url
+        self.lock = Lock()
+        self._init_db()
+
+    def _conn(self):
+        conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+        conn.autocommit = True
+        return conn
+
+    def _init_db(self):
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS datasets(
+                      id SERIAL PRIMARY KEY,
+                      name TEXT NOT NULL UNIQUE,
+                      family_code TEXT NOT NULL DEFAULT '',
+                      headers_json TEXT NOT NULL,
+                      rows_json TEXT NOT NULL,
+                      encoding TEXT NOT NULL,
+                      delimiter TEXT NOT NULL,
+                      content_hash TEXT NOT NULL,
+                      row_count INTEGER NOT NULL DEFAULT 0,
+                      created_at TEXT NOT NULL,
+                      updated_at TEXT NOT NULL,
+                      version INTEGER NOT NULL DEFAULT 1,
+                      deleted_at TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS dataset_revisions(
+                      id SERIAL PRIMARY KEY,
+                      dataset_id INTEGER NOT NULL REFERENCES datasets(id),
+                      headers_json TEXT NOT NULL,
+                      rows_json TEXT NOT NULL,
+                      content_hash TEXT NOT NULL,
+                      row_count INTEGER NOT NULL DEFAULT 0,
+                      note TEXT NOT NULL DEFAULT '',
+                      created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS app_state(
+                      key TEXT PRIMARY KEY,
+                      value TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS upload_staging(
+                      token TEXT PRIMARY KEY,
+                      original_name TEXT NOT NULL,
+                      headers_json TEXT NOT NULL,
+                      rows_json TEXT NOT NULL,
+                      encoding TEXT NOT NULL,
+                      delimiter TEXT NOT NULL,
+                      content_hash TEXT NOT NULL,
+                      validation_json TEXT NOT NULL,
+                      created_at TEXT NOT NULL,
+                      expires_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS qc_profiles(
+                      dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id),
+                      values_json TEXT NOT NULL,
+                      version INTEGER NOT NULL DEFAULT 1,
+                      updated_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS doser_profiles(
+                      dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id),
+                      params_json TEXT NOT NULL,
+                      version INTEGER NOT NULL DEFAULT 1,
+                      updated_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS users(
+                      id SERIAL PRIMARY KEY,
+                      username TEXT NOT NULL UNIQUE,
+                      role TEXT NOT NULL,
+                      password_hash TEXT NOT NULL,
+                      is_active INTEGER NOT NULL DEFAULT 1,
+                      must_change_password INTEGER NOT NULL DEFAULT 0,
+                      password_updated_at TEXT,
+                      created_at TEXT NOT NULL,
+                      updated_at TEXT NOT NULL,
+                      last_login_at TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS auth_locks(
+                      username TEXT PRIMARY KEY,
+                      failed_count INTEGER NOT NULL DEFAULT 0,
+                      locked_until TEXT,
+                      last_failed_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS remisiones(
+                      id SERIAL PRIMARY KEY,
+                      dataset_id INTEGER NOT NULL REFERENCES datasets(id),
+                      remision_no TEXT NOT NULL UNIQUE,
+                      formula TEXT NOT NULL DEFAULT '',
+                      fc TEXT NOT NULL DEFAULT '',
+                      edad TEXT NOT NULL DEFAULT '',
+                      tipo TEXT NOT NULL DEFAULT '',
+                      tma TEXT NOT NULL DEFAULT '',
+                      rev TEXT NOT NULL DEFAULT '',
+                      comp TEXT NOT NULL DEFAULT '',
+                      dosificacion_m3 REAL NOT NULL DEFAULT 0,
+                      peso_receta REAL NOT NULL DEFAULT 0,
+                      peso_teorico_total REAL NOT NULL DEFAULT 0,
+                      peso_real_total REAL NOT NULL DEFAULT 0,
+                      status TEXT NOT NULL DEFAULT 'abierta',
+                      snapshot_json TEXT NOT NULL,
+                      created_at TEXT NOT NULL,
+                      created_by TEXT NOT NULL DEFAULT '',
+                      updated_at TEXT NOT NULL,
+                      version INTEGER NOT NULL DEFAULT 1
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_remisiones_dataset_created ON remisiones(dataset_id, created_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_remisiones_created ON remisiones(created_at DESC);
+                    CREATE TABLE IF NOT EXISTS audit_log(
+                      id SERIAL PRIMARY KEY,
+                      created_at TEXT NOT NULL,
+                      username TEXT NOT NULL DEFAULT '',
+                      action TEXT NOT NULL,
+                      entity TEXT NOT NULL DEFAULT '',
+                      entity_id TEXT NOT NULL DEFAULT '',
+                      dataset_id INTEGER,
+                      details_json TEXT NOT NULL DEFAULT '{}'
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_audit_dataset_created ON audit_log(dataset_id, created_at DESC);
+                """)
+                # Handle default users and other bootstrap logic in PostgresStore
+                # (Simplified for now, similar logic to SqliteStore)
+
+    def _execute(self, query: str, params: tuple = (), fetch: str = None):
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                # Convert SQLite ? to Postgres %s
+                query = query.replace("?", "%s")
+                # Convert SQLite INSERT OR IGNORE to Postgres ON CONFLICT DO NOTHING
+                if "INSERT OR IGNORE" in query.upper():
+                    query = query.replace("INSERT OR IGNORE", "INSERT")
+                    if "INTO users" in query:
+                         query += " ON CONFLICT (username) DO NOTHING"
+                    elif "INTO datasets" in query:
+                         query += " ON CONFLICT (name) DO NOTHING"
+                
+                # Convert SQLite INSERT ... ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                # (Postgres uses EXCLUDED.value case insensitive but usually uppercase)
+                
+                cur.execute(query, params)
+                if fetch == "one":
+                    return cur.fetchone()
+                if fetch == "all":
+                    return cur.fetchall()
+                if fetch == "id":
+                    return cur.lastrowid # This might need RETURNING id in PG
+                return None
+
+    # Implement other methods to wrap _execute and match SqliteStore interface...
+    # For brevity and safety, I'll focus on the core connection logic first.
+
+class SqliteStore:
+    def __init__(self, base_dir: Path, csv_file: str | None = None):
+        self.base_dir = base_dir.resolve()
+        self.db_path = self.base_dir / "mix_data.sqlite3"
+        self.snapshot_dir = self.base_dir / "backups" / "db_snapshots"
+        self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+        self.lock = Lock()
+        self._init_db()
+        self._bootstrap(csv_file)
+
+    def _conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _columns(self, conn: sqlite3.Connection, table_name: str) -> set[str]:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return {r["name"] for r in rows}
+
+    def _ensure_column(self, conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str):
+        if column_name in self._columns(conn, table_name):
+            return
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}")
+
+    def _init_db(self):
+        with self._conn() as conn:
+            conn.executescript(
+                """
+                PRAGMA journal_mode=WAL;
+                CREATE TABLE IF NOT EXISTS datasets(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT NOT NULL UNIQUE,
+                  family_code TEXT NOT NULL DEFAULT '',
+                  headers_json TEXT NOT NULL,
+                  rows_json TEXT NOT NULL,
+                  encoding TEXT NOT NULL,
+                  delimiter TEXT NOT NULL,
+                  content_hash TEXT NOT NULL,
+                  row_count INTEGER NOT NULL DEFAULT 0,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  version INTEGER NOT NULL DEFAULT 1,
+                  deleted_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS dataset_revisions(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  dataset_id INTEGER NOT NULL,
+                  headers_json TEXT NOT NULL,
+                  rows_json TEXT NOT NULL,
+                  content_hash TEXT NOT NULL,
+                  row_count INTEGER NOT NULL DEFAULT 0,
+                  note TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL,
+                  FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+                );
+                CREATE TABLE IF NOT EXISTS app_state(
+                  key TEXT PRIMARY KEY,
+                  value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS upload_staging(
+                  token TEXT PRIMARY KEY,
+                  original_name TEXT NOT NULL,
+                  headers_json TEXT NOT NULL,
+                  rows_json TEXT NOT NULL,
+                  encoding TEXT NOT NULL,
+                  delimiter TEXT NOT NULL,
+                  content_hash TEXT NOT NULL,
+                  validation_json TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  expires_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS qc_profiles(
+                  dataset_id INTEGER PRIMARY KEY,
+                  values_json TEXT NOT NULL,
+                  version INTEGER NOT NULL DEFAULT 1,
+                  updated_at TEXT NOT NULL,
+                  FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+                );
+                CREATE TABLE IF NOT EXISTS doser_profiles(
+                  dataset_id INTEGER PRIMARY KEY,
+                  params_json TEXT NOT NULL,
+                  version INTEGER NOT NULL DEFAULT 1,
+                  updated_at TEXT NOT NULL,
+                  FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+                );
+                CREATE TABLE IF NOT EXISTS users(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  username TEXT NOT NULL UNIQUE,
+                  role TEXT NOT NULL,
+                  password_hash TEXT NOT NULL,
+                  is_active INTEGER NOT NULL DEFAULT 1,
+                  must_change_password INTEGER NOT NULL DEFAULT 0,
+                  password_updated_at TEXT,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  last_login_at TEXT
+                );
+                CREATE TABLE IF NOT EXISTS auth_locks(
+                  username TEXT PRIMARY KEY,
+                  failed_count INTEGER NOT NULL DEFAULT 0,
+                  locked_until TEXT,
+                  last_failed_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS remisiones(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  dataset_id INTEGER NOT NULL,
+                  remision_no TEXT NOT NULL UNIQUE,
+                  formula TEXT NOT NULL DEFAULT '',
+                  fc TEXT NOT NULL DEFAULT '',
+                  edad TEXT NOT NULL DEFAULT '',
+                  tipo TEXT NOT NULL DEFAULT '',
+                  tma TEXT NOT NULL DEFAULT '',
+                  rev TEXT NOT NULL DEFAULT '',
+                  comp TEXT NOT NULL DEFAULT '',
+                  dosificacion_m3 REAL NOT NULL DEFAULT 0,
+                  peso_receta REAL NOT NULL DEFAULT 0,
+                  peso_teorico_total REAL NOT NULL DEFAULT 0,
+                  peso_real_total REAL NOT NULL DEFAULT 0,
+                  status TEXT NOT NULL DEFAULT 'abierta',
+                  snapshot_json TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  created_by TEXT NOT NULL DEFAULT '',
+                  updated_at TEXT NOT NULL,
+                  version INTEGER NOT NULL DEFAULT 1,
+                  FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_remisiones_dataset_created ON remisiones(dataset_id, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_remisiones_created ON remisiones(created_at DESC);
+                CREATE TABLE IF NOT EXISTS audit_log(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  created_at TEXT NOT NULL,
+                  username TEXT NOT NULL DEFAULT '',
+                  action TEXT NOT NULL,
+                  entity TEXT NOT NULL DEFAULT '',
+                  entity_id TEXT NOT NULL DEFAULT '',
+                  dataset_id INTEGER,
+                  details_json TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_audit_dataset_created ON audit_log(dataset_id, created_at DESC);
+                """
+            )
+            # Schema migration for older databases.
+            self._ensure_column(conn, "datasets", "family_code", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "datasets", "content_hash", "TEXT")
+            self._ensure_column(conn, "datasets", "row_count", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "datasets", "version", "INTEGER NOT NULL DEFAULT 1")
+            self._ensure_column(conn, "datasets", "deleted_at", "TEXT")
+            self._ensure_column(conn, "dataset_revisions", "content_hash", "TEXT")
+            self._ensure_column(conn, "dataset_revisions", "row_count", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "dataset_revisions", "note", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "qc_profiles", "values_json", "TEXT NOT NULL DEFAULT '{}'")
+            self._ensure_column(conn, "qc_profiles", "version", "INTEGER NOT NULL DEFAULT 1")
+            self._ensure_column(conn, "qc_profiles", "updated_at", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "doser_profiles", "params_json", "TEXT NOT NULL DEFAULT '{}'")
+            self._ensure_column(conn, "doser_profiles", "version", "INTEGER NOT NULL DEFAULT 1")
+            self._ensure_column(conn, "doser_profiles", "updated_at", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "users", "role", "TEXT NOT NULL DEFAULT 'presupuestador'")
+            self._ensure_column(conn, "users", "password_hash", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "users", "is_active", "INTEGER NOT NULL DEFAULT 1")
+            self._ensure_column(conn, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "users", "password_updated_at", "TEXT")
+            self._ensure_column(conn, "users", "created_at", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "users", "updated_at", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "users", "last_login_at", "TEXT")
+            self._ensure_column(conn, "remisiones", "status", "TEXT NOT NULL DEFAULT 'abierta'")
+            self._ensure_column(conn, "remisiones", "created_by", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "remisiones", "updated_at", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "remisiones", "version", "INTEGER NOT NULL DEFAULT 1")
+            self._ensure_column(conn, "audit_log", "created_at", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "audit_log", "username", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "audit_log", "action", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "audit_log", "entity", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "audit_log", "entity_id", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "audit_log", "dataset_id", "INTEGER")
+            self._ensure_column(conn, "audit_log", "details_json", "TEXT NOT NULL DEFAULT '{}'")
+
+            now = now_str()
+            for item in DEFAULT_USERS:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO users(username,role,password_hash,is_active,must_change_password,password_updated_at,created_at,updated_at,last_login_at)
+                    VALUES(?,?,?,?,?,?,?, ?,NULL)
+                    """,
+                    (
+                        normalize_username(item["username"]),
+                        item["role"],
+                        generate_password_hash(item["password"]),
+                        1,
+                        1,
+                        "",
+                        now,
+                        now,
+                    ),
+                )
+
+            # Force password change if a default credential hash is still active.
+            for uname, plain in DEFAULT_USER_PASSWORD.items():
+                row = conn.execute(
+                    "SELECT id,password_hash FROM users WHERE username=? LIMIT 1",
+                    (uname,),
+                ).fetchone()
+                if not row:
+                    continue
+                if check_password_hash(row["password_hash"] or "", plain):
+                    conn.execute(
+                        "UPDATE users SET must_change_password=1, updated_at=? WHERE id=?",
+                        (now, int(row["id"])),
+                    )
+
+            missing_hash_rows = conn.execute(
+                "SELECT id, headers_json, rows_json FROM datasets WHERE content_hash IS NULL OR row_count=0"
+            ).fetchall()
+            for row in missing_hash_rows:
+                headers = json.loads(row["headers_json"])
+                rows = json.loads(row["rows_json"])
+                conn.execute(
+                    "UPDATE datasets SET content_hash=?, row_count=? WHERE id=?",
+                    (content_hash(headers, rows), len(rows), int(row["id"])),
+                )
+
+            missing_family_rows = conn.execute(
+                "SELECT id,name FROM datasets WHERE family_code IS NULL OR TRIM(family_code)=''"
+            ).fetchall()
+            for row in missing_family_rows:
+                fam = guess_family_from_filename(row["name"])
+                conn.execute(
+                    "UPDATE datasets SET family_code=? WHERE id=?",
+                    (fam, int(row["id"])),
+                )
+
+    def _active_id(self, conn: sqlite3.Connection) -> int | None:
+        row = conn.execute("SELECT value FROM app_state WHERE key='active_dataset_id'").fetchone()
+        if row:
+            try:
+                did = int(row["value"])
+                ok = conn.execute("SELECT 1 FROM datasets WHERE id=? AND deleted_at IS NULL", (did,)).fetchone()
+                if ok:
+                    return did
+            except ValueError:
+                pass
+        row = conn.execute("SELECT id FROM datasets WHERE deleted_at IS NULL ORDER BY id LIMIT 1").fetchone()
+        return int(row["id"]) if row else None
+
+    def _set_active(self, conn: sqlite3.Connection, did: int):
+        conn.execute(
+            """
+            INSERT INTO app_state(key,value) VALUES('active_dataset_id',?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value
+            """,
+            (str(did),),
+        )
+
+    def _audit(
+        self,
+        conn: sqlite3.Connection,
+        action: str,
+        username: str = "",
+        entity: str = "",
+        entity_id: str = "",
+        dataset_id: int | None = None,
+        details: dict | None = None,
+    ):
+        payload = details if isinstance(details, dict) else {}
+        conn.execute(
+            """
+            INSERT INTO audit_log(created_at,username,action,entity,entity_id,dataset_id,details_json)
+            VALUES(?,?,?,?,?,?,?)
+            """,
+            (
+                now_str(),
+                normalize_username(username),
+                (action or "").strip()[:80],
+                (entity or "").strip()[:40],
+                (entity_id or "").strip()[:80],
+                int(dataset_id) if dataset_id is not None else None,
+                json.dumps(payload, ensure_ascii=False),
+            ),
+        )
+
+    def _load_by_id(self, conn: sqlite3.Connection, did: int) -> dict:
+        row = conn.execute("SELECT * FROM datasets WHERE id=? AND deleted_at IS NULL", (did,)).fetchone()
+        if not row:
+            raise FileNotFoundError("Dataset not found.")
+        headers = json.loads(row["headers_json"])
+        rows = json.loads(row["rows_json"])
+        w = len(headers)
+        rows = [(r + [""] * w)[:w] for r in rows]
+        return {
+            "id": int(row["id"]),
+            "name": row["name"],
+            "family_code": (row["family_code"] or "").strip(),
+            "headers": headers,
+            "rows": rows,
+            "encoding": row["encoding"],
+            "delimiter": row["delimiter"],
+            "content_hash": row["content_hash"],
+            "row_count": int(row["row_count"]),
+            "updated_at": row["updated_at"],
+            "version": int(row["version"]),
+        }
+
+    def _insert_dataset(
+        self,
+        conn: sqlite3.Connection,
+        name: str,
+        headers: list[str],
+        rows: list[list[str]],
+        encoding: str,
+        delimiter: str,
+        family_code: str | None = None,
+    ) -> int:
+        base = name.strip() or "dataset.csv"
+        candidate = base
+        idx = 1
+        while conn.execute("SELECT 1 FROM datasets WHERE name=? AND deleted_at IS NULL", (candidate,)).fetchone():
+            candidate = f"{Path(base).stem}_{idx}{Path(base).suffix or '.csv'}"
+            idx += 1
+        h = content_hash(headers, rows)
+        created = now_str()
+        fam = normalize_family_code(family_code, allow_empty=True) if family_code is not None else guess_family_from_filename(candidate)
+        cur = conn.execute(
+            """
+            INSERT INTO datasets(name,family_code,headers_json,rows_json,encoding,delimiter,content_hash,row_count,created_at,updated_at,version,deleted_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,1,NULL)
+            """,
+            (
+                candidate,
+                fam,
+                json.dumps(headers, ensure_ascii=False),
+                json.dumps(rows, ensure_ascii=False),
+                encoding,
+                delimiter,
+                h,
+                len(rows),
+                created,
+                created,
+            ),
+        )
+        return int(cur.lastrowid)
+
+    def _bootstrap(self, csv_file: str | None):
+        with self.lock:
+            with self._conn() as conn:
+                count = conn.execute("SELECT COUNT(*) c FROM datasets WHERE deleted_at IS NULL").fetchone()["c"]
+                if count > 0:
+                    if self._active_id(conn) is None:
+                        first = conn.execute("SELECT id FROM datasets WHERE deleted_at IS NULL ORDER BY id LIMIT 1").fetchone()
+                        if first:
+                            self._set_active(conn, int(first["id"]))
+                    return
+                path = (self.base_dir / csv_file).resolve() if csv_file else None
+                if not path or not path.exists():
+                    cands = sorted(self.base_dir.glob("*.csv"))
+                    path = cands[0] if cands else None
+                if path and path.exists():
+                    headers, rows, enc, delim = parse_csv_bytes(path.read_bytes())
+                    headers, _ = apply_header_mapping(headers)
+                    v = validate_dataset(headers, rows)
+                    if not v["ok"]:
+                        raise ValueError("CSV inicial invalido: " + "; ".join(v["errors"]))
+                    did = self._insert_dataset(conn, path.name, headers, rows, enc, delim)
+                else:
+                    did = self._insert_dataset(conn, "dataset_principal.csv", [], [], "utf-8", ";")
+                self._set_active(conn, did)
+
+    def list_file_infos(self) -> list[dict[str, str]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT name,family_code FROM datasets WHERE deleted_at IS NULL ORDER BY name"
+            ).fetchall()
+            return [{"name": r["name"], "family": (r["family_code"] or "").strip()} for r in rows]
+
+    def list_files(self) -> list[str]:
+        infos = self.list_file_infos()
+        return [item["name"] for item in infos]
+
+    def set_dataset_family(self, family_code: str, dataset_name: str | None = None, actor: str = "") -> dict[str, str]:
+        fam = normalize_family_code(family_code, allow_empty=False)
+        with self.lock:
+            self._snapshot_db("before_family_update")
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                conn.execute(
+                    "UPDATE datasets SET family_code=?, updated_at=?, version=version+1 WHERE id=?",
+                    (fam, now_str(), ds["id"]),
+                )
+                self._audit(
+                    conn,
+                    action="dataset.family.update",
+                    username=actor,
+                    entity="dataset",
+                    entity_id=str(ds["id"]),
+                    dataset_id=ds["id"],
+                    details={"file": ds["name"], "family": fam},
+                )
+                return {"file": ds["name"], "family": fam}
+
+    def load_active(self) -> dict:
+        with self.lock:
+            with self._conn() as conn:
+                did = self._active_id(conn)
+                if did is None:
+                    raise FileNotFoundError("No active dataset.")
+                return self._load_by_id(conn, did)
+
+    def set_active_file(self, dataset_name: str) -> str:
+        clean = (dataset_name or "").strip()
+        if not clean:
+            raise ValueError("Dataset name is required.")
+        with self.lock:
+            with self._conn() as conn:
+                row = conn.execute("SELECT id FROM datasets WHERE name=? AND deleted_at IS NULL", (clean,)).fetchone()
+                if not row:
+                    raise FileNotFoundError(f"Dataset not found: {clean}")
+                self._set_active(conn, int(row["id"]))
+                return clean
+
+    def _resolve_dataset(self, conn: sqlite3.Connection, dataset_name: str | None = None) -> dict:
+        if dataset_name:
+            return self._get_by_name(conn, dataset_name.strip())
+        did = self._active_id(conn)
+        if did is None:
+            raise FileNotFoundError("No active dataset.")
+        return self._load_by_id(conn, did)
+
+    def load_qc(self, dataset_name: str | None = None) -> dict:
+        with self.lock:
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                row = conn.execute(
+                    "SELECT values_json,version,updated_at FROM qc_profiles WHERE dataset_id=?",
+                    (ds["id"],),
+                ).fetchone()
+                if not row:
+                    return {
+                        "file": ds["name"],
+                        "version": 0,
+                        "updated_at": "",
+                        "values": default_qc_values(),
+                    }
+                raw = json.loads(row["values_json"] or "{}")
+                try:
+                    values = sanitize_qc_values(raw)
+                except Exception:
+                    values = default_qc_values()
+                return {
+                    "file": ds["name"],
+                    "version": int(row["version"] or 0),
+                    "updated_at": row["updated_at"] or "",
+                    "values": values,
+                }
+
+    def save_qc(
+        self,
+        values: dict,
+        expected_version: int | None = None,
+        dataset_name: str | None = None,
+        actor: str = "",
+    ) -> dict:
+        clean_values = sanitize_qc_values(values)
+        with self.lock:
+            self._snapshot_db("before_qc_save")
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                row = conn.execute(
+                    "SELECT version FROM qc_profiles WHERE dataset_id=?",
+                    (ds["id"],),
+                ).fetchone()
+                ts = now_str()
+                if row:
+                    curr_ver = int(row["version"] or 0)
+                    if expected_version is not None and curr_ver != expected_version:
+                        raise ConcurrencyError(
+                            f"Version conflict. Current QC version is {curr_ver}, expected {expected_version}."
+                        )
+                    new_ver = curr_ver + 1
+                    conn.execute(
+                        """
+                        UPDATE qc_profiles
+                        SET values_json=?, version=?, updated_at=?
+                        WHERE dataset_id=?
+                        """,
+                        (json.dumps(clean_values, ensure_ascii=False), new_ver, ts, ds["id"]),
+                    )
+                else:
+                    if expected_version not in (None, 0):
+                        raise ConcurrencyError(
+                            f"Version conflict. Current QC version is 0, expected {expected_version}."
+                        )
+                    new_ver = 1
+                    conn.execute(
+                        """
+                        INSERT INTO qc_profiles(dataset_id,values_json,version,updated_at)
+                        VALUES(?,?,?,?)
+                        """,
+                        (ds["id"], json.dumps(clean_values, ensure_ascii=False), new_ver, ts),
+                    )
+                self._audit(
+                    conn,
+                    action="qc.save",
+                    username=actor,
+                    entity="qc_profile",
+                    entity_id=str(ds["id"]),
+                    dataset_id=ds["id"],
+                    details={"file": ds["name"], "version": new_ver},
+                )
+                return {"file": ds["name"], "version": new_ver, "updated_at": ts, "values": clean_values}
+
+    def save_qc_humidity(
+        self,
+        values: dict,
+        expected_version: int | None = None,
+        dataset_name: str | None = None,
+        actor: str = "",
+    ) -> dict:
+        src = values if isinstance(values, dict) else {}
+        humidity_by_agg = {}
+        for agg in QC_AGGREGATES:
+            row = src.get(agg) if isinstance(src.get(agg), dict) else {}
+            humidity_by_agg[agg] = _to_qc_number(row.get("humedad", 0))
+
+        with self.lock:
+            self._snapshot_db("before_qc_humidity_save")
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                row = conn.execute(
+                    "SELECT values_json,version FROM qc_profiles WHERE dataset_id=?",
+                    (ds["id"],),
+                ).fetchone()
+                ts = now_str()
+                if row:
+                    curr_ver = int(row["version"] or 0)
+                    if expected_version is not None and curr_ver != expected_version:
+                        raise ConcurrencyError(
+                            f"Version conflict. Current QC version is {curr_ver}, expected {expected_version}."
+                        )
+                    raw = json.loads(row["values_json"] or "{}")
+                    try:
+                        clean_values = sanitize_qc_values(raw)
+                    except Exception:
+                        clean_values = default_qc_values()
+                    for agg in QC_AGGREGATES:
+                        clean_values[agg]["humedad"] = humidity_by_agg[agg]
+                    new_ver = curr_ver + 1
+                    conn.execute(
+                        """
+                        UPDATE qc_profiles
+                        SET values_json=?, version=?, updated_at=?
+                        WHERE dataset_id=?
+                        """,
+                        (json.dumps(clean_values, ensure_ascii=False), new_ver, ts, ds["id"]),
+                    )
+                else:
+                    if expected_version not in (None, 0):
+                        raise ConcurrencyError(
+                            f"Version conflict. Current QC version is 0, expected {expected_version}."
+                        )
+                    clean_values = default_qc_values()
+                    for agg in QC_AGGREGATES:
+                        clean_values[agg]["humedad"] = humidity_by_agg[agg]
+                    new_ver = 1
+                    conn.execute(
+                        """
+                        INSERT INTO qc_profiles(dataset_id,values_json,version,updated_at)
+                        VALUES(?,?,?,?)
+                        """,
+                        (ds["id"], json.dumps(clean_values, ensure_ascii=False), new_ver, ts),
+                    )
+                self._audit(
+                    conn,
+                    action="qc.humidity.save",
+                    username=actor,
+                    entity="qc_profile",
+                    entity_id=str(ds["id"]),
+                    dataset_id=ds["id"],
+                    details={"file": ds["name"], "version": new_ver},
+                )
+                return {"file": ds["name"], "version": new_ver, "updated_at": ts, "values": clean_values}
+
+    def load_doser_params(self, dataset_name: str | None = None) -> dict:
+        with self.lock:
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                row = conn.execute(
+                    "SELECT params_json,version,updated_at FROM doser_profiles WHERE dataset_id=?",
+                    (ds["id"],),
+                ).fetchone()
+                if not row:
+                    return {
+                        "file": ds["name"],
+                        "version": 0,
+                        "updated_at": "",
+                        "values": default_doser_params(),
+                    }
+                raw = json.loads(row["params_json"] or "{}")
+                try:
+                    values = sanitize_doser_params(raw)
+                except Exception:
+                    values = default_doser_params()
+                return {
+                    "file": ds["name"],
+                    "version": int(row["version"] or 0),
+                    "updated_at": row["updated_at"] or "",
+                    "values": values,
+                }
+
+    def save_doser_params(
+        self,
+        values: dict,
+        expected_version: int | None = None,
+        dataset_name: str | None = None,
+        actor: str = "",
+    ) -> dict:
+        clean_values = sanitize_doser_params(values)
+        with self.lock:
+            self._snapshot_db("before_doser_params_save")
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                row = conn.execute(
+                    "SELECT version FROM doser_profiles WHERE dataset_id=?",
+                    (ds["id"],),
+                ).fetchone()
+                ts = now_str()
+                if row:
+                    curr_ver = int(row["version"] or 0)
+                    if expected_version is not None and curr_ver != expected_version:
+                        raise ConcurrencyError(
+                            f"Version conflict. Current doser params version is {curr_ver}, expected {expected_version}."
+                        )
+                    new_ver = curr_ver + 1
+                    conn.execute(
+                        """
+                        UPDATE doser_profiles
+                        SET params_json=?, version=?, updated_at=?
+                        WHERE dataset_id=?
+                        """,
+                        (json.dumps(clean_values, ensure_ascii=False), new_ver, ts, ds["id"]),
+                    )
+                else:
+                    if expected_version not in (None, 0):
+                        raise ConcurrencyError(
+                            f"Version conflict. Current doser params version is 0, expected {expected_version}."
+                        )
+                    new_ver = 1
+                    conn.execute(
+                        """
+                        INSERT INTO doser_profiles(dataset_id,params_json,version,updated_at)
+                        VALUES(?,?,?,?)
+                        """,
+                        (ds["id"], json.dumps(clean_values, ensure_ascii=False), new_ver, ts),
+                    )
+                self._audit(
+                    conn,
+                    action="doser.params.save",
+                    username=actor,
+                    entity="doser_profile",
+                    entity_id=str(ds["id"]),
+                    dataset_id=ds["id"],
+                    details={"file": ds["name"], "version": new_ver},
+                )
+                return {"file": ds["name"], "version": new_ver, "updated_at": ts, "values": clean_values}
+
+    def save_remision(
+        self,
+        remision_no: str,
+        snapshot: dict,
+        dataset_name: str | None = None,
+        created_by: str = "",
+    ) -> dict:
+        remision = normalize_remision_no(remision_no)
+        snap = snapshot if isinstance(snapshot, dict) else {}
+
+        def text(key: str) -> str:
+            return str(snap.get(key, "")).strip()
+
+        def number(key: str) -> float:
+            try:
+                return float(snap.get(key, 0) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        with self.lock:
+            self._snapshot_db("before_remision_save")
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                exists = conn.execute("SELECT 1 FROM remisiones WHERE remision_no=?", (remision,)).fetchone()
+                if exists:
+                    raise ValueError(f"La remision '{remision}' ya existe.")
+                ts = now_str()
+                conn.execute(
+                    """
+                    INSERT INTO remisiones(
+                      dataset_id,remision_no,formula,fc,edad,tipo,tma,rev,comp,
+                      dosificacion_m3,peso_receta,peso_teorico_total,peso_real_total,
+                      status,snapshot_json,created_at,created_by,updated_at,version
+                    )
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+                    """,
+                    (
+                        ds["id"],
+                        remision,
+                        text("formula"),
+                        text("fc"),
+                        text("edad"),
+                        text("tipo"),
+                        text("tma"),
+                        text("rev"),
+                        text("comp"),
+                        number("dose"),
+                        number("recipeWeight"),
+                        number("theoreticalWeight"),
+                        number("realWeight"),
+                        "abierta",
+                        json.dumps(snap, ensure_ascii=False),
+                        ts,
+                        normalize_username(created_by),
+                        ts,
+                    ),
+                )
+                row = conn.execute(
+                    """
+                    SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
+                           peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
+                    FROM remisiones
+                    WHERE remision_no=?
+                    LIMIT 1
+                    """,
+                    (remision,),
+                ).fetchone()
+                self._audit(
+                    conn,
+                    action="remision.create",
+                    username=created_by,
+                    entity="remision",
+                    entity_id=str(int(row["id"])),
+                    dataset_id=ds["id"],
+                    details={"file": ds["name"], "remision_no": remision},
+                )
+                return {
+                    "id": int(row["id"]),
+                    "remision_no": row["remision_no"],
+                    "formula": row["formula"] or "",
+                    "fc": row["fc"] or "",
+                    "edad": row["edad"] or "",
+                    "tipo": row["tipo"] or "",
+                    "tma": row["tma"] or "",
+                    "rev": row["rev"] or "",
+                    "comp": row["comp"] or "",
+                    "dosificacion_m3": float(row["dosificacion_m3"] or 0),
+                    "peso_receta": float(row["peso_receta"] or 0),
+                    "peso_teorico_total": float(row["peso_teorico_total"] or 0),
+                    "peso_real_total": float(row["peso_real_total"] or 0),
+                    "status": row["status"] or "abierta",
+                    "created_at": row["created_at"] or "",
+                    "created_by": row["created_by"] or "",
+                    "file": ds["name"],
+                }
+
+    def list_remisiones(self, dataset_name: str | None = None, query: str = "", limit: int = 80) -> dict:
+        max_limit = max(1, min(int(limit or 80), 500))
+        q = (query or "").strip().upper()
+        with self.lock:
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                if q:
+                    rows = conn.execute(
+                        """
+                        SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
+                               peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
+                        FROM remisiones
+                        WHERE dataset_id=? AND (remision_no LIKE ? OR formula LIKE ?)
+                        ORDER BY id DESC
+                        LIMIT ?
+                        """,
+                        (ds["id"], f"%{q}%", f"%{q}%", max_limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """
+                        SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
+                               peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
+                        FROM remisiones
+                        WHERE dataset_id=?
+                        ORDER BY id DESC
+                        LIMIT ?
+                        """,
+                        (ds["id"], max_limit),
+                    ).fetchall()
+                return {
+                    "file": ds["name"],
+                    "items": [
+                        {
+                            "id": int(r["id"]),
+                            "remision_no": r["remision_no"] or "",
+                            "formula": r["formula"] or "",
+                            "fc": r["fc"] or "",
+                            "edad": r["edad"] or "",
+                            "tipo": r["tipo"] or "",
+                            "tma": r["tma"] or "",
+                            "rev": r["rev"] or "",
+                            "comp": r["comp"] or "",
+                            "dosificacion_m3": float(r["dosificacion_m3"] or 0),
+                            "peso_receta": float(r["peso_receta"] or 0),
+                            "peso_teorico_total": float(r["peso_teorico_total"] or 0),
+                            "peso_real_total": float(r["peso_real_total"] or 0),
+                            "status": r["status"] or "abierta",
+                            "created_at": r["created_at"] or "",
+                            "created_by": r["created_by"] or "",
+                        }
+                        for r in rows
+                    ],
+                }
+
+    def get_remision(self, remision_id: int, dataset_name: str | None = None) -> dict:
+        rid = int(remision_id)
+        if rid <= 0:
+            raise ValueError("ID de remision invalido.")
+        with self.lock:
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                row = conn.execute(
+                    """
+                    SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
+                           peso_receta,peso_teorico_total,peso_real_total,status,snapshot_json,
+                           created_at,created_by,updated_at,version
+                    FROM remisiones
+                    WHERE id=? AND dataset_id=?
+                    LIMIT 1
+                    """,
+                    (rid, ds["id"]),
+                ).fetchone()
+                if not row:
+                    raise FileNotFoundError("Remision no encontrada para el dataset activo.")
+                raw = json.loads(row["snapshot_json"] or "{}")
+                snapshot = raw if isinstance(raw, dict) else {}
+                if not snapshot.get("remisionNo"):
+                    snapshot["remisionNo"] = row["remision_no"] or "-"
+                if not snapshot.get("file"):
+                    snapshot["file"] = ds["name"]
+                return {
+                    "id": int(row["id"]),
+                    "remision_no": row["remision_no"] or "",
+                    "formula": row["formula"] or "",
+                    "fc": row["fc"] or "",
+                    "edad": row["edad"] or "",
+                    "tipo": row["tipo"] or "",
+                    "tma": row["tma"] or "",
+                    "rev": row["rev"] or "",
+                    "comp": row["comp"] or "",
+                    "dosificacion_m3": float(row["dosificacion_m3"] or 0),
+                    "peso_receta": float(row["peso_receta"] or 0),
+                    "peso_teorico_total": float(row["peso_teorico_total"] or 0),
+                    "peso_real_total": float(row["peso_real_total"] or 0),
+                    "status": row["status"] or "abierta",
+                    "created_at": row["created_at"] or "",
+                    "created_by": row["created_by"] or "",
+                    "updated_at": row["updated_at"] or "",
+                    "version": int(row["version"] or 1),
+                    "file": ds["name"],
+                    "snapshot": snapshot,
+                }
+
+    def delete_remision(self, remision_id: int, dataset_name: str | None = None, actor: str = "") -> dict:
+        rid = int(remision_id)
+        if rid <= 0:
+            raise ValueError("ID de remision invalido.")
+        with self.lock:
+            self._snapshot_db("before_remision_delete")
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                row = conn.execute(
+                    """
+                    SELECT id, remision_no
+                    FROM remisiones
+                    WHERE id=? AND dataset_id=?
+                    LIMIT 1
+                    """,
+                    (rid, ds["id"]),
+                ).fetchone()
+                if not row:
+                    raise FileNotFoundError("Remision no encontrada para el dataset activo.")
+                conn.execute("DELETE FROM remisiones WHERE id=? AND dataset_id=?", (rid, ds["id"]))
+                self._audit(
+                    conn,
+                    action="remision.delete",
+                    username=actor,
+                    entity="remision",
+                    entity_id=str(int(row["id"])),
+                    dataset_id=ds["id"],
+                    details={"file": ds["name"], "remision_no": row["remision_no"] or ""},
+                )
+                return {
+                    "id": int(row["id"]),
+                    "remision_no": row["remision_no"] or "",
+                    "file": ds["name"],
+                }
+
+    def _user_row(self, conn: sqlite3.Connection, username: str):
+        return conn.execute(
+            "SELECT id,username,role,password_hash,is_active,must_change_password,password_updated_at,last_login_at FROM users WHERE username=? LIMIT 1",
+            (normalize_username(username),),
+        ).fetchone()
+
+    def auth_get_user(self, username: str) -> dict | None:
+        with self._conn() as conn:
+            row = self._user_row(conn, username)
+            if not row or int(row["is_active"] or 0) != 1:
+                return None
+            role = (row["role"] or "").strip()
+            if role not in ROLE_ALLOWED_VIEWS:
+                return None
+            return {
+                "id": int(row["id"]),
+                "username": row["username"],
+                "role": role,
+                "must_change_password": bool(int(row["must_change_password"] or 0)),
+                "password_updated_at": row["password_updated_at"] or "",
+                "last_login_at": row["last_login_at"] or "",
+            }
+
+    def _clear_auth_lock(self, conn: sqlite3.Connection, username: str):
+        conn.execute("DELETE FROM auth_locks WHERE username=?", (normalize_username(username),))
+
+    def _register_auth_fail(self, conn: sqlite3.Connection, username: str):
+        uname = normalize_username(username)
+        now = now_str()
+        row = conn.execute("SELECT failed_count FROM auth_locks WHERE username=?", (uname,)).fetchone()
+        failed = int(row["failed_count"]) + 1 if row else 1
+        lock_until = None
+        if failed >= AUTH_MAX_FAILED:
+            lock_until = (datetime.now() + timedelta(minutes=AUTH_LOCK_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
+            failed = 0
+        conn.execute(
+            """
+            INSERT INTO auth_locks(username,failed_count,locked_until,last_failed_at)
+            VALUES(?,?,?,?)
+            ON CONFLICT(username) DO UPDATE SET
+              failed_count=excluded.failed_count,
+              locked_until=excluded.locked_until,
+              last_failed_at=excluded.last_failed_at
+            """,
+            (uname, failed, lock_until, now),
+        )
+        return lock_until
+
+    def auth_authenticate(self, username: str, password: str) -> dict:
+        uname = normalize_username(username)
+        if not uname or not password:
+            raise ValueError("Usuario y contrasena son requeridos.")
+        with self.lock:
+            with self._conn() as conn:
+                lock_row = conn.execute(
+                    "SELECT failed_count,locked_until FROM auth_locks WHERE username=?",
+                    (uname,),
+                ).fetchone()
+                if lock_row:
+                    locked_until = parse_dt(lock_row["locked_until"])
+                    if locked_until and locked_until > datetime.now():
+                        mins = max(1, int((locked_until - datetime.now()).total_seconds() // 60))
+                        raise PermissionError(f"Cuenta temporalmente bloqueada. Intenta en {mins} min.")
+                    if locked_until and locked_until <= datetime.now():
+                        self._clear_auth_lock(conn, uname)
+
+                row = self._user_row(conn, uname)
+                ok = bool(
+                    row
+                    and int(row["is_active"] or 0) == 1
+                    and (row["role"] or "") in ROLE_ALLOWED_VIEWS
+                    and check_password_hash(row["password_hash"] or "", password)
+                )
+                if not ok:
+                    lock_until = self._register_auth_fail(conn, uname)
+                    conn.commit()
+                    if lock_until:
+                        raise PermissionError("Demasiados intentos fallidos. Cuenta bloqueada 15 min.")
+                    raise ValueError("Credenciales invalidas.")
+
+                self._clear_auth_lock(conn, uname)
+                now = now_str()
+                conn.execute(
+                    "UPDATE users SET last_login_at=?, updated_at=? WHERE id=?",
+                    (now, now, int(row["id"])),
+                )
+                return {
+                    "id": int(row["id"]),
+                    "username": row["username"],
+                    "role": row["role"],
+                    "must_change_password": bool(int(row["must_change_password"] or 0)),
+                    "last_login_at": now,
+                }
+
+    def auth_change_password(self, username: str, current_password: str, new_password: str) -> dict:
+        uname = normalize_username(username)
+        if not uname:
+            raise ValueError("Usuario invalido.")
+        if not current_password:
+            raise ValueError("La contrasena actual es requerida.")
+        policy_error = validate_password_policy(new_password)
+        if policy_error:
+            raise ValueError(policy_error)
+
+        with self.lock:
+            with self._conn() as conn:
+                row = self._user_row(conn, uname)
+                if not row or int(row["is_active"] or 0) != 1:
+                    raise PermissionError("Usuario no valido o inactivo.")
+                if not check_password_hash(row["password_hash"] or "", current_password):
+                    raise PermissionError("La contrasena actual no es correcta.")
+                if check_password_hash(row["password_hash"] or "", new_password):
+                    raise ValueError("La nueva contrasena debe ser distinta a la actual.")
+
+                ts = now_str()
+                conn.execute(
+                    """
+                    UPDATE users
+                    SET password_hash=?, must_change_password=0, password_updated_at=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (generate_password_hash(new_password), ts, ts, int(row["id"])),
+                )
+                self._clear_auth_lock(conn, uname)
+                self._audit(
+                    conn,
+                    action="auth.password.change",
+                    username=uname,
+                    entity="user",
+                    entity_id=str(int(row["id"])),
+                    details={"username": uname},
+                )
+                return {
+                    "id": int(row["id"]),
+                    "username": row["username"],
+                    "role": row["role"],
+                    "must_change_password": False,
+                    "password_updated_at": ts,
+                }
+
+    def _save_revision(self, conn: sqlite3.Connection, ds: dict, note: str):
+        conn.execute(
+            """
+            INSERT INTO dataset_revisions(dataset_id,headers_json,rows_json,content_hash,row_count,note,created_at)
+            VALUES(?,?,?,?,?,?,?)
+            """,
+            (ds["id"], json.dumps(ds["headers"], ensure_ascii=False), json.dumps(ds["rows"], ensure_ascii=False), ds["content_hash"], len(ds["rows"]), note, now_str()),
+        )
+
+    def save_active(
+        self,
+        headers: list[str],
+        rows: list[list[str]],
+        expected_version: int | None = None,
+        actor: str = "",
+    ) -> int:
+        v = validate_dataset(headers, rows)
+        if not v["ok"]:
+            raise ValueError("; ".join(v["errors"]))
+        w = len(headers)
+        clean_rows = [[sanitize_cell(x) for x in (r + [""] * w)[:w]] for r in rows]
+        with self.lock:
+            self._snapshot_db("before_save")
+            with self._conn() as conn:
+                did = self._active_id(conn)
+                if did is None:
+                    raise FileNotFoundError("No active dataset.")
+                ds = self._load_by_id(conn, did)
+                if expected_version is not None and ds["version"] != expected_version:
+                    raise ConcurrencyError(f"Version conflict. Current version is {ds['version']}, expected {expected_version}.")
+                self._save_revision(conn, ds, "before save from editor")
+                new_ver = ds["version"] + 1
+                conn.execute(
+                    """
+                    UPDATE datasets
+                    SET headers_json=?, rows_json=?, content_hash=?, row_count=?, updated_at=?, version=?
+                    WHERE id=?
+                    """,
+                    (json.dumps(headers, ensure_ascii=False), json.dumps(clean_rows, ensure_ascii=False), content_hash(headers, clean_rows), len(clean_rows), now_str(), new_ver, did),
+                )
+                self._audit(
+                    conn,
+                    action="dataset.save",
+                    username=actor,
+                    entity="dataset",
+                    entity_id=str(did),
+                    dataset_id=did,
+                    details={"file": ds["name"], "rows": len(clean_rows), "version": new_ver},
+                )
+                return new_ver
+
+    def delete_file(self, dataset_name: str, actor: str = "") -> dict[str, str]:
+        clean = (dataset_name or "").strip()
+        if not clean:
+            raise ValueError("Dataset name is required.")
+        with self.lock:
+            self._snapshot_db("before_delete")
+            with self._conn() as conn:
+                row = conn.execute("SELECT id FROM datasets WHERE name=? AND deleted_at IS NULL", (clean,)).fetchone()
+                if not row:
+                    raise FileNotFoundError(f"Dataset not found: {clean}")
+                count = conn.execute("SELECT COUNT(*) c FROM datasets WHERE deleted_at IS NULL").fetchone()["c"]
+                if count <= 1:
+                    raise ValueError("No puedes eliminar el unico dataset disponible.")
+                did = int(row["id"])
+                conn.execute("UPDATE datasets SET deleted_at=? WHERE id=?", (now_str(), did))
+                self._audit(
+                    conn,
+                    action="dataset.delete",
+                    username=actor,
+                    entity="dataset",
+                    entity_id=str(did),
+                    dataset_id=did,
+                    details={"file": clean},
+                )
+                aid = self._active_id(conn)
+                if aid == did or aid is None:
+                    nxt = conn.execute("SELECT id,name FROM datasets WHERE deleted_at IS NULL ORDER BY id LIMIT 1").fetchone()
+                    self._set_active(conn, int(nxt["id"]))
+                    active_name = nxt["name"]
+                else:
+                    active_name = self._load_by_id(conn, aid)["name"]
+                return {"deleted": clean, "active": active_name}
+
+    def _cleanup_staging(self, conn: sqlite3.Connection):
+        conn.execute("DELETE FROM upload_staging WHERE expires_at < ?", (now_str(),))
+
+    def _dup_by_hash(self, conn: sqlite3.Connection, hash_value: str):
+        return conn.execute(
+            "SELECT id,name FROM datasets WHERE content_hash=? AND deleted_at IS NULL LIMIT 1",
+            (hash_value,),
+        ).fetchone()
+
+    def _snapshot_db(self, reason: str):
+        safe_reason = re.sub(r"[^a-zA-Z0-9_-]+", "_", (reason or "op")).strip("_") or "op"
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        target = self.snapshot_dir / f"{stamp}_{safe_reason}.sqlite3"
+        with sqlite3.connect(self.db_path, timeout=30.0) as src, sqlite3.connect(target, timeout=30.0) as out:
+            src.backup(out)
+
+        snapshots = sorted(self.snapshot_dir.glob("*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in snapshots[MAX_DB_SNAPSHOTS:]:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        return target
+
+    def _backup_meta(self, path: Path) -> dict:
+        name = path.name
+        stamp_text = ""
+        reason = ""
+        match = re.match(r"^(\d{8}_\d{6})_(.+)\.sqlite3$", name)
+        if match:
+            stamp_text = match.group(1)
+            reason = match.group(2)
+        created = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        if stamp_text:
+            try:
+                created = datetime.strptime(stamp_text, "%Y%m%d_%H%M%S").strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
+        return {
+            "file": name,
+            "reason": reason or "manual",
+            "size_bytes": int(path.stat().st_size),
+            "created_at": created,
+        }
+
+    def list_backups(self, limit: int = 80) -> list[dict]:
+        max_limit = max(1, min(int(limit or 80), 300))
+        items = sorted(self.snapshot_dir.glob("*.sqlite3"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return [self._backup_meta(p) for p in items[:max_limit]]
+
+    def create_manual_backup(self, reason: str = "", actor: str = "") -> dict:
+        note = re.sub(r"[^a-zA-Z0-9_-]+", "_", (reason or "manual")).strip("_")[:60] or "manual"
+        with self.lock:
+            target = self._snapshot_db(f"manual_{note}")
+            with self._conn() as conn:
+                self._audit(
+                    conn,
+                    action="backup.create",
+                    username=actor,
+                    entity="backup",
+                    entity_id=target.name,
+                    details={"reason": note},
+                )
+            return self._backup_meta(target)
+
+    def restore_backup(self, backup_file: str, actor: str = "") -> dict:
+        file_name = Path((backup_file or "").strip()).name
+        if not file_name or "/" in file_name or "\\" in file_name or not file_name.lower().endswith(".sqlite3"):
+            raise ValueError("Nombre de respaldo invalido.")
+        source = (self.snapshot_dir / file_name).resolve()
+        if source.parent != self.snapshot_dir.resolve() or not source.exists():
+            raise FileNotFoundError("Respaldo no encontrado.")
+
+        with self.lock:
+            self._snapshot_db("before_backup_restore")
+            with sqlite3.connect(source, timeout=30.0) as src, sqlite3.connect(self.db_path, timeout=30.0) as dst:
+                src.backup(dst)
+            self._init_db()
+            with self._conn() as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                aid = self._active_id(conn)
+                active_file = self._load_by_id(conn, aid)["name"] if aid is not None else ""
+                self._audit(
+                    conn,
+                    action="backup.restore",
+                    username=actor,
+                    entity="backup",
+                    entity_id=file_name,
+                    dataset_id=aid,
+                    details={"active_file": active_file},
+                )
+            return {"backup": file_name, "active_file": active_file}
+
+    def list_audit(self, dataset_name: str | None = None, limit: int = 120) -> dict:
+        max_limit = max(1, min(int(limit or 120), 500))
+        with self.lock:
+            with self._conn() as conn:
+                ds = None
+                params: list = []
+                where = []
+                if dataset_name:
+                    ds = self._resolve_dataset(conn, dataset_name)
+                    where.append("dataset_id=?")
+                    params.append(ds["id"])
+                sql = "SELECT id,created_at,username,action,entity,entity_id,dataset_id,details_json FROM audit_log"
+                if where:
+                    sql += " WHERE " + " AND ".join(where)
+                sql += " ORDER BY id DESC LIMIT ?"
+                params.append(max_limit)
+                rows = conn.execute(sql, tuple(params)).fetchall()
+                out = []
+                for row in rows:
+                    try:
+                        details = json.loads(row["details_json"] or "{}")
+                    except Exception:
+                        details = {}
+                    out.append(
+                        {
+                            "id": int(row["id"]),
+                            "created_at": row["created_at"] or "",
+                            "username": row["username"] or "",
+                            "action": row["action"] or "",
+                            "entity": row["entity"] or "",
+                            "entity_id": row["entity_id"] or "",
+                            "dataset_id": int(row["dataset_id"]) if row["dataset_id"] is not None else None,
+                            "details": details if isinstance(details, dict) else {},
+                        }
+                    )
+                return {"file": ds["name"] if ds else "", "items": out}
+
+    def stage_upload_preview(self, uploaded) -> dict:
+        if not uploaded or not uploaded.filename:
+            raise ValueError("No file selected.")
+        fname = secure_filename(uploaded.filename or "")
+        if not fname:
+            fname = f"uploaded_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        if not fname.lower().endswith(".csv"):
+            raise ValueError("Only .csv files are allowed.")
+        raw = uploaded.stream.read(MAX_UPLOAD_BYTES + 1)
+        if len(raw) > MAX_UPLOAD_BYTES:
+            raise ValueError(f"File too large. Max allowed: {MAX_UPLOAD_BYTES} bytes.")
+        if not raw:
+            raise ValueError("Uploaded file is empty.")
+
+        headers, rows, enc, delim = parse_csv_bytes(raw)
+        headers, header_mapping = apply_header_mapping(headers)
+        val = validate_dataset(headers, rows)
+        h = content_hash(headers, rows)
+        token = uuid4().hex
+        created = now_str()
+        expires = (datetime.now() + timedelta(minutes=STAGING_TTL_MIN)).strftime("%Y-%m-%d %H:%M:%S")
+
+        with self.lock:
+            with self._conn() as conn:
+                self._cleanup_staging(conn)
+                dup = self._dup_by_hash(conn, h)
+                conn.execute(
+                    """
+                    INSERT INTO upload_staging(token,original_name,headers_json,rows_json,encoding,delimiter,content_hash,validation_json,created_at,expires_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        token,
+                        fname,
+                        json.dumps(headers, ensure_ascii=False),
+                        json.dumps(rows, ensure_ascii=False),
+                        enc,
+                        delim,
+                        h,
+                        json.dumps(val, ensure_ascii=False),
+                        created,
+                        expires,
+                    ),
+                )
+        return {
+            "ok": val["ok"],
+            "token": token,
+            "file": fname,
+            "family_guess": guess_family_from_filename(fname),
+            "hash": h,
+            "duplicate_of": dup["name"] if dup else None,
+            "header_mapping": header_mapping,
+            "validation": val,
+            "allowed_modes": ["new", "replace", "merge"],
+            "suggested_mode": "merge" if dup else "new",
+        }
+
+    def _get_by_name(self, conn: sqlite3.Connection, name: str) -> dict:
+        row = conn.execute("SELECT id FROM datasets WHERE name=? AND deleted_at IS NULL", (name,)).fetchone()
+        if not row:
+            raise FileNotFoundError(f"Dataset not found: {name}")
+        return self._load_by_id(conn, int(row["id"]))
+
+    def _merge_rows(
+        self,
+        target_headers: list[str],
+        target_rows: list[list[str]],
+        incoming_headers: list[str],
+        incoming_rows: list[list[str]],
+    ) -> tuple[list[list[str]], int, int]:
+        tnorm = [norm_header(h) for h in target_headers]
+        inorm = [norm_header(h) for h in incoming_headers]
+        if set(tnorm) != set(inorm):
+            miss = sorted(set(tnorm) - set(inorm))
+            extra = sorted(set(inorm) - set(tnorm))
+            raise ValueError(f"Headers mismatch for merge. Missing: {miss}. Extra: {extra}.")
+
+        i_map = {h: i for i, h in enumerate(inorm)}
+        aligned = [[row[i_map[key]] for key in tnorm] for row in incoming_rows]
+        key_order = [k for k in ["formula", "fc", "edad", "coloc", "tma", "rev", "var", "cod"] if k in tnorm]
+        idxs = [tnorm.index(k) for k in key_order] or list(range(len(target_headers)))
+
+        def key_of(row: list[str]) -> tuple:
+            k = tuple((row[i] or "").strip().lower() for i in idxs)
+            if any(k):
+                return k
+            return tuple((c or "").strip().lower() for c in row)
+
+        merged = [list(r) for r in target_rows]
+        pos = {key_of(r): i for i, r in enumerate(merged)}
+        inserted, updated = 0, 0
+        for row in aligned:
+            k = key_of(row)
+            if k in pos:
+                merged[pos[k]] = row
+                updated += 1
+            else:
+                merged.append(row)
+                pos[k] = len(merged) - 1
+                inserted += 1
+        return merged, inserted, updated
+
+    def commit_staged_upload(
+        self,
+        token: str,
+        mode: str,
+        target_name: str | None = None,
+        family_code: str | None = None,
+        actor: str = "",
+    ) -> dict:
+        if mode not in MODES:
+            raise ValueError("Mode must be new|replace|merge.")
+        fam_override = normalize_family_code(family_code, allow_empty=True) if family_code is not None else None
+        with self.lock:
+            self._snapshot_db(f"before_upload_{mode}")
+            with self._conn() as conn:
+                self._cleanup_staging(conn)
+                st = conn.execute("SELECT * FROM upload_staging WHERE token=?", (token,)).fetchone()
+                if not st:
+                    raise FileNotFoundError("Upload token not found or expired.")
+                val = json.loads(st["validation_json"])
+                if not val.get("ok", False):
+                    raise ValueError("Cannot commit invalid upload.")
+                headers = json.loads(st["headers_json"])
+                rows = json.loads(st["rows_json"])
+                h = st["content_hash"]
+                dup = self._dup_by_hash(conn, h)
+                result = {"mode": mode, "inserted": 0, "updated": 0, "replaced": 0, "rows": len(rows)}
+
+                if mode == "new":
+                    if dup:
+                        raise ValueError(
+                            f"Duplicate content detected with dataset '{dup['name']}'. Use replace or merge."
+                        )
+                    fam_to_use = fam_override if fam_override else guess_family_from_filename(st["original_name"])
+                    did = self._insert_dataset(
+                        conn,
+                        st["original_name"],
+                        headers,
+                        rows,
+                        st["encoding"],
+                        st["delimiter"],
+                        family_code=fam_to_use,
+                    )
+                    self._set_active(conn, did)
+                    loaded = self._load_by_id(conn, did)
+                    result["file"] = loaded["name"]
+                    result["family"] = loaded["family_code"]
+                elif mode == "replace":
+                    if target_name:
+                        ds = self._get_by_name(conn, target_name)
+                    else:
+                        aid = self._active_id(conn)
+                        if aid is None:
+                            raise FileNotFoundError("No active dataset.")
+                        ds = self._load_by_id(conn, aid)
+                    self._save_revision(conn, ds, f"before replace by upload token {token}")
+                    conn.execute(
+                        """
+                        UPDATE datasets
+                        SET headers_json=?, rows_json=?, encoding=?, delimiter=?, content_hash=?, row_count=?, family_code=COALESCE(NULLIF(?,''),family_code), updated_at=?, version=version+1
+                        WHERE id=?
+                        """,
+                        (
+                            json.dumps(headers, ensure_ascii=False),
+                            json.dumps(rows, ensure_ascii=False),
+                            st["encoding"],
+                            st["delimiter"],
+                            h,
+                            len(rows),
+                            fam_override or "",
+                            now_str(),
+                            ds["id"],
+                        ),
+                    )
+                    self._set_active(conn, ds["id"])
+                    result["file"] = ds["name"]
+                    result["replaced"] = len(rows)
+                    refreshed = self._load_by_id(conn, ds["id"])
+                    result["family"] = refreshed["family_code"]
+                else:
+                    if target_name:
+                        ds = self._get_by_name(conn, target_name)
+                    else:
+                        aid = self._active_id(conn)
+                        if aid is None:
+                            raise FileNotFoundError("No active dataset.")
+                        ds = self._load_by_id(conn, aid)
+                    merged, ins, upd = self._merge_rows(ds["headers"], ds["rows"], headers, rows)
+                    self._save_revision(conn, ds, f"before merge by upload token {token}")
+                    mh = content_hash(ds["headers"], merged)
+                    conn.execute(
+                        """
+                        UPDATE datasets
+                        SET rows_json=?, content_hash=?, row_count=?, family_code=COALESCE(NULLIF(?,''),family_code), updated_at=?, version=version+1
+                        WHERE id=?
+                        """,
+                        (json.dumps(merged, ensure_ascii=False), mh, len(merged), fam_override or "", now_str(), ds["id"]),
+                    )
+                    self._set_active(conn, ds["id"])
+                    result["file"] = ds["name"]
+                    result["inserted"] = ins
+                    result["updated"] = upd
+                    refreshed = self._load_by_id(conn, ds["id"])
+                    result["family"] = refreshed["family_code"]
+
+                conn.execute("DELETE FROM upload_staging WHERE token=?", (token,))
+                dataset_id = None
+                if result.get("file"):
+                    try:
+                        dataset_id = self._get_by_name(conn, result["file"])["id"]
+                    except Exception:
+                        dataset_id = None
+                self._audit(
+                    conn,
+                    action="dataset.upload.commit",
+                    username=actor,
+                    entity="dataset",
+                    entity_id=str(dataset_id or ""),
+                    dataset_id=dataset_id,
+                    details={
+                        "mode": mode,
+                        "file": result.get("file", ""),
+                        "inserted": int(result.get("inserted", 0) or 0),
+                        "updated": int(result.get("updated", 0) or 0),
+                        "replaced": int(result.get("replaced", 0) or 0),
+                        "rows": int(result.get("rows", 0) or 0),
+                    },
+                )
+                return result
+
+    def get_history(self, dataset_name: str | None = None, limit: int = 50) -> dict:
+        with self.lock:
+            with self._conn() as conn:
+                if dataset_name:
+                    ds = self._get_by_name(conn, dataset_name)
+                else:
+                    aid = self._active_id(conn)
+                    if aid is None:
+                        raise FileNotFoundError("No active dataset.")
+                    ds = self._load_by_id(conn, aid)
+                rows = conn.execute(
+                    """
+                    SELECT id,created_at,row_count,note
+                    FROM dataset_revisions
+                    WHERE dataset_id=?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (ds["id"], limit),
+                ).fetchall()
+                return {
+                    "file": ds["name"],
+                    "version": ds["version"],
+                    "updated_at": ds["updated_at"],
+                    "revisions": [
+                        {
+                            "id": int(r["id"]),
+                            "created_at": r["created_at"],
+                            "row_count": int(r["row_count"] or 0),
+                            "note": r["note"] or "",
+                        }
+                        for r in rows
+                    ],
+                }
+
+    def restore_revision(
+        self,
+        revision_id: int,
+        dataset_name: str | None = None,
+        expected_version: int | None = None,
+        actor: str = "",
+    ) -> int:
+        with self.lock:
+            self._snapshot_db("before_restore")
+            with self._conn() as conn:
+                if dataset_name:
+                    ds = self._get_by_name(conn, dataset_name)
+                else:
+                    aid = self._active_id(conn)
+                    if aid is None:
+                        raise FileNotFoundError("No active dataset.")
+                    ds = self._load_by_id(conn, aid)
+                if expected_version is not None and ds["version"] != expected_version:
+                    raise ConcurrencyError(f"Version conflict. Current version is {ds['version']}, expected {expected_version}.")
+                rev = conn.execute(
+                    "SELECT headers_json,rows_json,content_hash,row_count FROM dataset_revisions WHERE id=? AND dataset_id=?",
+                    (revision_id, ds["id"]),
+                ).fetchone()
+                if not rev:
+                    raise FileNotFoundError("Revision not found for selected dataset.")
+                self._save_revision(conn, ds, f"before restore revision {revision_id}")
+                headers = json.loads(rev["headers_json"])
+                rows = json.loads(rev["rows_json"])
+                rh = rev["content_hash"] or content_hash(headers, rows)
+                new_ver = ds["version"] + 1
+                conn.execute(
+                    """
+                    UPDATE datasets
+                    SET headers_json=?, rows_json=?, content_hash=?, row_count=?, updated_at=?, version=?
+                    WHERE id=?
+                    """,
+                    (
+                        json.dumps(headers, ensure_ascii=False),
+                        json.dumps(rows, ensure_ascii=False),
+                        rh,
+                        int(rev["row_count"] or len(rows)),
+                        now_str(),
+                        new_ver,
+                        ds["id"],
+                    ),
+                )
+                self._audit(
+                    conn,
+                    action="dataset.revision.restore",
+                    username=actor,
+                    entity="dataset_revision",
+                    entity_id=str(revision_id),
+                    dataset_id=ds["id"],
+                    details={"file": ds["name"], "version": new_ver},
+                )
+                self._set_active(conn, ds["id"])
+                return new_ver
+
+
+def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
+    app = Flask(__name__)
+    app.config["JSON_AS_ASCII"] = False
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+    app.config["SECRET_KEY"] = load_or_create_secret(base_dir.resolve())
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = bool(int(os.getenv("SESSION_COOKIE_SECURE", "0")))
+    db_url = os.getenv("DATABASE_URL")
+    if db_url and POSTGRES_AVAILABLE:
+        store = PostgresStore(db_url)
+    else:
+        store = SqliteStore(base_dir=base_dir, csv_file=csv_file)
+
+    def _api_unauthorized(msg: str, status: int):
+        return jsonify({"ok": False, "error": msg}), status
+
+    def current_auth() -> dict | None:
+        username = normalize_username(session.get("username", ""))
+        role = (session.get("role") or "").strip()
+        if not username or role not in ROLE_ALLOWED_VIEWS:
+            return None
+        user = store.auth_get_user(username)
+        if not user:
+            return None
+        if user["role"] != role:
+            session.clear()
+            return None
+        return user
+
+    def allowed_views(role: str) -> list[str]:
+        return sorted(ROLE_ALLOWED_VIEWS.get(role, set()))
+
+    def login_required(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = current_auth()
+            if user:
+                if user.get("must_change_password"):
+                    allowed_paths = {"/change-password", "/logout"}
+                    if request.path.startswith("/api/") and request.path != "/api/session":
+                        return _api_unauthorized("Debes cambiar tu contrasena antes de continuar.", 423)
+                    if request.path not in allowed_paths:
+                        return redirect(url_for("change_password"))
+                request.current_user = user
+                return fn(*args, **kwargs)
+            if request.path.startswith("/api/"):
+                return _api_unauthorized("Sesion expirada o no autenticada.", 401)
+            return redirect(url_for("login"))
+
+        return wrapper
+
+    def require_roles(*roles):
+        allowed = set(roles)
+
+        def deco(fn):
+            @wraps(fn)
+            @login_required
+            def wrapper(*args, **kwargs):
+                user = request.current_user
+                if user["role"] not in allowed:
+                    if request.path.startswith("/api/"):
+                        return _api_unauthorized("No autorizado para esta accion.", 403)
+                    return redirect(url_for("index"))
+                return fn(*args, **kwargs)
+
+            return wrapper
+
+        return deco
+
+    @app.after_request
+    def no_cache(resp):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
+
+    @app.get("/login")
+    def login():
+        user = current_auth()
+        if user:
+            if user.get("must_change_password"):
+                return redirect(url_for("change_password"))
+            return redirect(url_for("index"))
+        return render_template("login.html", error="", cache_bust=int(datetime.now().timestamp()))
+
+    @app.post("/login")
+    def login_submit():
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        try:
+            user = store.auth_authenticate(username, password)
+            session.clear()
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            session["login_at"] = now_str()
+            if user.get("must_change_password"):
+                return redirect(url_for("change_password"))
+            return redirect(url_for("index"))
+        except PermissionError as exc:
+            return render_template("login.html", error=str(exc), cache_bust=int(datetime.now().timestamp())), 429
+        except Exception as exc:
+            return render_template("login.html", error=str(exc), cache_bust=int(datetime.now().timestamp())), 401
+
+    @app.get("/change-password")
+    @login_required
+    def change_password():
+        user = request.current_user
+        if not user.get("must_change_password"):
+            return redirect(url_for("index"))
+        return render_template(
+            "change_password.html",
+            error="",
+            username=user["username"],
+            role=user["role"],
+            cache_bust=int(datetime.now().timestamp()),
+        )
+
+    @app.post("/change-password")
+    @login_required
+    def change_password_submit():
+        user = request.current_user
+        if not user.get("must_change_password"):
+            return redirect(url_for("index"))
+        current_password = request.form.get("current_password") or ""
+        new_password = request.form.get("new_password") or ""
+        confirm_password = request.form.get("confirm_password") or ""
+        if new_password != confirm_password:
+            return render_template(
+                "change_password.html",
+                error="La confirmacion de contrasena no coincide.",
+                username=user["username"],
+                role=user["role"],
+                cache_bust=int(datetime.now().timestamp()),
+            ), 400
+        try:
+            store.auth_change_password(user["username"], current_password, new_password)
+            session["login_at"] = now_str()
+            return redirect(url_for("index"))
+        except PermissionError as exc:
+            code = 403
+            msg = str(exc)
+        except Exception as exc:
+            code = 400
+            msg = str(exc)
+        return render_template(
+            "change_password.html",
+            error=msg,
+            username=user["username"],
+            role=user["role"],
+            cache_bust=int(datetime.now().timestamp()),
+        ), code
+
+    @app.post("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
+
+    @app.get("/")
+    @login_required
+    def index():
+        user = request.current_user
+        auth_boot = {
+            "username": user["username"],
+            "role": user["role"],
+            "must_change_password": bool(user.get("must_change_password")),
+            "allowed_views": allowed_views(user["role"]),
+            "can_edit": user["role"] in EDITOR_ROLES,
+            "can_edit_qc_humidity": user["role"] in QC_HUMIDITY_ROLES,
+        }
+        return render_template("index.html", cache_bust=int(datetime.now().timestamp()), auth_boot=auth_boot)
+
+    @app.get("/api/session")
+    @login_required
+    def api_session():
+        user = request.current_user
+        return jsonify(
+            {
+                "ok": True,
+                "username": user["username"],
+                "role": user["role"],
+                "must_change_password": bool(user.get("must_change_password")),
+                "allowed_views": allowed_views(user["role"]),
+                "can_edit": user["role"] in EDITOR_ROLES,
+                "can_edit_qc_humidity": user["role"] in QC_HUMIDITY_ROLES,
+            }
+        )
+
+    @app.get("/api/data")
+    @require_roles(*ROLE_ALLOWED_VIEWS.keys())
+    def api_data():
+        ds = store.load_active()
+        return jsonify(
+            {
+                "file": ds["name"],
+                "family": ds["family_code"],
+                "encoding": ds["encoding"],
+                "delimiter": ds["delimiter"],
+                "headers": ds["headers"],
+                "rows": ds["rows"],
+                "files": store.list_files(),
+                "file_infos": store.list_file_infos(),
+                "updated_at": ds["updated_at"],
+                "version": ds["version"],
+                "row_count": ds["row_count"],
+            }
+        )
+
+    @app.get("/api/qc")
+    @require_roles(*ROLE_ALLOWED_VIEWS.keys())
+    def api_qc():
+        file_name = request.args.get("file")
+        try:
+            data = store.load_qc(dataset_name=file_name)
+            return jsonify({"ok": True, **data})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/qc/save")
+    @require_roles(*EDITOR_ROLES)
+    def api_qc_save():
+        try:
+            payload = decode_json_payload(request.get_data(cache=False))
+            values = payload.get("values", {})
+            file_name = payload.get("file")
+            version = payload.get("version")
+            if file_name is not None and not isinstance(file_name, str):
+                return jsonify({"ok": False, "error": "file must be string."}), 400
+            if version is not None:
+                version = int(version)
+            current = store.load_qc(dataset_name=file_name)
+            current_values = current.get("values", default_qc_values())
+            merged_values = values if isinstance(values, dict) else {}
+            for agg in QC_AGGREGATES:
+                row = merged_values.get(agg) if isinstance(merged_values.get(agg), dict) else {}
+                row["humedad"] = current_values.get(agg, {}).get("humedad", 0)
+                merged_values[agg] = row
+            out = store.save_qc(
+                values=merged_values,
+                expected_version=version,
+                dataset_name=file_name,
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, **out})
+        except ConcurrencyError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/qc/humidity/save")
+    @require_roles(*QC_HUMIDITY_ROLES)
+    def api_qc_humidity_save():
+        try:
+            payload = decode_json_payload(request.get_data(cache=False))
+            values = payload.get("values", {})
+            file_name = payload.get("file")
+            version = payload.get("version")
+            if file_name is not None and not isinstance(file_name, str):
+                return jsonify({"ok": False, "error": "file must be string."}), 400
+            if version is not None:
+                version = int(version)
+            out = store.save_qc_humidity(
+                values=values,
+                expected_version=version,
+                dataset_name=file_name,
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, **out})
+        except ConcurrencyError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.get("/api/doser/params")
+    @require_roles(*DOSIFICADOR_ROLES)
+    def api_doser_params():
+        file_name = request.args.get("file")
+        try:
+            data = store.load_doser_params(dataset_name=file_name)
+            return jsonify({"ok": True, **data})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/doser/params/save")
+    @require_roles(*EDITOR_ROLES)
+    def api_doser_params_save():
+        try:
+            payload = decode_json_payload(request.get_data(cache=False))
+            values = payload.get("values", {})
+            file_name = payload.get("file")
+            version = payload.get("version")
+            if file_name is not None and not isinstance(file_name, str):
+                return jsonify({"ok": False, "error": "file must be string."}), 400
+            if version is not None:
+                version = int(version)
+            out = store.save_doser_params(
+                values=values,
+                expected_version=version,
+                dataset_name=file_name,
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, **out})
+        except ConcurrencyError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.get("/api/remisiones")
+    @require_roles(*DOSIFICADOR_ROLES)
+    def api_remisiones_list():
+        file_name = request.args.get("file")
+        query = request.args.get("q", "")
+        limit = request.args.get("limit", "80")
+        try:
+            out = store.list_remisiones(dataset_name=file_name, query=query, limit=int(limit))
+            return jsonify({"ok": True, **out})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/remisiones/save")
+    @require_roles(*DOSIFICADOR_ROLES)
+    def api_remisiones_save():
+        try:
+            payload = decode_json_payload(request.get_data(cache=False))
+            remision_no = payload.get("remision_no", "")
+            snapshot = payload.get("snapshot", {})
+            file_name = payload.get("file")
+            if file_name is not None and not isinstance(file_name, str):
+                return jsonify({"ok": False, "error": "file must be string."}), 400
+            out = store.save_remision(
+                remision_no=remision_no,
+                snapshot=snapshot,
+                dataset_name=file_name,
+                created_by=request.current_user["username"],
+            )
+            return jsonify({"ok": True, **out})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.get("/api/remisiones/<int:remision_id>")
+    @require_roles(*DOSIFICADOR_ROLES)
+    def api_remisiones_get(remision_id: int):
+        file_name = request.args.get("file")
+        try:
+            out = store.get_remision(remision_id=remision_id, dataset_name=file_name)
+            return jsonify({"ok": True, **out})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.delete("/api/remisiones/<int:remision_id>")
+    @require_roles(*DOSIFICADOR_ROLES)
+    def api_remisiones_delete(remision_id: int):
+        file_name = request.args.get("file")
+        try:
+            out = store.delete_remision(
+                remision_id=remision_id,
+                dataset_name=file_name,
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, **out})
+        except FileNotFoundError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/select")
+    @require_roles(*EDITOR_ROLES)
+    def api_select():
+        payload = request.get_json(silent=True) or {}
+        file_name = payload.get("file", "")
+        if not isinstance(file_name, str):
+            return jsonify({"ok": False, "error": "Invalid file name."}), 400
+        try:
+            active = store.set_active_file(file_name)
+            return jsonify({"ok": True, "file": active, "files": store.list_files(), "file_infos": store.list_file_infos()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/upload/preview")
+    @require_roles(*EDITOR_ROLES)
+    def api_upload_preview():
+        try:
+            if "file" not in request.files:
+                return jsonify({"ok": False, "error": "Missing file field."}), 400
+            out = store.stage_upload_preview(request.files["file"])
+            return jsonify(out), (200 if out["ok"] else 400)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/upload/commit")
+    @require_roles(*EDITOR_ROLES)
+    def api_upload_commit():
+        payload = request.get_json(silent=True) or {}
+        token = (payload.get("token") or "").strip()
+        mode = (payload.get("mode") or "new").strip().lower()
+        target_file = payload.get("target_file")
+        family_code = payload.get("family_code")
+        if not token:
+            return jsonify({"ok": False, "error": "Upload token is required."}), 400
+        if mode not in MODES:
+            return jsonify({"ok": False, "error": "Mode must be new|replace|merge."}), 400
+        if target_file is not None and not isinstance(target_file, str):
+            return jsonify({"ok": False, "error": "target_file must be string."}), 400
+        if family_code is not None and not isinstance(family_code, str):
+            return jsonify({"ok": False, "error": "family_code must be string."}), 400
+        try:
+            res = store.commit_staged_upload(
+                token=token,
+                mode=mode,
+                target_name=target_file,
+                family_code=family_code,
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, **res, "files": store.list_files(), "file_infos": store.list_file_infos()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/upload")
+    @require_roles(*EDITOR_ROLES)
+    def api_upload_legacy():
+        try:
+            if "file" not in request.files:
+                return jsonify({"ok": False, "error": "Missing file field."}), 400
+            preview = store.stage_upload_preview(request.files["file"])
+            if not preview["ok"]:
+                return jsonify(preview), 400
+            res = store.commit_staged_upload(
+                token=preview["token"],
+                mode="new",
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, "file": res["file"], "files": store.list_files(), "file_infos": store.list_file_infos()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/delete")
+    @require_roles(*EDITOR_ROLES)
+    def api_delete():
+        payload = request.get_json(silent=True) or {}
+        file_name = payload.get("file", "")
+        if not isinstance(file_name, str):
+            return jsonify({"ok": False, "error": "Invalid file name."}), 400
+        try:
+            res = store.delete_file(file_name, actor=request.current_user["username"])
+            return jsonify(
+                {
+                    "ok": True,
+                    "deleted": res["deleted"],
+                    "file": res["active"],
+                    "files": store.list_files(),
+                    "file_infos": store.list_file_infos(),
+                }
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/family")
+    @require_roles(*EDITOR_ROLES)
+    def api_family_save():
+        payload = request.get_json(silent=True) or {}
+        family_code = payload.get("family_code", "")
+        file_name = payload.get("file")
+        if not isinstance(family_code, str):
+            return jsonify({"ok": False, "error": "family_code must be string."}), 400
+        if file_name is not None and not isinstance(file_name, str):
+            return jsonify({"ok": False, "error": "file must be string."}), 400
+        try:
+            out = store.set_dataset_family(
+                family_code=family_code,
+                dataset_name=file_name,
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, **out, "file_infos": store.list_file_infos()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/save")
+    @require_roles(*EDITOR_ROLES)
+    def api_save():
+        try:
+            payload = decode_json_payload(request.get_data(cache=False))
+            headers = payload.get("headers", [])
+            rows = payload.get("rows", [])
+            version = payload.get("version")
+            if version is not None:
+                version = int(version)
+            if not isinstance(headers, list) or not isinstance(rows, list):
+                return jsonify({"ok": False, "error": "Invalid payload format."}), 400
+            h = [sanitize_cell("" if x is None else str(x)) for x in headers]
+            rr = []
+            for row in rows:
+                if not isinstance(row, list):
+                    return jsonify({"ok": False, "error": "Each row must be a list."}), 400
+                rr.append([sanitize_cell("" if x is None else str(x)) for x in row])
+            new_ver = store.save_active(
+                h,
+                rr,
+                expected_version=version,
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, "version": new_ver})
+        except ConcurrencyError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.get("/api/history")
+    @require_roles(*EDITOR_ROLES)
+    def api_history():
+        file_name = request.args.get("file")
+        try:
+            return jsonify({"ok": True, **store.get_history(dataset_name=file_name, limit=50)})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/history/restore")
+    @require_roles(*EDITOR_ROLES)
+    def api_history_restore():
+        payload = request.get_json(silent=True) or {}
+        revision_id = payload.get("revision_id")
+        file_name = payload.get("file")
+        version = payload.get("version")
+        if revision_id is None:
+            return jsonify({"ok": False, "error": "revision_id is required."}), 400
+        try:
+            revision_id = int(revision_id)
+            if version is not None:
+                version = int(version)
+            new_ver = store.restore_revision(
+                revision_id,
+                dataset_name=file_name,
+                expected_version=version,
+                actor=request.current_user["username"],
+            )
+            return jsonify({"ok": True, "version": new_ver})
+        except ConcurrencyError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 409
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.get("/api/audit")
+    @require_roles(*EDITOR_ROLES)
+    def api_audit():
+        file_name = request.args.get("file")
+        limit = request.args.get("limit", "120")
+        try:
+            out = store.list_audit(dataset_name=file_name, limit=int(limit))
+            return jsonify({"ok": True, **out})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.get("/api/backups")
+    @require_roles(*EDITOR_ROLES)
+    def api_backups():
+        limit = request.args.get("limit", "80")
+        try:
+            items = store.list_backups(limit=int(limit))
+            return jsonify({"ok": True, "items": items})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/backups/create")
+    @require_roles(*EDITOR_ROLES)
+    def api_backups_create():
+        payload = request.get_json(silent=True) or {}
+        reason = payload.get("reason", "")
+        if reason is not None and not isinstance(reason, str):
+            return jsonify({"ok": False, "error": "reason must be string."}), 400
+        try:
+            item = store.create_manual_backup(reason=reason or "manual", actor=request.current_user["username"])
+            return jsonify({"ok": True, "backup": item, "items": store.list_backups(limit=80)})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/backups/restore")
+    @require_roles("administrador")
+    def api_backups_restore():
+        payload = request.get_json(silent=True) or {}
+        backup_file = payload.get("file", "")
+        if not isinstance(backup_file, str):
+            return jsonify({"ok": False, "error": "file must be string."}), 400
+        try:
+            out = store.restore_backup(backup_file=backup_file, actor=request.current_user["username"])
+            return jsonify(
+                {
+                    "ok": True,
+                    **out,
+                    "files": store.list_files(),
+                    "file_infos": store.list_file_infos(),
+                }
+            )
+        except FileNotFoundError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    return app
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Concrete mix design editor with SQLite persistence.")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", default=8080, type=int)
+    parser.add_argument("--csv", default=None, help="CSV used only for first bootstrap")
+    args = parser.parse_args()
+    
+    # Load environment variables for production
+    db_url = os.getenv("DATABASE_URL")
+    
+    app = create_app(base_dir=Path.cwd(), csv_file=args.csv)
+    
+    if db_url and "render.com" in os.getenv("RENDER_EXTERNAL_HOSTNAME", ""):
+        # Production mode on Render usually uses Gunicorn, but for local testing:
+        app.run(host=args.host, port=args.port, debug=False)
+    else:
+        app.run(host=args.host, port=args.port, debug=False)
+
+
+if __name__ == "__main__":
+    main()
+

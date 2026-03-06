@@ -1,0 +1,3451 @@
+﻿const APP_BOOT = window.APP_BOOT || {};
+
+const state = {
+  auth: {
+    username: APP_BOOT.username || "",
+    role: APP_BOOT.role || "",
+    mustChangePassword: Boolean(APP_BOOT.must_change_password),
+    allowedViews: Array.isArray(APP_BOOT.allowed_views) ? APP_BOOT.allowed_views : ["editor", "consulta", "dosificador"],
+    canEdit: Boolean(APP_BOOT.can_edit),
+    canEditQcHumidity: Boolean(APP_BOOT.can_edit_qc_humidity),
+  },
+  file: "",
+  files: [],
+  fileInfos: [],
+  datasetFamily: "",
+  version: null,
+  qcVersion: 0,
+  qcUpdatedAt: "",
+  qcDirty: false,
+  qcError: "",
+  encoding: "",
+  delimiter: "",
+  updatedAt: "",
+  headers: [],
+  rows: [],
+  dirty: false,
+  selected: new Set(),
+  searchText: "",
+  sort: { col: null, dir: "asc" },
+  view: "editor",
+  consultaStep: 0,
+  index: {},
+  queryResults: [],
+  selectedQueryRow: null,
+  unitCosts: {},
+  haulCosts: {},
+  doser: {
+    dosageM3: 7.0,
+    paramsVersion: 0,
+    paramsUpdatedAt: "",
+    results: [],
+    selectedRow: null,
+    remisiones: [],
+    quality: {
+      "Fino 1": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
+      "Fino 2": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
+      "Grueso 1": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
+      "Grueso 2": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
+    },
+    params: {
+      cemento_pesp: 3.1,
+      aire_pct: 2.0,
+      pasa_malla_200_pct: 19.0,
+      pxl_pond_pct: 6.4,
+      densidad_agregado_fallback: 2.2,
+    },
+    tolerances: { cemento: 1, agregados: 3, agua: 2, aditivo: 1 },
+    realLoads: {},
+  },
+};
+const MOD_DATE_HEADER = "FECHA_MODIF";
+const QC_AGGREGATES = ["Fino 1", "Fino 2", "Grueso 1", "Grueso 2"];
+const QC_FIELDS = ["pvs", "pvc", "densidad", "absorcion", "humedad"];
+const BRAND_LOGO_URL = `${window.location.origin}/static/img/logo_almex.png`;
+
+const tableHead = document.querySelector("#csvTable thead");
+const tableBody = document.querySelector("#csvTable tbody");
+const metaInfo = document.getElementById("metaInfo");
+const statusBar = document.getElementById("statusBar");
+const uiToastHost = document.getElementById("uiToastHost");
+const uiDialogHost = document.getElementById("uiDialogHost");
+const saveState = document.getElementById("saveState");
+const searchInput = document.getElementById("searchInput");
+const fileSelect = document.getElementById("fileSelect");
+const datasetFamilyInput = document.getElementById("datasetFamilyInput");
+const saveFamilyBtn = document.getElementById("saveFamilyBtn");
+const uploadInput = document.getElementById("uploadInput");
+const editorView = document.getElementById("editorView");
+const consultaView = document.getElementById("consultaView");
+const dosificadorView = document.getElementById("dosificadorView");
+const tabEditor = document.getElementById("tabEditor");
+const tabConsulta = document.getElementById("tabConsulta");
+const tabDosificador = document.getElementById("tabDosificador");
+const familiasBoard = document.getElementById("familiasBoard");
+const updatedStamp = document.getElementById("updatedStamp");
+const queryTable = document.getElementById("queryTable");
+const queryBody = document.getElementById("queryBody");
+const querySummary = document.getElementById("querySummary");
+const recipeMeta = document.getElementById("recipeMeta");
+const recipeBody = document.getElementById("recipeBody");
+const recipeWeight = document.getElementById("recipeWeight");
+const exportReportBtn = document.getElementById("exportReportBtn");
+const costBody = document.getElementById("costBody");
+const costHaulTotal = document.getElementById("costHaulTotal");
+const costMaterialTotal = document.getElementById("costMaterialTotal");
+const costTotal = document.getElementById("costTotal");
+const qcBody = document.getElementById("qcBody");
+const editorQcBody = document.getElementById("editorQcBody");
+const editorQcMeta = document.getElementById("editorQcMeta");
+const qcLinkedStamp = document.getElementById("qcLinkedStamp");
+const saveQcHumidityBtn = document.getElementById("saveQcHumidityBtn");
+const tolAccessNote = document.getElementById("tolAccessNote");
+const doserSummary = document.getElementById("doserSummary");
+const doserSelectedMeta = document.getElementById("doserSelectedMeta");
+const doserQueryBody = document.getElementById("doserQueryBody");
+const doserRecipeBody = document.getElementById("doserRecipeBody");
+const doserRecipeWeight = document.getElementById("doserRecipeWeight");
+const doserTheoreticalBody = document.getElementById("doserTheoreticalBody");
+const doserTheoreticalWeight = document.getElementById("doserTheoreticalWeight");
+const doserRealBody = document.getElementById("doserRealBody");
+const doserRealWeight = document.getElementById("doserRealWeight");
+const doserExportReportBtn = document.getElementById("dExportReportBtn");
+const doseM3Input = document.getElementById("doseM3");
+const remisionNoInput = document.getElementById("dRemisionNo");
+const saveRemisionBtn = document.getElementById("dSaveRemisionBtn");
+const refreshRemisionBtn = document.getElementById("dRefreshRemisionBtn");
+const remisionMeta = document.getElementById("dRemisionMeta");
+const doserRemisionBody = document.getElementById("doserRemisionBody");
+const tolCementoInput = document.getElementById("tolCemento");
+const tolAgregadosInput = document.getElementById("tolAgregados");
+const tolAguaInput = document.getElementById("tolAgua");
+const tolAditivoInput = document.getElementById("tolAditivo");
+const paramCementoPespInput = document.getElementById("paramCementoPesp");
+const paramAirePctInput = document.getElementById("paramAirePct");
+const paramPasa200PctInput = document.getElementById("paramPasa200Pct");
+const paramPxlPctInput = document.getElementById("paramPxlPct");
+const paramDensidadAggInput = document.getElementById("paramDensidadAgg");
+const doserParamsMeta = document.getElementById("doserParamsMeta");
+const saveDoserParamsBtn = document.getElementById("saveDoserParamsBtn");
+const auditBtn = document.getElementById("auditBtn");
+const backupCreateBtn = document.getElementById("backupCreateBtn");
+const backupRestoreBtn = document.getElementById("backupRestoreBtn");
+
+function canEditDoserTolerances() {
+  return state.auth.role === "jefe-de-planta" || state.auth.role === "administrador";
+}
+
+const doserFields = {
+  family: document.getElementById("dFamily"),
+  fc: document.getElementById("dFc"),
+  edad: document.getElementById("dEdad"),
+  tipo: document.getElementById("dTipo"),
+  tma: document.getElementById("dTma"),
+  rev: document.getElementById("dRev"),
+  comp: document.getElementById("dComp"),
+};
+
+const queryFields = {
+  family: document.getElementById("qFamily"),
+  fc: document.getElementById("qFc"),
+  edad: document.getElementById("qEdad"),
+  tipo: document.getElementById("qTipo"),
+  tma: document.getElementById("qTma"),
+  rev: document.getElementById("qRev"),
+  comp: document.getElementById("qComp"),
+};
+
+const queryResultShell = queryTable ? queryTable.closest(".result-shell") : null;
+const consultaSlides = Array.from(document.querySelectorAll("#consultaView .consulta-slide"));
+const consultaStepLabel = document.getElementById("consultaStepLabel");
+const consultaPrevBtn = document.getElementById("consultaPrevBtn");
+const consultaNextBtn = document.getElementById("consultaNextBtn");
+
+function stripAccents(value) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalize(value) {
+  return stripAccents((value ?? "").toString().toLowerCase().trim());
+}
+
+function normalizeHeader(value) {
+  return normalize(value).replace(/[^a-z0-9]/g, "");
+}
+
+function toNumber(value) {
+  const clean = (value ?? "").toString().replace(",", ".").trim();
+  if (clean === "") return 0;
+  const parsed = Number(clean);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatNum(value) {
+  return Number(value).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatVol(value) {
+  return Number(value).toLocaleString("es-MX", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+function formatMoney(value) {
+  return `$${formatNum(value)}`;
+}
+
+function escapeHtml(value) {
+  return (value ?? "")
+    .toString()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function nowStamp() {
+  const dt = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const y = dt.getFullYear();
+  const m = pad(dt.getMonth() + 1);
+  const d = pad(dt.getDate());
+  const hh = pad(dt.getHours());
+  const mm = pad(dt.getMinutes());
+  return `${y}-${m}-${d} ${hh}:${mm}`;
+}
+
+function createDefaultQuality() {
+  return {
+    "Fino 1": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
+    "Fino 2": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
+    "Grueso 1": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
+    "Grueso 2": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
+  };
+}
+
+function normalizeQualityValues(values) {
+  const base = createDefaultQuality();
+  if (!values || typeof values !== "object") return base;
+  QC_AGGREGATES.forEach((agg) => {
+    const row = values[agg];
+    if (!row || typeof row !== "object") return;
+    QC_FIELDS.forEach((field) => {
+      base[agg][field] = toNumber(row[field]);
+    });
+  });
+  return base;
+}
+
+function defaultDoserParams() {
+  return {
+    cemento_pesp: 3.1,
+    aire_pct: 2.0,
+    pasa_malla_200_pct: 19.0,
+    pxl_pond_pct: 6.4,
+    densidad_agregado_fallback: 2.2,
+  };
+}
+
+function normalizeDoserParams(values) {
+  const base = defaultDoserParams();
+  if (!values || typeof values !== "object") return base;
+  const out = {};
+  Object.keys(base).forEach((key) => {
+    const num = toNumber(values[key]);
+    out[key] = num >= 0 ? num : base[key];
+  });
+  return out;
+}
+
+function safeDivide(numerator, denominator, fallback = 0) {
+  const den = Number(denominator);
+  if (!Number.isFinite(den) || Math.abs(den) <= 1e-9) {
+    return { value: fallback, fallbackUsed: true };
+  }
+  return { value: Number(numerator) / den, fallbackUsed: false };
+}
+
+function getModDateColIndex() {
+  const aliases = new Set(["fechamodif", "fechamodificacion", "modificado", "ultimafecha"]);
+  for (let i = 0; i < state.headers.length; i += 1) {
+    const key = normalizeHeader(splitHeaderName(state.headers[i]).name || state.headers[i]);
+    if (aliases.has(key)) return i;
+  }
+  return -1;
+}
+
+function ensureModDateColumn() {
+  let idx = getModDateColIndex();
+  if (idx < 0) {
+    state.headers.push(MOD_DATE_HEADER);
+    state.rows.forEach((row) => row.push(""));
+    idx = state.headers.length - 1;
+  } else {
+    state.rows.forEach((row) => {
+      if (row.length < state.headers.length) row.push("");
+    });
+  }
+  return idx;
+}
+
+function setRowModifiedDate(rowIndex) {
+  const colIndex = ensureModDateColumn();
+  if (!state.rows[rowIndex]) return;
+  state.rows[rowIndex][colIndex] = nowStamp();
+}
+
+function setStatus(message, tone = "ok") {
+  if (statusBar) {
+    statusBar.textContent = message;
+    statusBar.setAttribute("data-tone", tone);
+  }
+  if (tone === "warn" || tone === "err") pushToast(message, tone);
+}
+
+function getToneMeta(tone = "ok") {
+  if (tone === "err") return { label: "Error", buttonClass: "btn--danger" };
+  if (tone === "warn") return { label: "Advertencia", buttonClass: "btn--warn" };
+  if (tone === "info") return { label: "Informacion", buttonClass: "btn--secondary" };
+  return { label: "Correcto", buttonClass: "btn--success" };
+}
+
+function toneIconSvg(tone = "ok", cssClass = "ui-tone-icon") {
+  const cls = escapeHtml(cssClass);
+  if (tone === "err") {
+    return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><path d="M8 8l8 8M16 8l-8 8"></path></svg>`;
+  }
+  if (tone === "warn") {
+    return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l10 18H2L12 3z"></path><path d="M12 9v5m0 3h.01"></path></svg>`;
+  }
+  if (tone === "info") {
+    return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><path d="M12 10v7m0-10h.01"></path></svg>`;
+  }
+  return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"></circle><path d="M7 12l3 3 7-7"></path></svg>`;
+}
+
+function pushToast(message, tone = "ok", timeoutMs = 3200) {
+  if (!uiToastHost || !message) return;
+  const toneMeta = getToneMeta(tone);
+  const toast = document.createElement("div");
+  toast.className = "ui-toast";
+  toast.setAttribute("data-tone", tone);
+  toast.innerHTML = `
+    <div class="ui-toast__head">
+      ${toneIconSvg(tone, "ui-tone-icon ui-tone-icon--toast")}
+      <p class="ui-toast__title">${escapeHtml(toneMeta.label)}</p>
+    </div>
+    <p class="ui-toast__text">${escapeHtml(message)}</p>
+  `;
+  uiToastHost.appendChild(toast);
+  window.setTimeout(() => {
+    toast.classList.add("is-out");
+    window.setTimeout(() => toast.remove(), 180);
+  }, timeoutMs);
+}
+
+function uiDialog(options = {}) {
+  const {
+    mode = "confirm",
+    title = "Confirmacion",
+    message = "",
+    defaultValue = "",
+    confirmText = "Aceptar",
+    cancelText = "Cancelar",
+    tone = "ok",
+  } = options;
+
+  if (!uiDialogHost) {
+    if (mode === "prompt") return Promise.resolve(window.prompt(message, defaultValue));
+    return Promise.resolve(window.confirm(message));
+  }
+
+  const toneMeta = getToneMeta(tone);
+
+  return new Promise((resolve) => {
+    uiDialogHost.classList.remove("is-hidden");
+    uiDialogHost.setAttribute("aria-hidden", "false");
+    uiDialogHost.innerHTML = `
+      <div class="ui-dialog" data-tone="${escapeHtml(tone)}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}" tabindex="-1">
+        <header class="ui-dialog__head">
+          <div class="ui-dialog__title-wrap">
+            ${toneIconSvg(tone, "ui-tone-icon ui-tone-icon--dialog")}
+            <h3 class="ui-dialog__title">${escapeHtml(title)}</h3>
+          </div>
+          <span class="ui-dialog__chip">${escapeHtml(toneMeta.label)}</span>
+        </header>
+        <div class="ui-dialog__body">
+          <p class="ui-dialog__message">${escapeHtml(message)}</p>
+          ${
+            mode === "prompt"
+              ? `<input class="ui-dialog__input" type="text" value="${escapeHtml(defaultValue)}" autocomplete="off">`
+              : ""
+          }
+        </div>
+        <footer class="ui-dialog__actions">
+          <button type="button" class="btn btn--muted btn--small ui-dialog-cancel">${escapeHtml(cancelText)}</button>
+          <button type="button" class="btn ${escapeHtml(toneMeta.buttonClass)} btn--small ui-dialog-confirm">${escapeHtml(confirmText)}</button>
+        </footer>
+      </div>
+    `;
+
+    const dialog = uiDialogHost.querySelector(".ui-dialog");
+    const input = uiDialogHost.querySelector(".ui-dialog__input");
+    const cancelBtn = uiDialogHost.querySelector(".ui-dialog-cancel");
+    const confirmBtn = uiDialogHost.querySelector(".ui-dialog-confirm");
+
+    const onBackdropClick = (event) => {
+      if (event.target === uiDialogHost) close(mode === "prompt" ? null : false);
+    };
+
+    const close = (value) => {
+      document.removeEventListener("keydown", onKeyDown);
+      uiDialogHost.removeEventListener("click", onBackdropClick);
+      uiDialogHost.classList.add("is-hidden");
+      uiDialogHost.setAttribute("aria-hidden", "true");
+      uiDialogHost.innerHTML = "";
+      resolve(value);
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close(mode === "prompt" ? null : false);
+        return;
+      }
+      if (event.key === "Enter") {
+        const targetTag = (event.target?.tagName || "").toLowerCase();
+        if (targetTag === "textarea") return;
+        event.preventDefault();
+        close(mode === "prompt" ? (input ? input.value : "") : true);
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => close(mode === "prompt" ? null : false));
+    }
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", () => close(mode === "prompt" ? (input ? input.value : "") : true));
+    }
+    uiDialogHost.addEventListener("click", onBackdropClick);
+
+    if (input) {
+      input.focus();
+      input.select();
+    } else if (dialog) {
+      dialog.focus();
+    }
+  });
+}
+
+function uiConfirm(message, options = {}) {
+  return uiDialog({
+    mode: "confirm",
+    title: options.title || "Confirmacion",
+    message,
+    confirmText: options.confirmText || "Aceptar",
+    cancelText: options.cancelText || "Cancelar",
+    tone: options.tone || "warn",
+  });
+}
+
+function uiPrompt(message, defaultValue = "", options = {}) {
+  return uiDialog({
+    mode: "prompt",
+    title: options.title || "Captura de datos",
+    message,
+    defaultValue,
+    confirmText: options.confirmText || "Guardar",
+    cancelText: options.cancelText || "Cancelar",
+    tone: options.tone || "ok",
+  });
+}
+
+function canAccessView(view) {
+  return state.auth.allowedViews.includes(view);
+}
+
+function defaultView() {
+  if (canAccessView("editor")) return "editor";
+  if (canAccessView("consulta")) return "consulta";
+  if (canAccessView("dosificador")) return "dosificador";
+  return "consulta";
+}
+
+function applyRoleAccessUi() {
+  tabEditor.style.display = canAccessView("editor") ? "" : "none";
+  tabConsulta.style.display = canAccessView("consulta") ? "" : "none";
+  tabDosificador.style.display = canAccessView("dosificador") ? "" : "none";
+  if (auditBtn) auditBtn.style.display = state.auth.canEdit ? "" : "none";
+  if (backupCreateBtn) backupCreateBtn.style.display = state.auth.canEdit ? "" : "none";
+  if (backupRestoreBtn) backupRestoreBtn.style.display = state.auth.role === "administrador" ? "" : "none";
+  if (saveQcHumidityBtn) {
+    saveQcHumidityBtn.style.display = state.auth.canEditQcHumidity ? "" : "none";
+  }
+  const toleranceEditable = canEditDoserTolerances();
+  [tolCementoInput, tolAgregadosInput, tolAguaInput, tolAditivoInput].forEach((input) => {
+    if (!input) return;
+    input.disabled = !toleranceEditable;
+    input.classList.toggle("is-locked", !toleranceEditable);
+  });
+  [
+    paramCementoPespInput,
+    paramAirePctInput,
+    paramPasa200PctInput,
+    paramPxlPctInput,
+    paramDensidadAggInput,
+  ].forEach((input) => {
+    if (!input) return;
+    input.disabled = !toleranceEditable;
+    input.classList.toggle("is-locked", !toleranceEditable);
+  });
+  if (saveDoserParamsBtn) {
+    saveDoserParamsBtn.style.display = canAccessView("dosificador") ? "" : "none";
+    saveDoserParamsBtn.disabled = !toleranceEditable;
+  }
+  if (tolAccessNote) {
+    tolAccessNote.textContent = toleranceEditable
+      ? "Ajustables por tipo de material (editable por administrador y jefe-de-planta)"
+      : "Solo administrador y jefe-de-planta pueden editar tolerancias.";
+  }
+}
+
+function refreshSaveState() {
+  const hasChanges = state.dirty || state.qcDirty;
+  saveState.textContent = hasChanges ? "Cambios sin guardar" : "Sin cambios";
+  saveState.style.color = hasChanges ? "#b67712" : "#4b627a";
+}
+
+function setDirty(value) {
+  state.dirty = value;
+  refreshSaveState();
+}
+
+function setQcDirty(value) {
+  state.qcDirty = value;
+  refreshSaveState();
+}
+
+function setConsultaStep(step) {
+  if (!consultaSlides.length) return;
+  const maxStep = consultaSlides.length - 1;
+  const normalizedStep = Math.max(0, Math.min(maxStep, Number(step) || 0));
+  state.consultaStep = normalizedStep;
+
+  consultaSlides.forEach((slide, index) => {
+    slide.classList.toggle("is-active", index === normalizedStep);
+  });
+
+  if (consultaStepLabel) {
+    consultaStepLabel.textContent = `Paso ${normalizedStep + 1} de ${maxStep + 1}`;
+  }
+  if (consultaPrevBtn) consultaPrevBtn.disabled = normalizedStep === 0;
+  if (consultaNextBtn) consultaNextBtn.disabled = normalizedStep === maxStep;
+}
+
+function switchView(view) {
+  if (!canAccessView(view)) {
+    setStatus("No tienes permisos para acceder a esta pestaña.", "warn");
+    return;
+  }
+  state.view = view;
+  const isEditor = view === "editor";
+  const isConsulta = view === "consulta";
+  const isDoser = view === "dosificador";
+  editorView.classList.toggle("is-hidden", !isEditor);
+  consultaView.classList.toggle("is-hidden", !isConsulta);
+  dosificadorView.classList.toggle("is-hidden", !isDoser);
+  tabEditor.classList.toggle("view-tab--active", isEditor);
+  tabConsulta.classList.toggle("view-tab--active", isConsulta);
+  tabDosificador.classList.toggle("view-tab--active", isDoser);
+  if (isConsulta) setConsultaStep(state.consultaStep);
+  if (isDoser) {
+    renderDosificador();
+    loadRemisiones();
+  }
+}
+
+function compareValues(a, b) {
+  const numA = Number(a);
+  const numB = Number(b);
+  const aIsNum = !Number.isNaN(numA) && normalize(a) !== "";
+  const bIsNum = !Number.isNaN(numB) && normalize(b) !== "";
+  if (aIsNum && bIsNum) return numA - numB;
+  return a.toString().localeCompare(b.toString(), "es", { sensitivity: "base", numeric: true });
+}
+
+function getProcessedRows() {
+  const term = normalize(state.searchText);
+  let mapped = state.rows.map((row, sourceIndex) => ({ row, sourceIndex }));
+
+  if (term) {
+    mapped = mapped.filter((entry) => entry.row.some((cell) => normalize(cell).includes(term)));
+  }
+
+  if (state.sort.col !== null) {
+    const { col, dir } = state.sort;
+    mapped.sort((a, b) => {
+      const result = compareValues(a.row[col] ?? "", b.row[col] ?? "");
+      return dir === "asc" ? result : -result;
+    });
+  }
+  return mapped;
+}
+
+function renderMeta(filteredCount) {
+  const base = `Archivo: ${state.file} | Filas: ${state.rows.length} | Mostradas: ${filteredCount} | Columnas: ${state.headers.length}`;
+  const fam = state.datasetFamily || "-";
+  const details = ` | Familia: ${fam} | Encoding: ${state.encoding} | Delimitador: ${state.delimiter === "\t" ? "\\t" : state.delimiter}`;
+  metaInfo.textContent = base + details;
+}
+
+function getFileFamilyByName(fileName) {
+  const item = state.fileInfos.find((info) => info.name === fileName);
+  return item ? (item.family || "") : "";
+}
+
+function renderFileSelect() {
+  fileSelect.innerHTML = "";
+  const infos = state.fileInfos.length
+    ? state.fileInfos
+    : state.files.map((name) => ({ name, family: "" }));
+  infos.forEach((info) => {
+    const fileName = info.name;
+    const family = info.family || "";
+    const option = document.createElement("option");
+    option.value = fileName;
+    option.textContent = family ? `${fileName} | Familia ${family}` : fileName;
+    option.selected = fileName === state.file;
+    fileSelect.appendChild(option);
+  });
+}
+
+function splitHeaderName(headerText) {
+  const raw = (headerText ?? "").toString().trim();
+  const match = raw.match(/^(.*?)(?:\s*\(([^()]*)\))?$/);
+  if (!match) return { name: raw, type: "" };
+  return {
+    name: (match[1] || "").trim(),
+    type: (match[2] || "").trim(),
+  };
+}
+
+async function renameHeader(colIndex) {
+  const modColIndex = getModDateColIndex();
+  if (colIndex === modColIndex) {
+    setStatus("La columna FECHA_MODIF es automatica y no se puede renombrar.", "warn");
+    return;
+  }
+  const currentHeader = state.headers[colIndex] ?? "";
+  const parsed = splitHeaderName(currentHeader);
+  const newName = await uiPrompt("Nombre de la columna", parsed.name || currentHeader, {
+    title: "Editar encabezado",
+    confirmText: "Continuar",
+  });
+  if (newName === null) return;
+  if (!newName.trim()) {
+    setStatus("El nombre de la columna no puede quedar vacio.", "warn");
+    return;
+  }
+  const newType = await uiPrompt(
+    "Tipo (opcional). Si lo llenas se guardara como: Nombre (Tipo)",
+    parsed.type,
+    {
+      title: "Tipo de columna",
+      confirmText: "Aplicar",
+    }
+  );
+  if (newType === null) return;
+  state.headers[colIndex] = newType.trim() ? `${newName.trim()} (${newType.trim()})` : newName.trim();
+  setDirty(true);
+  refreshConsulta();
+  setStatus(`Encabezado actualizado: ${state.headers[colIndex]}`, "ok");
+  render();
+}
+
+function buildHeader() {
+  tableHead.innerHTML = "";
+  const tr = document.createElement("tr");
+  const selTh = document.createElement("th");
+  const allCheck = document.createElement("input");
+  allCheck.type = "checkbox";
+  allCheck.title = "Seleccionar filas visibles";
+  allCheck.addEventListener("change", (event) => {
+    const visibleRows = getProcessedRows().map((entry) => entry.sourceIndex);
+    if (event.target.checked) visibleRows.forEach((idx) => state.selected.add(idx));
+    else visibleRows.forEach((idx) => state.selected.delete(idx));
+    renderBody();
+  });
+  selTh.appendChild(allCheck);
+  tr.appendChild(selTh);
+
+  const modColIndex = getModDateColIndex();
+  state.headers.forEach((header, index) => {
+    const th = document.createElement("th");
+    const wrap = document.createElement("div");
+    wrap.className = "th-wrap";
+
+    const button = document.createElement("button");
+    button.className = "th-btn";
+    button.textContent = header === "" ? `Columna ${index + 1}` : header;
+    if (state.sort.col === index) button.dataset.dir = state.sort.dir;
+    button.addEventListener("click", () => {
+      if (state.sort.col === index) state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
+      else state.sort = { col: index, dir: "asc" };
+      render();
+    });
+
+    const editButton = document.createElement("button");
+    editButton.className = "th-edit";
+    editButton.textContent = "Editar";
+    editButton.title = "Editar nombre de columna";
+    editButton.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await renameHeader(index);
+    });
+    if (index === modColIndex) {
+      editButton.disabled = true;
+      editButton.title = "Columna automatica";
+    }
+
+    wrap.appendChild(button);
+    wrap.appendChild(editButton);
+    th.appendChild(wrap);
+    tr.appendChild(th);
+  });
+
+  tableHead.appendChild(tr);
+}
+
+function renderBody() {
+  tableBody.innerHTML = "";
+  const rows = getProcessedRows();
+  renderMeta(rows.length);
+
+  if (rows.length === 0) {
+    const tr = document.createElement("tr");
+    tr.className = "empty-row";
+    const td = document.createElement("td");
+    td.colSpan = state.headers.length + 1;
+    td.textContent = "No hay filas para mostrar con el filtro actual.";
+    tr.appendChild(td);
+    tableBody.appendChild(tr);
+    return;
+  }
+
+  const modColIndex = getModDateColIndex();
+  rows.forEach((entry) => {
+    const tr = document.createElement("tr");
+    const selectTd = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = state.selected.has(entry.sourceIndex);
+    checkbox.addEventListener("change", (event) => {
+      if (event.target.checked) state.selected.add(entry.sourceIndex);
+      else state.selected.delete(entry.sourceIndex);
+    });
+    selectTd.appendChild(checkbox);
+    tr.appendChild(selectTd);
+
+    state.headers.forEach((_, colIndex) => {
+      const td = document.createElement("td");
+      td.className = "cell";
+      const isModDate = colIndex === modColIndex;
+      td.contentEditable = isModDate ? "false" : "true";
+      if (isModDate) td.classList.add("cell-readonly");
+      td.spellcheck = false;
+      td.textContent = entry.row[colIndex] ?? "";
+      td.dataset.row = String(entry.sourceIndex);
+      td.dataset.col = String(colIndex);
+      if (!isModDate) {
+        td.addEventListener("input", (event) => {
+          const cell = event.currentTarget;
+          const rowIndex = Number(cell.dataset.row);
+          const fieldIndex = Number(cell.dataset.col);
+          state.rows[rowIndex][fieldIndex] = cell.textContent ?? "";
+          setRowModifiedDate(rowIndex);
+          setDirty(true);
+          const rowTr = cell.parentElement;
+          const dateCell = rowTr && rowTr.children[modColIndex + 1];
+          if (dateCell) {
+            dateCell.textContent = state.rows[rowIndex][modColIndex] ?? "";
+          }
+        });
+      }
+      tr.appendChild(td);
+    });
+
+    tableBody.appendChild(tr);
+  });
+}
+
+function render() {
+  buildHeader();
+  renderBody();
+}
+
+function buildHeaderIndex() {
+  const idx = {};
+  state.headers.forEach((header, i) => {
+    const key = normalizeHeader(splitHeaderName(header).name || header);
+    if (key === "no") idx.no = i;
+    else if (key === "formula") idx.formula = i;
+    else if (key === "cod") idx.cod = i;
+    else if (key === "fc") idx.fc = i;
+    else if (key === "edad") idx.edad = i;
+    else if (key === "coloc" || key === "tipo") idx.tipo = i;
+    else if (key === "tma") idx.tma = i;
+    else if (key === "rev") idx.rev = i;
+    else if (key === "var" || key === "comp" || key === "complemento") idx.comp = i;
+    else if (key === "familia" || key === "family" || key.startsWith("familia") || key.startsWith("family")) idx.family = i;
+  });
+  state.index = idx;
+}
+
+function valueByKey(row, key) {
+  const idx = state.index[key];
+  if (typeof idx !== "number") return "";
+  return (row[idx] ?? "").toString().trim();
+}
+
+function getRowModDate(row) {
+  const modIdx = getModDateColIndex();
+  if (modIdx < 0) return "";
+  return (row[modIdx] ?? "").toString().trim();
+}
+
+function deriveFamily(row) {
+  const explicitFamily = valueByKey(row, "family");
+  if (explicitFamily) return explicitFamily;
+  if (state.datasetFamily) return state.datasetFamily;
+  const formula = valueByKey(row, "formula");
+  const no = valueByKey(row, "no");
+  const cod = valueByKey(row, "cod");
+  if (formula) {
+    const start = formula.match(/^(\d{2,3})/);
+    if (start) return start[1];
+    const any = formula.match(/(\d{2,3})/);
+    if (any) return any[1];
+    const token = formula.split(/[-\s]/)[0];
+    if (token) return token;
+  }
+  return no || cod || "-";
+}
+
+function getUniqueValues(columnKey) {
+  const idx = state.index[columnKey];
+  if (typeof idx !== "number") return [];
+  const set = new Set();
+  state.rows.forEach((row) => {
+    const value = (row[idx] ?? "").toString().trim();
+    if (value !== "") set.add(value);
+  });
+  return [...set].sort((a, b) => compareValues(a, b));
+}
+
+function getUniqueValuesByIndex(index) {
+  if (typeof index !== "number") return [];
+  const set = new Set();
+  state.rows.forEach((row) => {
+    const value = (row[index] ?? "").toString().trim();
+    if (value !== "") set.add(value);
+  });
+  return [...set].sort((a, b) => compareValues(a, b));
+}
+
+function fillSelect(selectEl, values, keepValue = "") {
+  const current = keepValue || selectEl.value || "";
+  selectEl.innerHTML = "";
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "Todos";
+  selectEl.appendChild(all);
+  values.forEach((v) => {
+    const op = document.createElement("option");
+    op.value = v;
+    op.textContent = v;
+    if (v === current) op.selected = true;
+    selectEl.appendChild(op);
+  });
+}
+
+function renderFamiliesBoard() {
+  familiasBoard.innerHTML = "";
+  updatedStamp.textContent = state.updatedAt ? `Archivo actualizado: ${state.updatedAt}` : "";
+  const tmaIdx = state.index.tma;
+  const groups = new Map();
+
+  state.rows.forEach((row) => {
+    const tma = typeof tmaIdx === "number" ? ((row[tmaIdx] ?? "").toString().trim() || "Sin TMA") : "Sin TMA";
+    if (!groups.has(tma)) groups.set(tma, new Map());
+    const fam = deriveFamily(row);
+    const group = groups.get(tma);
+    group.set(fam, (group.get(fam) || 0) + 1);
+  });
+
+  if (groups.size === 0) {
+    familiasBoard.textContent = "Sin datos para familias.";
+    return;
+  }
+
+  [...groups.entries()]
+    .sort((a, b) => compareValues(a[0], b[0]))
+    .forEach(([tma, famMap]) => {
+      const card = document.createElement("div");
+      card.className = "family-col";
+      const h3 = document.createElement("h3");
+      h3.textContent = `T.M.A. ${tma}`;
+      const ul = document.createElement("ul");
+      [...famMap.entries()]
+        .sort((a, b) => compareValues(a[0], b[0]))
+        .forEach(([family, count]) => {
+          const li = document.createElement("li");
+          li.textContent = `${family} (${count})`;
+          ul.appendChild(li);
+        });
+      card.appendChild(h3);
+      card.appendChild(ul);
+      familiasBoard.appendChild(card);
+    });
+}
+
+function getMetaIndexes() {
+  const set = new Set(Object.values(state.index).filter((v) => typeof v === "number"));
+  const modIndex = getModDateColIndex();
+  if (modIndex >= 0) set.add(modIndex);
+  return set;
+}
+
+function buildAggregateColumnMap() {
+  const counters = { fino: 0, grueso: 0 };
+  const metaIndexes = getMetaIndexes();
+  const map = {
+    "Fino 1": new Set(),
+    "Fino 2": new Set(),
+    "Grueso 1": new Set(),
+    "Grueso 2": new Set(),
+  };
+
+  state.headers.forEach((header, index) => {
+    if (metaIndexes.has(index)) return;
+    const rawHeader = (header ?? "").toString().trim();
+    if (!rawHeader) return;
+    const component = classifyComponent(rawHeader, counters);
+    if (map[component]) map[component].add(rawHeader);
+  });
+
+  return {
+    "Fino 1": [...map["Fino 1"]],
+    "Fino 2": [...map["Fino 2"]],
+    "Grueso 1": [...map["Grueso 1"]],
+    "Grueso 2": [...map["Grueso 2"]],
+  };
+}
+
+function reportComponentLabel(componentName, aggregateMap) {
+  const displayName =
+    componentName === "Grueso 1" ? "Grava 1" : componentName === "Grueso 2" ? "Grava 2" : componentName;
+  if (!isAggregateComponent(componentName)) return displayName;
+  const raw = (aggregateMap && aggregateMap[componentName]) || [];
+  const details = [...new Set(raw.map((h) => splitHeaderName(h).name || h).map((s) => (s || "").trim()).filter(Boolean))];
+  if (!details.length) return displayName;
+  return `${displayName} (${details.join(" + ")})`;
+}
+
+function classifyComponent(headerText, counters) {
+  const parsed = splitHeaderName(headerText);
+  const name = parsed.name || headerText;
+  const nName = normalize(name);
+  const nType = normalize(parsed.type);
+
+  if (nName.includes("fcpc") || nName.includes("cement")) return "Cemento";
+  if (nName.includes("agua")) return "Agua";
+  if (nName.includes("reductor")) return "Reductor";
+  if (nName.includes("retard")) return "Retardante";
+  if (nName.includes("fibra")) return "Fibra";
+  if (nName.includes("imper")) return "Imper";
+
+  if (nType.includes("grava 1") || nType.includes("grueso 1")) return "Grueso 1";
+  if (nType.includes("grava 2") || nType.includes("grueso 2")) return "Grueso 2";
+  if (nType.includes("fino 1") || nType.includes("arena 1")) return "Fino 1";
+  if (nType.includes("fino 2") || nType.includes("arena 2")) return "Fino 2";
+
+  if (nType.includes("grava") || nType.includes("grueso")) {
+    counters.grueso += 1;
+    return counters.grueso === 1 ? "Grueso 1" : "Grueso 2";
+  }
+  if (nType.includes("fino") || nType.includes("arena")) {
+    counters.fino += 1;
+    return counters.fino === 1 ? "Fino 1" : "Fino 2";
+  }
+
+  if (nName.includes("nava 20")) return "Grueso 1";
+  if (nName.includes("nava 5")) return "Grueso 2";
+  if (nName.includes("lavada") || nName.includes("arena")) return "Fino 1";
+
+  return name || "Otro";
+}
+
+function componentUnit(component) {
+  if (["Agua", "Reductor", "Retardante", "Imper"].includes(component)) return "Lts";
+  return "kg";
+}
+
+function densityFor(component, unit) {
+  if (unit === "Lts") return 1000;
+  if (component === "Cemento") return 3150;
+  if (component === "Fino 1" || component === "Fino 2") return 1600;
+  if (component === "Grueso 1" || component === "Grueso 2") return 1500;
+  if (component === "Fibra") return 900;
+  return 1500;
+}
+
+function extractRecipe(row) {
+  const counters = { fino: 0, grueso: 0 };
+  const metaIndexes = getMetaIndexes();
+  const aggregate = new Map();
+
+  state.headers.forEach((header, index) => {
+    if (metaIndexes.has(index)) return;
+    const rawHeader = (header ?? "").toString().trim();
+    if (rawHeader === "") return;
+    const qty = toNumber(row[index]);
+    if (qty === 0) return;
+    const component = classifyComponent(rawHeader, counters);
+    aggregate.set(component, (aggregate.get(component) || 0) + qty);
+  });
+
+  // Mostrar siempre los agregados principales en Receta/Costos, aun cuando su valor sea 0.
+  ["Fino 1", "Fino 2", "Grueso 1", "Grueso 2"].forEach((aggName) => {
+    if (!aggregate.has(aggName)) aggregate.set(aggName, 0);
+  });
+
+  const priority = [
+    "Cemento",
+    "Fino 1",
+    "Fino 2",
+    "Grueso 1",
+    "Grueso 2",
+    "Agua",
+    "Reductor",
+    "Retardante",
+    "Fibra",
+    "Imper",
+  ];
+
+  const ordered = [];
+  priority.forEach((name) => {
+    if (aggregate.has(name)) {
+      ordered.push({ name, qty: aggregate.get(name), unit: componentUnit(name) });
+      aggregate.delete(name);
+    }
+  });
+  [...aggregate.entries()]
+    .sort((a, b) => compareValues(a[0], b[0]))
+    .forEach(([name, qty]) => ordered.push({ name, qty, unit: componentUnit(name) }));
+
+  const withVolume = ordered.map((item) => ({
+    ...item,
+    volume: isAggregateComponent(item.name) ? item.qty / densityFor(item.name, item.unit) : 0,
+  }));
+
+  return withVolume;
+}
+
+function normalizeConsultaRecipeItems(recipeItems) {
+  return recipeItems.map((item) => {
+    if (item.name !== "Reductor" && item.name !== "Retardante") return item;
+    const qty = item.qty / 1000;
+    return {
+      ...item,
+      qty,
+      unit: "cc/kg-cto",
+      volume: qty / 1000,
+    };
+  });
+}
+
+function normalizeDoserRecipeItems(recipeItems) {
+  return recipeItems.map((item) => {
+    if (item.name !== "Reductor" && item.name !== "Retardante") return item;
+    const qty = item.qty / 1000;
+    return {
+      ...item,
+      qty,
+      unit: "Lts/m3",
+      volume: qty / 1000,
+    };
+  });
+}
+
+function renderRecipeAndCosts(row) {
+  if (!row) {
+    recipeMeta.textContent = "Selecciona una formula de la tabla de resultados.";
+    recipeBody.innerHTML = "";
+    recipeWeight.textContent = "0.00";
+    costBody.innerHTML = "";
+    if (costHaulTotal) costHaulTotal.textContent = "$0.00";
+    if (costMaterialTotal) costMaterialTotal.textContent = "$0.00";
+    costTotal.textContent = "$0.00";
+    return;
+  }
+
+  const formula = valueByKey(row, "formula");
+  const fc = valueByKey(row, "fc");
+  const edad = valueByKey(row, "edad");
+  const tipo = valueByKey(row, "tipo");
+  const tma = valueByKey(row, "tma");
+  const rev = valueByKey(row, "rev");
+  const comp = valueByKey(row, "comp");
+  const modDate = getRowModDate(row);
+  const qcDate = state.qcUpdatedAt || "-";
+
+  recipeMeta.textContent = `Formula: ${formula || "-"} | f'c: ${fc || "-"} | Edad: ${edad || "-"} | Tipo: ${
+    tipo || "-"
+  } | TMA: ${tma || "-"} | Rev: ${rev || "-"} | Comp: ${comp || "-"} | Fecha Modif: ${
+    modDate || "-"
+  } | QC: ${qcDate}`;
+
+  const recipeItems = normalizeConsultaRecipeItems(extractRecipe(row));
+  recipeBody.innerHTML = "";
+  let totalWeight = 0;
+
+  recipeItems.forEach((item) => {
+    totalWeight += item.qty;
+    const volText = isAggregateComponent(item.name) ? formatVol(item.volume) : "-";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.name}</td>
+      <td>${formatNum(item.qty)}</td>
+      <td>${item.unit}</td>
+      <td>${volText}</td>
+    `;
+    recipeBody.appendChild(tr);
+  });
+
+  recipeWeight.textContent = formatNum(totalWeight);
+  const adjustedForCost = adjustRecipeByQuality(recipeItems, 1);
+  renderCostTable(adjustedForCost);
+}
+
+function volumetricWeightForCost(item) {
+  if (!isAggregateComponent(item.name)) return densityFor(item.name, item.unit);
+  const quality = getQualityFor(item.name);
+  const pv = [quality.pvc, quality.pvs, quality.densidad].map((v) => toNumber(v)).find((v) => v > 0);
+  return pv || densityFor(item.name, "kg");
+}
+
+function volumeM3ForCost(item) {
+  if (!isAggregateComponent(item.name)) return 0;
+  const pv = volumetricWeightForCost(item);
+  return pv > 0 ? item.qty / pv : 0;
+}
+
+function subtotalForCost(item) {
+  const unitCost = state.unitCosts[item.name] || 0;
+  if (!isAggregateComponent(item.name)) return unitCost * item.qty;
+  const haulCost = state.haulCosts[item.name] || 0;
+  const m3 = volumeM3ForCost(item);
+  return m3 * (unitCost + haulCost);
+}
+
+function materialSubtotalForCost(item) {
+  const unitCost = state.unitCosts[item.name] || 0;
+  if (!isAggregateComponent(item.name)) return unitCost * item.qty;
+  const m3 = volumeM3ForCost(item);
+  return m3 * unitCost;
+}
+
+function haulSubtotalForCost(item) {
+  if (!isAggregateComponent(item.name)) return 0;
+  const haulCost = state.haulCosts[item.name] || 0;
+  const m3 = volumeM3ForCost(item);
+  return m3 * haulCost;
+}
+
+function updateCostTotals(recipeItems) {
+  const haulTotal = recipeItems.reduce((acc, item) => acc + haulSubtotalForCost(item), 0);
+  const materialTotal = recipeItems.reduce((acc, item) => acc + materialSubtotalForCost(item), 0);
+  const total = materialTotal + haulTotal;
+  if (costHaulTotal) costHaulTotal.textContent = formatMoney(haulTotal);
+  if (costMaterialTotal) costMaterialTotal.textContent = formatMoney(materialTotal);
+  costTotal.textContent = formatMoney(total);
+}
+
+function renderCostTable(recipeItems) {
+  costBody.innerHTML = "";
+  recipeItems.forEach((item) => {
+    const tr = document.createElement("tr");
+    const isAgg = isAggregateComponent(item.name);
+    const unitCost = state.unitCosts[item.name] || 0;
+    const haulCost = state.haulCosts[item.name] || 0;
+    const m3 = volumeM3ForCost(item);
+    const m3Text = isAgg ? formatVol(m3) : "-";
+    const subtotal = subtotalForCost(item);
+    const haulCell = isAgg
+      ? `<div class="money-field"><span class="money-field__symbol">$</span><input class="haul-input" type="number" min="0" step="0.01" value="${haulCost.toFixed(
+          2
+        )}" title="Costo de transporte por m³ del agregado (del banco a la planta)" aria-label="Acarreo por m³"></div>`
+      : "-";
+    tr.innerHTML = `
+      <td>${item.name}</td>
+      <td>${formatNum(item.qty)}</td>
+      <td>${m3Text}</td>
+      <td>${item.unit}</td>
+      <td>${haulCell}</td>
+      <td><div class="money-field"><span class="money-field__symbol">$</span><input class="cost-input" type="number" min="0" step="0.01" value="${unitCost.toFixed(2)}"></div></td>
+      <td class="cost-sub">${formatMoney(subtotal)}</td>
+    `;
+    const input = tr.querySelector(".cost-input");
+    const haulInput = tr.querySelector(".haul-input");
+    const subCell = tr.querySelector(".cost-sub");
+    input.addEventListener("input", () => {
+      state.unitCosts[item.name] = toNumber(input.value);
+      subCell.textContent = formatMoney(subtotalForCost(item));
+      updateCostTotals(recipeItems);
+    });
+    if (haulInput) {
+      haulInput.addEventListener("input", () => {
+        state.haulCosts[item.name] = toNumber(haulInput.value);
+        subCell.textContent = formatMoney(subtotalForCost(item));
+        updateCostTotals(recipeItems);
+      });
+    } else {
+      state.haulCosts[item.name] = 0;
+    }
+    costBody.appendChild(tr);
+  });
+  updateCostTotals(recipeItems);
+}
+
+function buildCostRowsForReport(recipeItems) {
+  return recipeItems.map((item) => {
+    const isAgg = isAggregateComponent(item.name);
+    const m3 = isAgg ? volumeM3ForCost(item) : null;
+    const unitCost = state.unitCosts[item.name] || 0;
+    const haulCost = isAgg ? state.haulCosts[item.name] || 0 : 0;
+    const subtotal = subtotalForCost(item);
+    return {
+      name: item.name,
+      qty: item.qty,
+      m3,
+      unit: item.unit,
+      haul: isAgg ? haulCost : null,
+      haulSubtotal: isAgg && m3 !== null ? m3 * haulCost : 0,
+      unitCost,
+      subtotal,
+    };
+  });
+}
+
+function exportConsultaReport() {
+  const selectedIndex = state.selectedQueryRow;
+  const row = typeof selectedIndex === "number" ? state.rows[selectedIndex] : null;
+  if (!row) {
+    setStatus("Selecciona una mezcla en Consulta Mix para exportar el reporte.", "warn");
+    return;
+  }
+
+  const formula = valueByKey(row, "formula") || "-";
+  const fc = valueByKey(row, "fc") || "-";
+  const edad = valueByKey(row, "edad") || "-";
+  const tipo = valueByKey(row, "tipo") || "-";
+  const tma = valueByKey(row, "tma") || "-";
+  const rev = valueByKey(row, "rev") || "-";
+  const comp = valueByKey(row, "comp") || "-";
+  const modDate = getRowModDate(row) || "-";
+  const qcDate = state.qcUpdatedAt || "-";
+  const reportDate = nowStamp();
+
+  const recipeItems = normalizeConsultaRecipeItems(extractRecipe(row));
+  const recipeTotal = recipeItems.reduce((acc, item) => acc + item.qty, 0);
+  const adjustedForCost = adjustRecipeByQuality(recipeItems, 1);
+  const costRows = buildCostRowsForReport(adjustedForCost);
+  const totalMaterials = adjustedForCost.reduce((acc, item) => acc + materialSubtotalForCost(item), 0);
+  const totalHaul = costRows.reduce((acc, item) => acc + (item.haulSubtotal || 0), 0);
+  const totalCost = totalMaterials + totalHaul;
+  const aggregateMap = buildAggregateColumnMap();
+
+  const recipeRowsHtml = recipeItems
+    .map(
+      (item) => {
+        const componentLabel = reportComponentLabel(item.name, aggregateMap);
+        const volText = isAggregateComponent(item.name) ? formatVol(item.volume) : "-";
+        return `
+        <tr>
+          <td>${escapeHtml(componentLabel)}</td>
+          <td class="num">${escapeHtml(formatNum(item.qty))}</td>
+          <td>${escapeHtml(item.unit)}</td>
+          <td class="num">${escapeHtml(volText)}</td>
+        </tr>
+      `;
+      }
+    )
+    .join("");
+
+  const costRowsHtml = costRows
+    .map(
+      (item) => {
+        const componentLabel = reportComponentLabel(item.name, aggregateMap);
+        const m3Text = item.m3 === null ? "-" : formatVol(item.m3);
+        return `
+        <tr>
+          <td>${escapeHtml(componentLabel)}</td>
+          <td class="num">${escapeHtml(formatNum(item.qty))}</td>
+          <td class="num">${escapeHtml(m3Text)}</td>
+          <td>${escapeHtml(item.unit)}</td>
+          <td class="num">${item.haul === null ? "-" : escapeHtml(formatNum(item.haul))}</td>
+          <td class="num">${escapeHtml(formatNum(item.unitCost))}</td>
+          <td class="num">${escapeHtml(formatMoney(item.subtotal))}</td>
+        </tr>
+      `;
+      }
+    )
+    .join("");
+
+
+  const html = `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Reporte Mix - ${escapeHtml(formula)}</title>
+  <style>
+    @page { size: letter landscape; margin: 8mm; }
+    body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; margin: 0; color: #1a2c3f; font-size: 11px; }
+    .page { min-height: 100%; }
+    .head { border-bottom: 2px solid #0b4f8a; padding-bottom: 6px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .head-brand { display: inline-flex; align-items: center; gap: 8px; }
+    .head-logo { width: 46px; height: 46px; object-fit: contain; border: 1px solid #d5e1ee; border-radius: 8px; background: #fff; padding: 4px; }
+    .head h1 { margin: 0; font-size: 18px; line-height: 1.1; }
+    .head .brand { margin: 3px 0 0; color: #3b5572; font-size: 10.5px; font-weight: 600; }
+    .head .head-meta { margin: 0; color: #3b5572; font-size: 11px; text-align: right; }
+    .meta { display: grid; grid-template-columns: repeat(5, minmax(95px, 1fr)); gap: 5px; margin-bottom: 8px; }
+    .meta .item { border: 1px solid #d6e0eb; border-radius: 6px; padding: 5px 6px; background: #f8fbff; }
+    .meta .k { font-size: 9px; color: #4d667f; text-transform: uppercase; line-height: 1; }
+    .meta .v { font-size: 11px; font-weight: 700; margin-top: 2px; line-height: 1.2; }
+    .main-grid { display: grid; grid-template-columns: 36% 64%; gap: 8px; align-items: start; }
+    .section { margin-top: 0; }
+    .section h2 { margin: 0 0 6px; font-size: 13px; color: #0d3762; line-height: 1.1; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0; table-layout: fixed; }
+    th, td { border: 1px solid #dce5ef; padding: 4px 5px; font-size: 10px; line-height: 1.2; }
+    th { background: #edf4fb; text-align: left; }
+    td.num { text-align: right; }
+    .cost-table th:nth-child(1), .cost-table td:nth-child(1) { width: 22%; }
+    .cost-table th:nth-child(2), .cost-table td:nth-child(2) { width: 13%; }
+    .cost-table th:nth-child(3), .cost-table td:nth-child(3) { width: 10%; }
+    .cost-table th:nth-child(4), .cost-table td:nth-child(4) { width: 10%; }
+    .cost-table th:nth-child(5), .cost-table td:nth-child(5) { width: 12%; }
+    .cost-table th:nth-child(6), .cost-table td:nth-child(6) { width: 14%; }
+    .cost-table th:nth-child(7), .cost-table td:nth-child(7) { width: 19%; }
+    .totals { margin-top: 6px; text-align: right; font-size: 13px; font-weight: 800; color: #123b66; }
+    .totals-sub { margin-top: 4px; text-align: right; font-size: 12px; font-weight: 700; color: #1f4e7b; }
+    .sign { margin-top: 10px; border-top: 1px solid #d3dfec; padding-top: 6px; text-align: center; color: #264767; font-weight: 700; font-size: 11px; }
+    @media print {
+      html, body { width: 100%; height: 100%; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { break-inside: avoid; }
+      .section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="head">
+      <div class="head-brand">
+        <img class="head-logo" src="${escapeHtml(BRAND_LOGO_URL)}" alt="ALMEX">
+        <div>
+          <h1>Reporte de Consulta Mix</h1>
+          <p class="brand">ALMEX</p>
+        </div>
+      </div>
+      <p class="head-meta">Generado: ${escapeHtml(reportDate)} | Archivo: ${escapeHtml(state.file || "-")}</p>
+    </div>
+
+    <div class="meta">
+      <div class="item"><div class="k">Formula</div><div class="v">${escapeHtml(formula)}</div></div>
+      <div class="item"><div class="k">f'c</div><div class="v">${escapeHtml(fc)}</div></div>
+      <div class="item"><div class="k">Edad</div><div class="v">${escapeHtml(edad)}</div></div>
+      <div class="item"><div class="k">Tipo</div><div class="v">${escapeHtml(tipo)}</div></div>
+      <div class="item"><div class="k">TMA</div><div class="v">${escapeHtml(tma)}</div></div>
+      <div class="item"><div class="k">Rev</div><div class="v">${escapeHtml(rev)}</div></div>
+      <div class="item"><div class="k">Comp</div><div class="v">${escapeHtml(comp)}</div></div>
+      <div class="item"><div class="k">Fecha Modif</div><div class="v">${escapeHtml(modDate)}</div></div>
+      <div class="item"><div class="k">QC</div><div class="v">${escapeHtml(qcDate)}</div></div>
+      <div class="item"><div class="k">Sub-Total Acarreo m³</div><div class="v">${escapeHtml(formatMoney(totalHaul))}</div></div>
+      <div class="item"><div class="k">Sub-Total Materiales m³</div><div class="v">${escapeHtml(formatMoney(totalMaterials))}</div></div>
+      <div class="item"><div class="k">Total por m³</div><div class="v">${escapeHtml(formatMoney(totalCost))}</div></div>
+    </div>
+
+    <section class="main-grid">
+      <article class="section">
+        <h2>Receta</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Componente</th>
+              <th>Cantidad</th>
+              <th>Unidad</th>
+              <th>Vol. Est. m³</th>
+            </tr>
+          </thead>
+          <tbody>${recipeRowsHtml}</tbody>
+        </table>
+        <div class="totals">Peso por m³: ${escapeHtml(formatNum(recipeTotal))}</div>
+      </article>
+
+      <article class="section">
+        <h2>Costos por m³</h2>
+        <table class="cost-table">
+          <thead>
+            <tr>
+              <th>Componente</th>
+              <th>Cant. Final</th>
+              <th>m³</th>
+              <th>U.M.</th>
+              <th>Acarreo ($)</th>
+              <th>Costo Unit. ($)</th>
+              <th>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>${costRowsHtml}</tbody>
+        </table>
+        <div class="totals-sub">Sub-Total acarreo m³: ${escapeHtml(formatMoney(totalHaul))}</div>
+        <div class="totals-sub">Sub-Total materiales m³: ${escapeHtml(formatMoney(totalMaterials))}</div>
+        <div class="totals">Total por m³: ${escapeHtml(formatMoney(totalCost))}</div>
+      </article>
+    </section>
+
+    <div class="sign">ForMix by Labsico - Dise&#241;a-Dosifica-Calcula</div>
+  </div>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank");
+  if (!win) {
+    setStatus("El navegador bloqueo la ventana del reporte. Habilita pop-ups e intenta de nuevo.", "warn");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  setStatus("Reporte generado. Usa Imprimir para guardarlo en PDF.", "ok");
+}
+
+function buildDoserReportSnapshot() {
+  state.doser.tolerances.cemento = toNumber(tolCementoInput.value || "1");
+  state.doser.tolerances.agregados = toNumber(tolAgregadosInput.value || "3");
+  state.doser.tolerances.agua = toNumber(tolAguaInput.value || "2");
+  state.doser.tolerances.aditivo = toNumber(tolAditivoInput.value || "1");
+  const dose = Math.max(0, toNumber(doseM3Input.value));
+  state.doser.params = readDoserParamsFromInputs();
+  state.doser.dosageM3 = dose;
+
+  const selectedIndex = state.doser.selectedRow;
+  const selectedRow = typeof selectedIndex === "number" ? state.rows[selectedIndex] : null;
+  if (!selectedRow) return null;
+
+  const recipeItems = normalizeDoserRecipeItems(extractRecipe(selectedRow));
+  const detailed = computeDoserDetailedLoads(recipeItems, dose, state.doser.params);
+  const recipe = detailed.rows.map((row) => {
+    const isAditivo = row.name === "Reductor" || row.name === "Retardante";
+    return {
+      name: row.name,
+      qty: row.designA,
+      unit: isAditivo ? "Lts/m3" : row.unit,
+    };
+  });
+  const recipeWeight = recipe.reduce((acc, item) => acc + (item.qty * componentWeightFactor(item)), 0);
+  const theoretical = detailed.rows.map((row) => ({
+    name: row.name,
+    unit: row.trialUnit || row.unit,
+    qty: row.trialLoad,
+  }));
+  const theoreticalWeight = detailed.totals.theoreticalWeight;
+
+  let realWeight = 0;
+  const realRows = theoretical.map((item) => {
+    if (typeof state.doser.realLoads[item.name] !== "number") {
+      state.doser.realLoads[item.name] = item.qty;
+    }
+    const real = toNumber(state.doser.realLoads[item.name]);
+    const diff = real - item.qty;
+    const tol = toleranceFor(item.name);
+    const lim = item.qty * (tol / 100);
+    const ok = Math.abs(diff) <= lim;
+    realWeight += real * componentWeightFactor(item);
+    return {
+      name: item.name,
+      unit: item.unit,
+      theoretical: item.qty,
+      real,
+      diff,
+      status: ok ? "OK" : "FUERA",
+      tolerance: tol,
+    };
+  });
+
+  const formula = valueByKey(selectedRow, "formula") || "-";
+  const fc = valueByKey(selectedRow, "fc") || "-";
+  const tipo = valueByKey(selectedRow, "cod") || "-";
+  const coloc = valueByKey(selectedRow, "tipo") || "-";
+  const tma = valueByKey(selectedRow, "tma") || "-";
+  const rev = valueByKey(selectedRow, "rev") || "-";
+  const comp = valueByKey(selectedRow, "comp") || "-";
+  const modDate = getRowModDate(selectedRow) || "-";
+  const remisionNo = ((remisionNoInput?.value || "").toString().trim().toUpperCase()) || "-";
+
+  return {
+    remisionNo,
+    file: state.file || "",
+    qcUpdatedAt: state.qcUpdatedAt || "",
+    formula,
+    fc,
+    tipo,
+    coloc,
+    tma,
+    rev,
+    comp,
+    modDate,
+    recipe,
+    recipeWeight,
+    theoretical,
+    theoreticalWeight,
+    theoreticalDetailed: detailed.rows,
+    calcTotals: detailed.totals,
+    realRows,
+    realWeight,
+    dose,
+    qc: state.doser.quality,
+    doserParams: state.doser.params,
+    tolerances: { ...state.doser.tolerances },
+  };
+}
+
+function normalizeDoserReportSnapshot(raw, fallback = {}) {
+  const snap = raw && typeof raw === "object" ? raw : {};
+  const defaultTol = { cemento: 0, agregados: 0, agua: 0, aditivo: 0 };
+  const tolerances = snap.tolerances && typeof snap.tolerances === "object"
+    ? snap.tolerances
+    : defaultTol;
+  const qcValues = snap.qc && typeof snap.qc === "object" ? snap.qc : createDefaultQuality();
+
+  return {
+    remisionNo: (snap.remisionNo || snap.remision_no || fallback.remisionNo || "-").toString(),
+    file: snap.file || fallback.file || "-",
+    qcUpdatedAt: snap.qcUpdatedAt || fallback.qcUpdatedAt || "-",
+    formula: snap.formula || "-",
+    fc: snap.fc || "-",
+    tipo: snap.tipo || "-",
+    coloc: snap.coloc || "-",
+    tma: snap.tma || "-",
+    rev: snap.rev || "-",
+    comp: snap.comp || "-",
+    modDate: snap.modDate || "-",
+    dose: toNumber(snap.dose || snap.dosificacion_m3 || 0),
+    recipe: Array.isArray(snap.recipe) ? snap.recipe : [],
+    recipeWeight: toNumber(snap.recipeWeight || snap.peso_receta || 0),
+    theoretical: Array.isArray(snap.theoretical) ? snap.theoretical : [],
+    theoreticalDetailed: Array.isArray(snap.theoreticalDetailed) ? snap.theoreticalDetailed : [],
+    calcTotals: snap.calcTotals && typeof snap.calcTotals === "object" ? snap.calcTotals : {},
+    theoreticalWeight: toNumber(snap.theoreticalWeight || snap.peso_teorico_total || 0),
+    realRows: Array.isArray(snap.realRows) ? snap.realRows : [],
+    realWeight: toNumber(snap.realWeight || snap.peso_real_total || 0),
+    doserParams: normalizeDoserParams(snap.doserParams),
+    tolerances: {
+      cemento: toNumber(tolerances.cemento || 0),
+      agregados: toNumber(tolerances.agregados || 0),
+      agua: toNumber(tolerances.agua || 0),
+      aditivo: toNumber(tolerances.aditivo || 0),
+    },
+    qc: qcValues,
+  };
+}
+
+function buildDoserReportHtml(rawSnapshot, reportDate) {
+  const snap = normalizeDoserReportSnapshot(rawSnapshot, {
+    file: state.file || "-",
+    qcUpdatedAt: state.qcUpdatedAt || "-",
+  });
+
+  const qcRowsHtml = QC_AGGREGATES.map((agg) => {
+    const q = snap.qc[agg] || {};
+    return `
+      <tr>
+        <td>${escapeHtml(agg)}</td>
+        <td class="num">${escapeHtml(formatNum(q.pvs || 0))}</td>
+        <td class="num">${escapeHtml(formatNum(q.pvc || 0))}</td>
+        <td class="num">${escapeHtml(formatNum(q.densidad || 0))}</td>
+        <td class="num">${escapeHtml(formatNum(q.absorcion || 0))}</td>
+        <td class="num">${escapeHtml(formatNum(q.humedad || 0))}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const tolRowsHtml = `
+    <tr><td>Cemento</td><td class="num">${escapeHtml(formatNum(snap.tolerances.cemento))}%</td></tr>
+    <tr><td>Agregados</td><td class="num">${escapeHtml(formatNum(snap.tolerances.agregados))}%</td></tr>
+    <tr><td>Agua</td><td class="num">${escapeHtml(formatNum(snap.tolerances.agua))}%</td></tr>
+    <tr><td>Aditivo</td><td class="num">${escapeHtml(formatNum(snap.tolerances.aditivo))}%</td></tr>
+  `;
+
+  const paramsRowsHtml = `
+    <tr><td>Peso esp. cemento</td><td class="num">${escapeHtml(formatNum(snap.doserParams.cemento_pesp || 0))}</td></tr>
+    <tr><td>Aire (%)</td><td class="num">${escapeHtml(formatNum(snap.doserParams.aire_pct || 0))}</td></tr>
+    <tr><td>Pasa malla 200 (%)</td><td class="num">${escapeHtml(formatNum(snap.doserParams.pasa_malla_200_pct || 0))}</td></tr>
+    <tr><td>PxL pond. (%)</td><td class="num">${escapeHtml(formatNum(snap.doserParams.pxl_pond_pct || 0))}</td></tr>
+    <tr><td>Densidad agg fallback</td><td class="num">${escapeHtml(formatNum(snap.doserParams.densidad_agregado_fallback || 0))}</td></tr>
+  `;
+
+  const recipeRowsHtml = snap.recipe
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.name)}</td>
+          <td class="num">${escapeHtml(formatNum(item.qty))}</td>
+          <td>${escapeHtml(item.unit)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const theoreticalDetailedRowsHtml = (snap.theoreticalDetailed || [])
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.name)}</td>
+          <td class="num">${escapeHtml(formatNum(item.designA || 0))}</td>
+          <td class="num">${escapeHtml(formatNum(item.designSss || 0))}</td>
+          <td class="num">${escapeHtml(formatNum(item.freeWater || 0))}</td>
+          <td class="num">${escapeHtml(formatNum(item.absVolume || 0))}</td>
+          <td class="num">${escapeHtml(formatNum(item.designReal || 0))}</td>
+          <td class="num">${escapeHtml(formatNum(item.trialLoad || 0))}</td>
+          <td>${escapeHtml(item.trialUnit || item.unit || "-")}</td>
+          <td>${escapeHtml(item.note || "-")}</td>
+        </tr>
+      `
+    )
+    .join("");
+  const theoreticalRowsHtml = theoreticalDetailedRowsHtml || snap.theoretical
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.name)}</td>
+          <td class="num">${escapeHtml(formatNum(item.qty || 0))}</td>
+          <td class="num">-</td>
+          <td class="num">-</td>
+          <td class="num">-</td>
+          <td class="num">-</td>
+          <td class="num">${escapeHtml(formatNum(item.qty || 0))}</td>
+          <td>${escapeHtml(item.unit || "-")}</td>
+          <td>-</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const realRowsHtml = snap.realRows
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.name)}</td>
+          <td class="num">${escapeHtml(formatNum(item.theoretical))}</td>
+          <td class="num">${escapeHtml(formatNum(item.real))}</td>
+          <td class="num">${item.diff >= 0 ? "+" : ""}${escapeHtml(formatNum(item.diff))}</td>
+          <td class="num">${escapeHtml(formatNum(item.tolerance))}%</td>
+          <td class="${item.status === "OK" ? "ok" : "bad"}">${escapeHtml(item.status)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Reporte Dosificador - ${escapeHtml(snap.formula)}</title>
+  <style>
+    @page { size: A4 landscape; margin: 0; }
+    html, body { width: 297mm; height: 210mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; margin: 0; color: #1a2c3f; font-size: 11px; line-height: 1.2; }
+    .sheet { width: 100%; min-height: 100%; padding: 3mm 4mm; }
+    .head { border-bottom: 1px solid #0b4f8a; margin-bottom: 6px; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .head-brand { display: inline-flex; align-items: center; gap: 8px; }
+    .head-logo { width: 44px; height: 44px; object-fit: contain; border: 1px solid #d5e1ee; border-radius: 8px; background: #fff; padding: 4px; }
+    .head h1 { margin: 0; font-size: 16px; color: #0d3762; }
+    .head .brand { margin: 2px 0 0; color: #39546e; font-size: 10px; font-weight: 600; }
+    .head .sub { margin: 0; color: #39546e; font-size: 10.5px; text-align: right; }
+    .meta-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 6px; }
+    .meta-table th, .meta-table td { border: 1px solid #dce5ef; padding: 3px 5px; }
+    .meta-table th { background: #edf4fb; text-align: left; width: 9%; font-weight: 600; }
+    .meta-table td { width: 16%; font-weight: 600; color: #153958; }
+    .grid-2 { display: grid; grid-template-columns: 1.45fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .grid-2.equal { grid-template-columns: 1fr 1fr; }
+    .panel { border: 1px solid #dce5ef; border-radius: 6px; padding: 4px; break-inside: avoid; }
+    .panel h2 { margin: 0 0 4px; font-size: 12px; color: #0d3762; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: 1px solid #dce5ef; padding: 3px 5px; vertical-align: middle; }
+    th { background: #edf4fb; text-align: left; font-size: 10.5px; font-weight: 700; }
+    td { font-size: 10.5px; }
+    td.num, th.num { text-align: right; }
+    .total-line { margin-top: 3px; padding-top: 3px; border-top: 1px dashed #ccd8e6; text-align: right; font-weight: 700; color: #123b66; }
+    .ok { color: #1f7a42; font-weight: 700; }
+    .bad { color: #b9362d; font-weight: 700; }
+    .sign { margin-top: 8px; border-top: 1px solid #d3dfec; padding-top: 5px; text-align: center; color: #264767; font-weight: 600; font-size: 10.5px; }
+    .nowrap { white-space: nowrap; }
+    @media print {
+      html, body { margin: 0 !important; padding: 0 !important; }
+      .sheet { break-inside: avoid; page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="head">
+      <div class="head-brand">
+        <img class="head-logo" src="${escapeHtml(BRAND_LOGO_URL)}" alt="ALMEX">
+        <div>
+          <h1>Reporte de Dosificador</h1>
+          <p class="brand">ALMEX</p>
+        </div>
+      </div>
+      <p class="sub">Generado: ${escapeHtml(reportDate)} | Archivo: ${escapeHtml(snap.file)}</p>
+    </div>
+
+    <table class="meta-table">
+      <tbody>
+        <tr>
+          <th>Remision</th><td>${escapeHtml(snap.remisionNo)}</td>
+          <th>Formula</th><td>${escapeHtml(snap.formula)}</td>
+          <th>f'c</th><td>${escapeHtml(snap.fc)}</td>
+          <th>Tipo</th><td>${escapeHtml(snap.tipo)}</td>
+        </tr>
+        <tr>
+          <th>Colocacion</th><td>${escapeHtml(snap.coloc)}</td>
+          <th>T.M.A.</th><td>${escapeHtml(snap.tma)}</td>
+          <th>Rev</th><td>${escapeHtml(snap.rev)}</td>
+          <th>Comp</th><td>${escapeHtml(snap.comp)}</td>
+        </tr>
+        <tr>
+          <th>Fecha Modif</th><td>${escapeHtml(snap.modDate)}</td>
+          <th>Dosificacion</th><td class="nowrap">${escapeHtml(formatNum(snap.dose))} m<sup>3</sup></td>
+          <th>QC</th><td>${escapeHtml(snap.qcUpdatedAt)}</td>
+          <th></th><td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="grid-2">
+      <section class="panel">
+        <h2>Datos de Control de Calidad</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:22%;">Agregado</th>
+              <th class="num" style="width:15%;">PVS</th>
+              <th class="num" style="width:15%;">PVC</th>
+              <th class="num" style="width:16%;">Densidad</th>
+              <th class="num" style="width:16%;">Absorcion</th>
+              <th class="num" style="width:16%;">Humedad</th>
+            </tr>
+          </thead>
+          <tbody>${qcRowsHtml}</tbody>
+        </table>
+      </section>
+      <section class="panel">
+        <h2>Tolerancias de Carga</h2>
+        <table>
+          <thead><tr><th>Material</th><th class="num">Tolerancia</th></tr></thead>
+          <tbody>${tolRowsHtml}</tbody>
+        </table>
+        <h2 style="margin-top:6px;">Parametros de Calculo</h2>
+        <table>
+          <thead><tr><th>Parametro</th><th class="num">Valor</th></tr></thead>
+          <tbody>${paramsRowsHtml}</tbody>
+        </table>
+      </section>
+    </div>
+
+    <div class="grid-2 equal">
+      <section class="panel">
+        <h2>Receta</h2>
+        <table>
+          <thead><tr><th style="width:50%;">Componente</th><th class="num" style="width:30%;">Cantidad</th><th style="width:20%;">Unidad</th></tr></thead>
+          <tbody>${recipeRowsHtml}</tbody>
+        </table>
+        <div class="total-line">Peso aprox por m<sup>3</sup>: ${escapeHtml(formatNum(snap.recipeWeight))}</div>
+      </section>
+      <section class="panel">
+        <h2>Carga Teorica Detallada</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:17%;">Componente</th>
+              <th class="num" style="width:9%;">Diseño A</th>
+              <th class="num" style="width:9%;">Diseño SSS</th>
+              <th class="num" style="width:10%;">Agua libre H.R.</th>
+              <th class="num" style="width:9%;">Vol. Abs.</th>
+              <th class="num" style="width:9%;">Diseño H.R.</th>
+              <th class="num" style="width:10%;">Mezcla Prueba</th>
+              <th style="width:8%;">U.M.</th>
+              <th style="width:19%;">Obs.</th>
+            </tr>
+          </thead>
+          <tbody>${theoreticalRowsHtml}</tbody>
+        </table>
+        <div class="total-line">Peso teorico total: ${escapeHtml(formatNum(snap.theoreticalWeight))}</div>
+        <div class="total-line">Rel. A/C: ${escapeHtml(formatNum(toNumber(snap.calcTotals.relAc || 0)))} | Vol. Abs. + Aire: ${escapeHtml(formatNum(toNumber(snap.calcTotals.absVolumeTotal || 0)))}</div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Carga Real y Diferencial</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:28%;">Componente</th>
+            <th class="num" style="width:16%;">Teorica</th>
+            <th class="num" style="width:16%;">Real</th>
+            <th class="num" style="width:16%;">Diferencia</th>
+            <th class="num" style="width:12%;">Tol. %</th>
+            <th style="width:12%;">Estatus</th>
+          </tr>
+        </thead>
+        <tbody>${realRowsHtml}</tbody>
+      </table>
+      <div class="total-line">Peso real total: ${escapeHtml(formatNum(snap.realWeight))}</div>
+    </section>
+
+    <div class="sign">ForMix by Labsico - Dise&#241;a-Dosifica-Calcula</div>
+  </div>
+</body>
+</html>`;
+}
+
+function openReportWindow(html, successMessage) {
+  const win = window.open("", "_blank");
+  if (!win) {
+    setStatus("El navegador bloqueo la ventana del reporte. Habilita pop-ups e intenta de nuevo.", "warn");
+    return false;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  if (successMessage) setStatus(successMessage, "ok");
+  return true;
+}
+
+function exportDoserReport() {
+  const snap = buildDoserReportSnapshot();
+  if (!snap) {
+    setStatus("Selecciona una mezcla en Dosificador para exportar el reporte.", "warn");
+    return;
+  }
+  const html = buildDoserReportHtml(snap, nowStamp());
+  openReportWindow(html, "Reporte de dosificador generado. Usa Imprimir para guardarlo en PDF.");
+}
+
+async function openRemisionReport(remisionId) {
+  try {
+    const response = await fetch(`/api/remisiones/${encodeURIComponent(remisionId)}?file=${encodeURIComponent(state.file || "")}`);
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo cargar la remision.");
+    }
+    const snap = payload.snapshot && typeof payload.snapshot === "object" ? payload.snapshot : null;
+    if (!snap) {
+      throw new Error("La remision no tiene snapshot de reporte.");
+    }
+    const remisionNo = snap.remisionNo || snap.remision_no || payload.remision_no || "-";
+    const normalized = normalizeDoserReportSnapshot(snap, {
+      remisionNo,
+      file: payload.file || state.file || "-",
+      qcUpdatedAt: state.qcUpdatedAt || "-",
+    });
+    const html = buildDoserReportHtml(normalized, nowStamp());
+    openReportWindow(html);
+    setStatus(`Reporte de remision ${remisionNo} generado. Usa Imprimir para guardarlo en PDF.`, "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+function componentWeightFactor(item) {
+  const unit = (item?.unit || "").toString().toLowerCase();
+  if (unit === "cc" || unit === "ml") return 1 / 1000;
+  return 1;
+}
+
+function isAggregateComponent(name) {
+  return ["Fino 1", "Fino 2", "Grueso 1", "Grueso 2"].includes(name);
+}
+
+function getQualityFor(componentName) {
+  return (
+    state.doser.quality[componentName] || {
+      pvs: 0,
+      pvc: 0,
+      densidad: 0,
+      absorcion: 0,
+      humedad: 0,
+    }
+  );
+}
+
+function doserComponentOrder(recipeItems) {
+  const priority = [
+    "Cemento",
+    "Grueso 1",
+    "Grueso 2",
+    "Fino 1",
+    "Fino 2",
+    "Agua",
+    "Reductor",
+    "Retardante",
+    "Fibra",
+    "Imper",
+  ];
+  const names = recipeItems.map((item) => item.name);
+  const out = [];
+  priority.forEach((name) => {
+    if (names.includes(name)) out.push(name);
+  });
+  names.forEach((name) => {
+    if (!out.includes(name)) out.push(name);
+  });
+  return out;
+}
+
+function resolveAggregateDensityKgPerLt(componentName, params) {
+  const q = getQualityFor(componentName);
+  const candidates = [toNumber(q.densidad), toNumber(q.pvc), toNumber(q.pvs)];
+  for (const raw of candidates) {
+    if (raw <= 0) continue;
+    if (raw > 50) return { value: raw / 1000, source: "qc_kg_m3" };
+    return { value: raw, source: "qc_kg_l" };
+  }
+  return {
+    value: Math.max(0, toNumber(params.densidad_agregado_fallback)),
+    source: "fallback",
+  };
+}
+
+function computeDoserDetailedLoads(recipeItems, dose, params) {
+  const safeDose = Math.max(0, toNumber(dose));
+  const cleanParams = normalizeDoserParams(params);
+  const order = doserComponentOrder(recipeItems);
+  const recipeByName = new Map(recipeItems.map((item) => [item.name, item]));
+
+  const rows = [];
+  let aggAbsDemand = 0;
+  let aggFreeWater = 0;
+  let aggIGravel = 0;
+  let aggISand = 0;
+  let airLiters = (Math.max(0, cleanParams.aire_pct) / 100) * 1000;
+  let cementDesignSss = 0;
+  let waterDesignSss = 0;
+  let aditivo4DesignSss = 0;
+
+  const makeBaseRow = (name) => {
+    const base = recipeByName.get(name) || { qty: 0, unit: componentUnit(name) };
+    return {
+      name,
+      unit: base.unit || componentUnit(name),
+      designA: Math.max(0, toNumber(base.qty)),
+      designSss: 0,
+      freeWater: 0,
+      absVolume: 0,
+      designReal: 0,
+      trialLoad: 0,
+      trialUnit: base.unit || componentUnit(name),
+      note: "",
+      includeAbsVolume: false,
+      includeWeightTotal: true,
+    };
+  };
+
+  order.forEach((name) => {
+    const row = makeBaseRow(name);
+    if (name === "Cemento") {
+      row.designSss = row.designA;
+      row.designReal = row.designSss;
+      const div = safeDivide(row.designSss, cleanParams.cemento_pesp, 0);
+      row.absVolume = div.value;
+      row.includeAbsVolume = true;
+      row.includeWeightTotal = true;
+      row.trialLoad = row.designReal * safeDose;
+      row.trialUnit = "kg";
+      cementDesignSss = row.designSss;
+      if (div.fallbackUsed) row.note = "Peso esp. cemento faltante";
+    } else if (isAggregateComponent(name)) {
+      const q = getQualityFor(name);
+      const absPct = Math.max(0, toNumber(q.absorcion));
+      const humPct = Math.max(0, toNumber(q.humedad));
+      row.designSss = row.designA + ((row.designA * absPct) / 100);
+      row.freeWater = ((humPct - absPct) / 100) * row.designSss;
+      row.designReal = row.designSss + row.freeWater;
+      const dens = resolveAggregateDensityKgPerLt(name, cleanParams);
+      const div = safeDivide(row.designSss, dens.value, 0);
+      row.absVolume = div.value;
+      row.includeAbsVolume = true;
+      row.includeWeightTotal = true;
+      row.trialLoad = row.designReal * safeDose;
+      row.trialUnit = "kg";
+      aggAbsDemand += (row.designA * absPct) / 100;
+      aggFreeWater += row.freeWater;
+      if (name.startsWith("Grueso")) aggIGravel += row.designSss;
+      if (name.startsWith("Fino")) aggISand += row.designSss;
+      if (dens.source === "fallback" || div.fallbackUsed) row.note = "Dato base faltante";
+    } else if (name === "Agua") {
+      row.designSss = row.designA - aggAbsDemand;
+      row.freeWater = aggFreeWater;
+      row.absVolume = row.designSss;
+      row.designReal = row.designSss - row.freeWater;
+      row.includeAbsVolume = true;
+      row.includeWeightTotal = true;
+      row.trialLoad = row.designReal * safeDose;
+      row.trialUnit = "Lts";
+      waterDesignSss = row.designSss;
+    } else if (name === "Reductor" || name === "Retardante") {
+      // Flujo Excel: aditivo en diseno como Lts/m3.
+      row.designSss = row.designA;
+      row.absVolume = row.designSss;
+      row.designReal = row.designSss;
+      row.includeAbsVolume = true;
+      row.includeWeightTotal = true;
+      // Formula equivalente a: (m3/1000) * (L/m3) * 1000
+      row.trialLoad = (safeDose / 1000) * row.designReal * 1000;
+      row.trialUnit = "Lts";
+      if (name === "Retardante") aditivo4DesignSss = row.designSss;
+    } else {
+      row.designSss = row.designA;
+      row.designReal = row.designSss;
+      if (row.unit === "Lts") {
+        row.absVolume = row.designSss;
+        row.includeAbsVolume = true;
+      }
+      row.trialLoad = row.designReal * safeDose;
+      row.trialUnit = row.unit || "kg";
+    }
+    rows.push(row);
+  });
+
+  const sumBy = (fn) => rows.reduce((acc, r) => acc + fn(r), 0);
+  const absTotalBase = sumBy((r) => (r.includeAbsVolume ? r.absVolume : 0));
+  const absTotal = absTotalBase + airLiters;
+  const relAc = safeDivide(waterDesignSss, cementDesignSss, 0).value;
+  const gravelPct = safeDivide(aggIGravel * 100, aggIGravel + aggISand, 0).value;
+  const sandPct = safeDivide(aggISand * 100, aggIGravel + aggISand, 0).value;
+  const gravelSandRatio = safeDivide(aggIGravel, aggISand, 0).value;
+  const fino1 = rows.find((r) => r.name === "Fino 1");
+  const fino2 = rows.find((r) => r.name === "Fino 2");
+  const finoContent =
+    cementDesignSss +
+    ((Math.max(0, cleanParams.pxl_pond_pct) * toNumber(fino1?.designSss || 0)) / 100) +
+    ((toNumber(fino2?.designSss || 0) * Math.max(0, cleanParams.pasa_malla_200_pct)) / 100) +
+    aditivo4DesignSss;
+  const recipeWeight = sumBy((r) => {
+    const isAditivo = r.name === "Reductor" || r.name === "Retardante";
+    const qty = isAditivo ? r.designSss : r.designA;
+    const unit = isAditivo ? "Lts" : (r.unit || "kg");
+    return qty * componentWeightFactor({ unit });
+  });
+  const theoreticalWeight = sumBy((r) =>
+    r.includeWeightTotal ? r.trialLoad * componentWeightFactor({ unit: r.trialUnit || r.unit }) : 0
+  );
+
+  return {
+    rows,
+    totals: {
+      recipeWeight,
+      theoreticalWeight,
+      absVolumeTotal: absTotal,
+      airLiters,
+      gravelPct,
+      sandPct,
+      gravelSandRatio,
+      relAc,
+      finoContent,
+      freeWaterTotal: aggFreeWater,
+    },
+  };
+}
+
+function adjustRecipeByQuality(recipeItems, dose) {
+  const safeDose = Math.max(0, toNumber(dose));
+  const baseWater = recipeItems.find((item) => item.name === "Agua");
+  let freeWaterCorrection = 0;
+
+  const adjusted = recipeItems.map((item) => {
+    let qty = item.qty * safeDose;
+    if (isAggregateComponent(item.name)) {
+      const q = getQualityFor(item.name);
+      const abs = (q.absorcion || 0) / 100;
+      const hum = (q.humedad || 0) / 100;
+      const den = 1 + abs;
+      qty = den > 0 ? (qty * (1 + hum)) / den : qty;
+      freeWaterCorrection += item.qty * safeDose * ((q.humedad || 0) - (q.absorcion || 0)) / 100;
+    }
+    return { ...item, qty };
+  });
+
+  if (baseWater) {
+    const waterItem = adjusted.find((item) => item.name === "Agua");
+    if (waterItem) waterItem.qty = Math.max(0, waterItem.qty - freeWaterCorrection);
+  }
+  return adjusted;
+}
+
+function toleranceFor(componentName) {
+  if (componentName === "Cemento") return state.doser.tolerances.cemento || 0;
+  if (componentName === "Agua") return state.doser.tolerances.agua || 0;
+  if (["Fino 1", "Fino 2", "Grueso 1", "Grueso 2"].includes(componentName)) {
+    return state.doser.tolerances.agregados || 0;
+  }
+  return state.doser.tolerances.aditivo || 0;
+}
+
+function applyDoserFilter(entry, filters) {
+  const row = entry.row;
+  const family = deriveFamily(row);
+  const formula = valueByKey(row, "formula");
+  const no = valueByKey(row, "no");
+  const cod = valueByKey(row, "cod");
+  if (filters.family) {
+    const term = normalize(filters.family);
+    const haystack = `${family} ${formula} ${no} ${cod}`;
+    if (!normalize(haystack).includes(term)) return false;
+  }
+  if (filters.fc && normalize(valueByKey(row, "fc")) !== normalize(filters.fc)) return false;
+  if (filters.edad && normalize(valueByKey(row, "edad")) !== normalize(filters.edad)) return false;
+  if (filters.tipo && normalize(valueByKey(row, "tipo")) !== normalize(filters.tipo)) return false;
+  if (filters.tma && normalize(valueByKey(row, "tma")) !== normalize(filters.tma)) return false;
+  if (filters.rev && normalize(valueByKey(row, "rev")) !== normalize(filters.rev)) return false;
+  if (filters.comp && normalize(valueByKey(row, "comp")) !== normalize(filters.comp)) return false;
+  return true;
+}
+
+function runDoserSearch() {
+  const filters = {
+    family: doserFields.family.value.trim(),
+    fc: doserFields.fc.value,
+    edad: doserFields.edad.value,
+    tipo: doserFields.tipo.value,
+    tma: doserFields.tma.value,
+    rev: doserFields.rev.value,
+    comp: doserFields.comp.value,
+  };
+  const mapped = state.rows.map((row, sourceIndex) => ({ row, sourceIndex }));
+  state.doser.results = mapped.filter((entry) => applyDoserFilter(entry, filters));
+  if (!state.doser.results.some((item) => item.sourceIndex === state.doser.selectedRow)) {
+    state.doser.selectedRow = state.doser.results.length ? state.doser.results[0].sourceIndex : null;
+    state.doser.realLoads = {};
+  }
+  renderDoserResults();
+  renderDosificador();
+}
+
+function fillDoserSelectors() {
+  fillSelect(doserFields.fc, getUniqueValues("fc"));
+  fillSelect(doserFields.edad, getUniqueValues("edad"));
+  fillSelect(doserFields.tipo, getUniqueValues("tipo"));
+  fillSelect(doserFields.tma, getUniqueValues("tma"));
+  fillSelect(doserFields.rev, getUniqueValues("rev"));
+  fillSelect(doserFields.comp, getUniqueValues("comp"));
+}
+
+function renderDoserResults() {
+  doserQueryBody.innerHTML = "";
+  if (!state.doser.results.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="9">Sin resultados para los filtros del dosificador.</td>`;
+    doserQueryBody.appendChild(tr);
+    return;
+  }
+  state.doser.results.forEach((entry) => {
+    const row = entry.row;
+    const tr = document.createElement("tr");
+    if (entry.sourceIndex === state.doser.selectedRow) tr.classList.add("is-selected");
+    tr.innerHTML = `
+      <td>${deriveFamily(row)}</td>
+      <td>${valueByKey(row, "formula") || "-"}</td>
+      <td>${valueByKey(row, "fc") || "-"}</td>
+      <td>${valueByKey(row, "edad") || "-"}</td>
+      <td>${valueByKey(row, "tipo") || "-"}</td>
+      <td>${valueByKey(row, "tma") || "-"}</td>
+      <td>${valueByKey(row, "rev") || "-"}</td>
+      <td>${valueByKey(row, "comp") || "-"}</td>
+      <td>${getRowModDate(row) || "-"}</td>
+    `;
+    tr.addEventListener("click", () => {
+      state.doser.selectedRow = entry.sourceIndex;
+      state.doser.realLoads = {};
+      renderDoserResults();
+      renderDosificador();
+    });
+    doserQueryBody.appendChild(tr);
+  });
+}
+
+function renderRemisionList() {
+  if (!doserRemisionBody) return;
+  doserRemisionBody.innerHTML = "";
+  const items = Array.isArray(state.doser.remisiones) ? state.doser.remisiones : [];
+  if (!items.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="9">Sin remisiones guardadas para este archivo.</td>`;
+    doserRemisionBody.appendChild(tr);
+    if (remisionMeta) remisionMeta.textContent = "Remisiones: 0";
+    return;
+  }
+  items.forEach((item) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(item.remision_no || "-")}</td>
+      <td>${escapeHtml(item.formula || "-")}</td>
+      <td>${escapeHtml(item.fc || "-")}</td>
+      <td>${escapeHtml(item.tma || "-")}</td>
+      <td>${formatNum(item.dosificacion_m3 || 0)}</td>
+      <td>${formatNum(item.peso_real_total || 0)}</td>
+      <td>${escapeHtml(item.created_at || "-")}</td>
+      <td>${escapeHtml(item.created_by || "-")}</td>
+      <td class="remision-actions">
+        <button type="button" class="btn btn--secondary btn--small remision-report-btn">Ver reporte</button>
+        <button type="button" class="btn btn--danger btn--small remision-delete-btn">Eliminar</button>
+      </td>
+    `;
+    const reportBtn = tr.querySelector(".remision-report-btn");
+    if (reportBtn) {
+      reportBtn.addEventListener("click", () => openRemisionReport(item.id));
+    }
+    const deleteBtn = tr.querySelector(".remision-delete-btn");
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no));
+    }
+    doserRemisionBody.appendChild(tr);
+  });
+  if (remisionMeta) remisionMeta.textContent = `Remisiones: ${items.length}`;
+}
+
+async function loadRemisiones() {
+  if (!canAccessView("dosificador")) return;
+  try {
+    const response = await fetch(`/api/remisiones?file=${encodeURIComponent(state.file || "")}&limit=80`);
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo cargar remisiones.");
+    }
+    state.doser.remisiones = Array.isArray(payload.items) ? payload.items : [];
+  } catch (error) {
+    state.doser.remisiones = [];
+    if (remisionMeta) remisionMeta.textContent = `Error remisiones: ${String(error)}`;
+  }
+  renderRemisionList();
+}
+
+async function deleteRemision(remisionId, remisionNo) {
+  try {
+    const id = Number(remisionId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new Error("ID de remision invalido.");
+    }
+    const code = (remisionNo || "-").toString().trim() || "-";
+    const confirmed = await uiConfirm(
+      `Se eliminara la remision ${code}. Esta accion no se puede deshacer. Continuar?`,
+      {
+        title: "Eliminar remision",
+        confirmText: "Eliminar",
+        tone: "err",
+      }
+    );
+    if (!confirmed) return;
+    const response = await fetch(`/api/remisiones/${encodeURIComponent(id)}?file=${encodeURIComponent(state.file || "")}`, {
+      method: "DELETE",
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo eliminar la remision.");
+    }
+    await loadRemisiones();
+    setStatus(`Remision eliminada: ${payload.remision_no || code}`, "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function saveRemision() {
+  try {
+    const remisionNo = ((remisionNoInput?.value || "").toString().trim().toUpperCase());
+    if (!remisionNo) {
+      setStatus("Ingresa el numero de remision.", "warn");
+      return;
+    }
+    const snap = buildDoserReportSnapshot();
+    if (!snap) {
+      setStatus("Selecciona una mezcla para guardar la remision.", "warn");
+      return;
+    }
+    const response = await fetch("/api/remisiones/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: state.file,
+        remision_no: remisionNo,
+        snapshot: snap,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo guardar la remision.");
+    }
+    if (remisionNoInput) remisionNoInput.value = "";
+    await loadRemisiones();
+    setStatus(`Remision guardada: ${payload.remision_no}`, "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+function syncQcStamps() {
+  const stamp = state.qcUpdatedAt || "-";
+  const suffix = state.qcError ? ` | Error: ${state.qcError}` : "";
+  editorQcMeta.textContent = `Archivo: ${state.file || "-"} | Fecha QC: ${stamp}${suffix}`;
+  qcLinkedStamp.textContent = `Sincronizado con Editor CSV | Fecha QC: ${stamp}`;
+}
+
+function onQcFieldChange(aggName, field, rawValue, source = "editor") {
+  if (source === "editor" && field === "humedad") return;
+  if (source === "dosificador" && field !== "humedad") return;
+  if (!state.doser.quality[aggName]) state.doser.quality[aggName] = {};
+  state.doser.quality[aggName][field] = toNumber(rawValue);
+  setQcDirty(true);
+  syncQcStamps();
+  if (state.view === "dosificador") renderDosificador();
+  if (state.selectedQueryRow !== null) renderRecipeAndCosts(state.rows[state.selectedQueryRow]);
+}
+
+function renderEditorQcTable() {
+  editorQcBody.innerHTML = "";
+  QC_AGGREGATES.forEach((aggName) => {
+    const tr = document.createElement("tr");
+    const tdName = document.createElement("td");
+    tdName.textContent = aggName;
+    tr.appendChild(tdName);
+    QC_FIELDS.forEach((field) => {
+      const td = document.createElement("td");
+      const input = document.createElement("input");
+      input.className = "qc-input";
+      input.type = "number";
+      input.min = "0";
+      input.step = "0.01";
+      input.value = (state.doser.quality[aggName]?.[field] ?? 0).toString();
+      const editable = state.auth.canEdit && field !== "humedad";
+      input.disabled = !editable;
+      if (!editable) input.classList.add("qc-input--readonly");
+      if (editable) {
+        input.addEventListener("input", () => onQcFieldChange(aggName, field, input.value, "editor"));
+      }
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
+    editorQcBody.appendChild(tr);
+  });
+  syncQcStamps();
+}
+
+function renderQcTable() {
+  qcBody.innerHTML = "";
+  QC_AGGREGATES.forEach((aggName) => {
+    const tr = document.createElement("tr");
+    const tdName = document.createElement("td");
+    tdName.textContent = aggName;
+    tr.appendChild(tdName);
+    QC_FIELDS.forEach((field) => {
+      const td = document.createElement("td");
+      const input = document.createElement("input");
+      input.className = "qc-input";
+      input.type = "number";
+      input.min = "0";
+      input.step = "0.01";
+      input.value = (state.doser.quality[aggName]?.[field] ?? 0).toString();
+      const editable = state.auth.canEditQcHumidity && field === "humedad";
+      input.disabled = !editable;
+      if (!editable) input.classList.add("qc-input--readonly");
+      if (editable) {
+        input.addEventListener("change", () => onQcFieldChange(aggName, field, input.value, "dosificador"));
+      }
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
+    qcBody.appendChild(tr);
+  });
+  syncQcStamps();
+}
+
+function computeTheoreticalLoads(recipeItems) {
+  const dose = Math.max(0, toNumber(doseM3Input.value));
+  state.doser.dosageM3 = dose;
+  const calc = computeDoserDetailedLoads(recipeItems, dose, state.doser.params);
+  return calc.rows.map((item) => ({
+    name: item.name,
+    unit: item.trialUnit || item.unit,
+    qty: item.trialLoad,
+  }));
+}
+
+function renderDosificador() {
+  renderQcTable();
+  renderRemisionList();
+  state.doser.tolerances.cemento = toNumber(tolCementoInput.value || "1");
+  state.doser.tolerances.agregados = toNumber(tolAgregadosInput.value || "3");
+  state.doser.tolerances.agua = toNumber(tolAguaInput.value || "2");
+  state.doser.tolerances.aditivo = toNumber(tolAditivoInput.value || "1");
+  state.doser.params = readDoserParamsFromInputs();
+  const dose = Math.max(0, toNumber(doseM3Input.value));
+  state.doser.dosageM3 = dose;
+
+  const selectedIndex = state.doser.selectedRow;
+  const selectedRow = typeof selectedIndex === "number" ? state.rows[selectedIndex] : null;
+  const baseSummary = `Dosificacion actual: ${formatNum(dose)} m<sup>3</sup>`;
+  doserSummary.innerHTML = baseSummary;
+  if (doserParamsMeta) {
+    const stamp = state.doser.paramsUpdatedAt ? state.doser.paramsUpdatedAt : "sin guardar";
+    const lockLabel = canEditDoserTolerances() ? "" : " | solo lectura";
+    doserParamsMeta.textContent = `Parametros activos (${stamp})${lockLabel}`;
+  }
+
+  doserRecipeBody.innerHTML = "";
+  doserTheoreticalBody.innerHTML = "";
+  doserRealBody.innerHTML = "";
+  doserRecipeWeight.textContent = "0.00";
+  doserTheoreticalWeight.textContent = "0.00";
+  doserRealWeight.textContent = "0.00";
+
+  if (!selectedRow) {
+    doserSelectedMeta.textContent = "Selecciona una mezcla para dosificar";
+    return;
+  }
+
+  doserSelectedMeta.textContent = `Formula: ${valueByKey(selectedRow, "formula") || "-"} | f'c: ${
+    valueByKey(selectedRow, "fc") || "-"
+  } | Edad: ${valueByKey(selectedRow, "edad") || "-"} | Tipo: ${valueByKey(selectedRow, "tipo") || "-"} | T.M.A.: ${
+    valueByKey(selectedRow, "tma") || "-"
+  } | Rev: ${valueByKey(selectedRow, "rev") || "-"} | Comp: ${valueByKey(selectedRow, "comp") || "-"}`;
+
+  const recipeItems = normalizeDoserRecipeItems(extractRecipe(selectedRow));
+  const detailed = computeDoserDetailedLoads(recipeItems, dose, state.doser.params);
+
+  let recipeTotal = 0;
+  detailed.rows.forEach((item) => {
+    const isAditivo = item.name === "Reductor" || item.name === "Retardante";
+    const qty = item.designA;
+    const unit = isAditivo ? "Lts/m3" : item.unit;
+    recipeTotal += qty * componentWeightFactor({ unit });
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.name}</td>
+      <td>${formatNum(qty)} <span class="recipe-inline-unit">${unit}</span></td>
+    `;
+    doserRecipeBody.appendChild(tr);
+  });
+  doserRecipeWeight.textContent = formatNum(recipeTotal);
+
+  let theoTotal = 0;
+  detailed.rows.forEach((item) => {
+    theoTotal += item.trialLoad * componentWeightFactor({ unit: item.trialUnit || item.unit });
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.name}</td>
+      <td>${formatVol(item.designA)}</td>
+      <td>${formatVol(item.designSss)}</td>
+      <td>${formatVol(item.freeWater)}</td>
+      <td>${item.includeAbsVolume ? formatVol(item.absVolume) : "-"}</td>
+      <td>${formatVol(item.designReal)}</td>
+      <td>${formatVol(item.trialLoad)}</td>
+      <td>${item.trialUnit || item.unit}</td>
+      <td>${item.note || "-"}</td>
+    `;
+    doserTheoreticalBody.appendChild(tr);
+  });
+  doserTheoreticalWeight.textContent = formatNum(theoTotal);
+  doserSummary.innerHTML = `${baseSummary} | Rel. A/C: ${formatNum(detailed.totals.relAc || 0)} | Vol. Abs. + Aire: ${formatNum(detailed.totals.absVolumeTotal || 0)}`;
+
+  let realTotal = 0;
+  detailed.rows.forEach((item) => {
+    if (typeof state.doser.realLoads[item.name] !== "number") {
+      state.doser.realLoads[item.name] = item.trialLoad;
+    }
+    const real = state.doser.realLoads[item.name];
+    realTotal += real * componentWeightFactor({ unit: item.trialUnit || item.unit });
+    const diff = real - item.trialLoad;
+    const tol = toleranceFor(item.name);
+    const lim = item.trialLoad * (tol / 100);
+    const ok = Math.abs(diff) <= lim;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.name}</td>
+      <td>${formatNum(item.trialLoad)}</td>
+      <td><input class="doser-real-input" type="number" min="0" step="0.01" value="${real.toFixed(2)}"></td>
+      <td>${diff >= 0 ? "+" : ""}${formatNum(diff)}</td>
+      <td class="${ok ? "status-ok" : "status-bad"}">${ok ? "OK" : "FUERA"}</td>
+    `;
+    const input = tr.querySelector("input");
+    let lastCommitted = toNumber(input.value);
+    const commitRealValue = () => {
+      const next = toNumber(input.value);
+      if (next === lastCommitted) return;
+      lastCommitted = next;
+      state.doser.realLoads[item.name] = next;
+      renderDosificador();
+    };
+    input.addEventListener("change", commitRealValue);
+    input.addEventListener("blur", commitRealValue);
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      commitRealValue();
+      input.blur();
+    });
+    doserRealBody.appendChild(tr);
+  });
+  doserRealWeight.textContent = formatNum(realTotal);
+}
+function applyQueryFilter(entry, filters) {
+  const { row } = entry;
+  const family = deriveFamily(row);
+  const formula = valueByKey(row, "formula");
+  const no = valueByKey(row, "no");
+  const cod = valueByKey(row, "cod");
+
+  if (filters.family) {
+    const term = normalize(filters.family);
+    const haystack = `${family} ${formula} ${no} ${cod}`;
+    if (!normalize(haystack).includes(term)) return false;
+  }
+  if (filters.fc && normalize(valueByKey(row, "fc")) !== normalize(filters.fc)) return false;
+  if (filters.edad && normalize(valueByKey(row, "edad")) !== normalize(filters.edad)) return false;
+  if (filters.tipo && normalize(valueByKey(row, "tipo")) !== normalize(filters.tipo)) return false;
+  if (filters.tma && normalize(valueByKey(row, "tma")) !== normalize(filters.tma)) return false;
+  if (filters.rev && normalize(valueByKey(row, "rev")) !== normalize(filters.rev)) return false;
+  if (filters.comp && normalize(valueByKey(row, "comp")) !== normalize(filters.comp)) return false;
+  return true;
+}
+
+function adjustQueryVisibleRows(rowsToShow = 5) {
+  if (!queryTable || !queryResultShell) return;
+  const headerHeight = queryTable.tHead ? queryTable.tHead.offsetHeight : 0;
+  const firstRow = queryBody.querySelector("tr");
+  const rowHeight = firstRow ? firstRow.offsetHeight : 34;
+  const shellHeight = Math.round(headerHeight + (rowHeight * rowsToShow) + 2);
+  queryResultShell.style.maxHeight = `${shellHeight}px`;
+  queryResultShell.style.minHeight = "0";
+  queryResultShell.style.flex = "0 0 auto";
+  queryResultShell.style.overflow = "auto";
+}
+
+function renderQueryResults() {
+  queryBody.innerHTML = "";
+  if (state.queryResults.length === 0) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="9">No se encontraron resultados con esos filtros.</td>`;
+    queryBody.appendChild(tr);
+    querySummary.textContent = "Resultados: 0";
+    renderRecipeAndCosts(null);
+    setConsultaStep(0);
+    adjustQueryVisibleRows(5);
+    return;
+  }
+
+  state.queryResults.forEach((entry) => {
+    const row = entry.row;
+    const tr = document.createElement("tr");
+    if (entry.sourceIndex === state.selectedQueryRow) tr.classList.add("is-selected");
+    tr.innerHTML = `
+      <td>${deriveFamily(row)}</td>
+      <td>${valueByKey(row, "formula") || "-"}</td>
+      <td>${valueByKey(row, "fc") || "-"}</td>
+      <td>${valueByKey(row, "edad") || "-"}</td>
+      <td>${valueByKey(row, "tipo") || "-"}</td>
+      <td>${valueByKey(row, "tma") || "-"}</td>
+      <td>${valueByKey(row, "rev") || "-"}</td>
+      <td>${valueByKey(row, "comp") || "-"}</td>
+      <td>${getRowModDate(row) || "-"}</td>
+    `;
+    tr.addEventListener("click", () => {
+      state.selectedQueryRow = entry.sourceIndex;
+      renderQueryResults();
+      renderRecipeAndCosts(state.rows[entry.sourceIndex]);
+      setConsultaStep(1);
+    });
+    queryBody.appendChild(tr);
+  });
+
+  querySummary.textContent = `Resultados: ${state.queryResults.length} (clic en una fila para ver receta)`;
+  if (!state.queryResults.some((item) => item.sourceIndex === state.selectedQueryRow)) {
+    state.selectedQueryRow = state.queryResults[0].sourceIndex;
+  }
+  renderRecipeAndCosts(state.rows[state.selectedQueryRow]);
+  adjustQueryVisibleRows(5);
+}
+
+function runQuery() {
+  const filters = {
+    family: queryFields.family.value.trim(),
+    fc: queryFields.fc.value,
+    edad: queryFields.edad.value,
+    tipo: queryFields.tipo.value,
+    tma: queryFields.tma.value,
+    rev: queryFields.rev.value,
+    comp: queryFields.comp.value,
+  };
+
+  const mapped = state.rows.map((row, sourceIndex) => ({ row, sourceIndex }));
+  state.queryResults = mapped.filter((entry) => applyQueryFilter(entry, filters));
+  renderQueryResults();
+}
+
+function populateQuerySelectors() {
+  fillSelect(queryFields.fc, getUniqueValues("fc"));
+  fillSelect(queryFields.edad, getUniqueValues("edad"));
+  fillSelect(queryFields.tipo, getUniqueValues("tipo"));
+  fillSelect(queryFields.tma, getUniqueValues("tma"));
+  fillSelect(queryFields.rev, getUniqueValues("rev"));
+  fillSelect(queryFields.comp, getUniqueValues("comp"));
+}
+
+function refreshConsulta() {
+  buildHeaderIndex();
+  populateQuerySelectors();
+  fillDoserSelectors();
+  renderFamiliesBoard();
+  runQuery();
+  runDoserSearch();
+}
+
+function syncDoserParamInputs() {
+  const p = state.doser.params || defaultDoserParams();
+  if (paramCementoPespInput) paramCementoPespInput.value = (p.cemento_pesp ?? 0).toString();
+  if (paramAirePctInput) paramAirePctInput.value = (p.aire_pct ?? 0).toString();
+  if (paramPasa200PctInput) paramPasa200PctInput.value = (p.pasa_malla_200_pct ?? 0).toString();
+  if (paramPxlPctInput) paramPxlPctInput.value = (p.pxl_pond_pct ?? 0).toString();
+  if (paramDensidadAggInput) paramDensidadAggInput.value = (p.densidad_agregado_fallback ?? 0).toString();
+}
+
+function readDoserParamsFromInputs() {
+  return normalizeDoserParams({
+    cemento_pesp: paramCementoPespInput?.value,
+    aire_pct: paramAirePctInput?.value,
+    pasa_malla_200_pct: paramPasa200PctInput?.value,
+    pxl_pond_pct: paramPxlPctInput?.value,
+    densidad_agregado_fallback: paramDensidadAggInput?.value,
+  });
+}
+
+async function loadQcData(fileName = state.file) {
+  state.qcError = "";
+  try {
+    const response = await fetch(`/api/qc?file=${encodeURIComponent(fileName || "")}`);
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo cargar Control de Calidad.");
+    }
+    state.qcVersion = Number.isFinite(Number(payload.version)) ? Number(payload.version) : 0;
+    state.qcUpdatedAt = payload.updated_at || "";
+    state.doser.quality = normalizeQualityValues(payload.values);
+    setQcDirty(false);
+  } catch (error) {
+    state.qcVersion = 0;
+    state.qcUpdatedAt = "";
+    state.doser.quality = createDefaultQuality();
+    state.qcError = String(error);
+    setQcDirty(false);
+  }
+  renderEditorQcTable();
+}
+
+async function loadDoserParams(fileName = state.file) {
+  try {
+    const response = await fetch(`/api/doser/params?file=${encodeURIComponent(fileName || "")}`);
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudieron cargar parametros de dosificacion.");
+    }
+    state.doser.paramsVersion = Number.isFinite(Number(payload.version)) ? Number(payload.version) : 0;
+    state.doser.paramsUpdatedAt = payload.updated_at || "";
+    state.doser.params = normalizeDoserParams(payload.values);
+  } catch (error) {
+    state.doser.paramsVersion = 0;
+    state.doser.paramsUpdatedAt = "";
+    state.doser.params = defaultDoserParams();
+    setStatus(String(error), "warn");
+  }
+  syncDoserParamInputs();
+}
+
+async function saveDoserParams() {
+  if (!canEditDoserTolerances()) {
+    setStatus("Solo administrador y jefe-de-planta pueden guardar parametros de dosificacion.", "warn");
+    return;
+  }
+  try {
+    const values = readDoserParamsFromInputs();
+    const response = await fetch("/api/doser/params/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: state.file,
+        version: state.doser.paramsVersion,
+        values,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      if (response.status === 409) {
+        throw new Error("Conflicto de version en parametros de dosificacion. Recarga y vuelve a intentar.");
+      }
+      throw new Error(payload.error || "No se pudieron guardar parametros de dosificacion.");
+    }
+    state.doser.paramsVersion = Number(payload.version || 0);
+    state.doser.paramsUpdatedAt = payload.updated_at || "";
+    state.doser.params = normalizeDoserParams(payload.values);
+    syncDoserParamInputs();
+    renderDosificador();
+    setStatus("Parametros de dosificacion guardados.", "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function saveQcData() {
+  try {
+    const response = await fetch("/api/qc/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: state.file,
+        version: state.qcVersion,
+        values: state.doser.quality,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      if (response.status === 409) {
+        throw new Error("Conflicto de version en Control de Calidad. Recarga y vuelve a intentar.");
+      }
+      throw new Error(payload.error || "No se pudo guardar Control de Calidad.");
+    }
+    state.qcVersion = Number(payload.version || 0);
+    state.qcUpdatedAt = payload.updated_at || "";
+    state.doser.quality = normalizeQualityValues(payload.values);
+    state.qcError = "";
+    setQcDirty(false);
+    renderEditorQcTable();
+    renderDosificador();
+    if (state.selectedQueryRow !== null) renderRecipeAndCosts(state.rows[state.selectedQueryRow]);
+    setStatus("Control de Calidad guardado.", "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function saveQcHumidityData() {
+  if (!state.auth.canEditQcHumidity) {
+    setStatus("No tienes permisos para guardar humedad.", "warn");
+    return;
+  }
+  try {
+    const humidityValues = {};
+    QC_AGGREGATES.forEach((agg) => {
+      humidityValues[agg] = {
+        humedad: toNumber(state.doser.quality[agg]?.humedad ?? 0),
+      };
+    });
+    const response = await fetch("/api/qc/humidity/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: state.file,
+        version: state.qcVersion,
+        values: humidityValues,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      if (response.status === 409) {
+        throw new Error("Conflicto de version en humedad. Recarga y vuelve a intentar.");
+      }
+      throw new Error(payload.error || "No se pudo guardar la humedad.");
+    }
+    state.qcVersion = Number(payload.version || 0);
+    state.qcUpdatedAt = payload.updated_at || "";
+    state.doser.quality = normalizeQualityValues(payload.values);
+    state.qcError = "";
+    setQcDirty(false);
+    renderEditorQcTable();
+    renderDosificador();
+    if (state.selectedQueryRow !== null) renderRecipeAndCosts(state.rows[state.selectedQueryRow]);
+    setStatus("Humedad guardada correctamente.", "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function loadData() {
+  try {
+    const response = await fetch("/api/data");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "No se pudo cargar el archivo.");
+
+    state.file = payload.file;
+    state.files = payload.files || [];
+    state.fileInfos = Array.isArray(payload.file_infos)
+      ? payload.file_infos
+          .map((info) => ({
+            name: (info?.name || "").toString(),
+            family: (info?.family || "").toString().trim(),
+          }))
+          .filter((info) => info.name)
+      : state.files.map((name) => ({ name: (name || "").toString(), family: "" }));
+    state.datasetFamily = (payload.family || "").toString().trim();
+    state.version = Number.isFinite(Number(payload.version)) ? Number(payload.version) : null;
+    state.encoding = payload.encoding;
+    state.delimiter = payload.delimiter;
+    state.updatedAt = payload.updated_at || "";
+    state.headers = payload.headers || [];
+    state.rows = payload.rows || [];
+    ensureModDateColumn();
+    state.selected.clear();
+    state.sort = { col: null, dir: "asc" };
+    state.searchText = "";
+    searchInput.value = "";
+    setDirty(false);
+    await loadQcData(state.file);
+    await loadDoserParams(state.file);
+    renderFileSelect();
+    if (datasetFamilyInput) datasetFamilyInput.value = state.datasetFamily;
+    render();
+    refreshConsulta();
+    await loadRemisiones();
+    setStatus("Archivo cargado correctamente.", "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function selectActiveFile(fileName) {
+  try {
+    const response = await fetch("/api/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file: fileName }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "No se pudo cambiar el archivo.");
+    setStatus(`Archivo activo: ${payload.file}`, "ok");
+    await loadData();
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function saveDatasetFamily() {
+  if (!datasetFamilyInput) return;
+  const familyCode = datasetFamilyInput.value.trim().toUpperCase();
+  if (!familyCode) {
+    setStatus("La familia no puede quedar vacia.", "warn");
+    return;
+  }
+  try {
+    const response = await fetch("/api/family", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file: state.file,
+        family_code: familyCode,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo guardar la familia.");
+    }
+    state.datasetFamily = (payload.family || "").toString().trim();
+    if (Array.isArray(payload.file_infos)) {
+      state.fileInfos = payload.file_infos
+        .map((info) => ({
+          name: (info?.name || "").toString(),
+          family: (info?.family || "").toString().trim(),
+        }))
+        .filter((info) => info.name);
+      state.files = state.fileInfos.map((item) => item.name);
+    }
+    datasetFamilyInput.value = state.datasetFamily;
+    renderFileSelect();
+    refreshConsulta();
+    renderMeta(getProcessedRows().length);
+    setStatus(`Familia actualizada: ${state.datasetFamily}`, "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function chooseImportMode(preview) {
+  const duplicateMsg = preview.duplicate_of
+    ? `\nDetectado contenido duplicado de: ${preview.duplicate_of}`
+    : "";
+  const suggested = preview.suggested_mode || "new";
+  const answer = await uiPrompt(
+    `Modo de importacion (${preview.allowed_modes.join(" | ")}). Recomendado: ${suggested}.${duplicateMsg}`,
+    suggested,
+    {
+      title: "Importacion de CSV",
+      confirmText: "Seleccionar",
+    }
+  );
+  if (answer === null) return null;
+  const mode = answer.trim().toLowerCase();
+  if (!preview.allowed_modes.includes(mode)) {
+    throw new Error("Modo invalido. Usa new, replace o merge.");
+  }
+  return mode;
+}
+
+async function chooseFamilyCode(preview, mode) {
+  const detected = (preview.family_guess || "").toString().trim().toUpperCase();
+  const current = (state.datasetFamily || "").toString().trim().toUpperCase();
+  const defaultValue = mode === "new" ? detected : detected || current;
+  const promptText =
+    mode === "new"
+      ? `Familia detectada: ${detected || "no detectada"}.\nConfirma o escribe la familia del nuevo dataset (ej. 40, 60, 70).`
+      : `Familia detectada en CSV: ${detected || "no detectada"}.\nEscribe la familia para el dataset destino o deja vacio para mantener la actual (${current || "-"})`;
+  const answer = await uiPrompt(promptText, defaultValue, {
+    title: "Familia del dataset",
+    confirmText: "Continuar",
+  });
+  if (answer === null) return null;
+  const family = answer.trim().toUpperCase();
+  if (mode === "new" && !family) {
+    throw new Error("La familia es requerida para crear un dataset nuevo.");
+  }
+  return family;
+}
+
+function describeValidation(preview) {
+  const v = preview.validation || { errors: [], warnings: [], stats: { rows: 0, columns: 0 } };
+  const parts = [`Filas: ${v.stats.rows}`, `Columnas: ${v.stats.columns}`, `Hash: ${preview.hash}`];
+  if (preview.family_guess) parts.push(`Familia detectada: ${preview.family_guess}`);
+  if (preview.duplicate_of) parts.push(`Duplicado de: ${preview.duplicate_of}`);
+  if (Array.isArray(preview.header_mapping) && preview.header_mapping.length) {
+    const sample = preview.header_mapping
+      .slice(0, 6)
+      .map((item) => `${item.from} -> ${item.to}`)
+      .join(" | ");
+    parts.push(`Mapeo de columnas: ${sample}${preview.header_mapping.length > 6 ? " | ..." : ""}`);
+  }
+  if ((v.warnings || []).length) parts.push(`Advertencias: ${v.warnings.join(" | ")}`);
+  return parts.join(" | ");
+}
+
+async function uploadNewCsv(file) {
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const previewResp = await fetch("/api/upload/preview", { method: "POST", body: form });
+    const preview = await previewResp.json();
+    if (!previewResp.ok || !preview.ok) {
+      const msg = preview?.validation?.errors?.join(" | ") || preview.error || "No se pudo validar el CSV.";
+      throw new Error(msg);
+    }
+
+    const mode = await chooseImportMode(preview);
+    if (!mode) return;
+    const familyCode = await chooseFamilyCode(preview, mode);
+    if (familyCode === null) return;
+    const targetFile = mode === "new" ? null : state.file;
+    if (mode === "replace") {
+      const ok = await uiConfirm(
+        `Vas a REEMPLAZAR el dataset '${targetFile}'. Esta accion conserva historial pero cambia todo el contenido.`,
+        {
+          title: "Confirmar reemplazo",
+          confirmText: "Reemplazar",
+          tone: "warn",
+        }
+      );
+      if (!ok) return;
+    }
+
+    const commitResp = await fetch("/api/upload/commit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: preview.token,
+        mode,
+        target_file: targetFile,
+        family_code: familyCode,
+      }),
+    });
+    const payload = await commitResp.json();
+    if (!commitResp.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo confirmar la importacion.");
+    }
+
+    const summary =
+      mode === "merge"
+        ? `Merge listo: insertadas ${payload.inserted || 0}, actualizadas ${payload.updated || 0}.`
+        : mode === "replace"
+        ? `Dataset reemplazado: ${payload.file}.`
+        : `Dataset cargado: ${payload.file}.`;
+    setStatus(`${summary} ${describeValidation(preview)}`, "ok");
+    await loadData();
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function deleteCsvFile(fileName) {
+  try {
+    const response = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file: fileName }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "No se pudo eliminar el archivo.");
+    setStatus(`Dataset eliminado: ${payload.deleted}.`, "ok");
+    await loadData();
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function openHistoryDialog() {
+  try {
+    const response = await fetch(`/api/history?file=${encodeURIComponent(state.file)}`);
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo obtener historial.");
+    }
+    const revisions = payload.revisions || [];
+    if (!revisions.length) {
+      setStatus("No hay revisiones disponibles para restaurar.", "warn");
+      return;
+    }
+    const top = revisions.slice(0, 20);
+    const lines = top.map(
+      (r) => `${r.id} | ${r.created_at} | filas:${r.row_count}${r.note ? ` | ${r.note}` : ""}`
+    );
+    const idText = await uiPrompt(
+      `Historial (${payload.file}) v${payload.version}\nIngresa el ID de revision a restaurar:\n\n${lines.join(
+        "\n"
+      )}`,
+      "",
+      {
+        title: "Restaurar historial",
+        confirmText: "Restaurar",
+      }
+    );
+    if (idText === null) return;
+    const revisionId = Number(idText);
+    if (!Number.isInteger(revisionId) || revisionId <= 0) {
+      setStatus("ID de revision invalido.", "warn");
+      return;
+    }
+    const ok = await uiConfirm(
+      `Vas a restaurar la revision ${revisionId}. Se guardara una revision del estado actual antes de restaurar.`,
+      {
+        title: "Confirmar restauracion",
+        confirmText: "Restaurar",
+        tone: "warn",
+      }
+    );
+    if (!ok) return;
+    await restoreRevision(revisionId);
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function restoreRevision(revisionId) {
+  const response = await fetch("/api/history/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      revision_id: revisionId,
+      file: state.file,
+      version: state.version,
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) {
+    if (response.status === 409) {
+      throw new Error("Conflicto de version al restaurar. Recarga y vuelve a intentar.");
+    }
+    throw new Error(payload.error || "No se pudo restaurar revision.");
+  }
+  setStatus(`Revision ${revisionId} restaurada.`, "ok");
+  await loadData();
+}
+
+async function openAuditDialog() {
+  try {
+    const response = await fetch(`/api/audit?file=${encodeURIComponent(state.file || "")}&limit=120`);
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo cargar la bitacora.");
+    }
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    if (!items.length) {
+      setStatus("Bitacora sin eventos para el dataset actual.", "warn");
+      return;
+    }
+    const lines = items.slice(0, 40).map((item) => {
+      const detailKeys = Object.keys(item.details || {});
+      const detailText = detailKeys.length
+        ? detailKeys
+            .slice(0, 3)
+            .map((k) => `${k}:${item.details[k]}`)
+            .join(", ")
+        : "-";
+      return `${item.id} | ${item.created_at} | ${item.username || "-"} | ${item.action} | ${detailText}`;
+    });
+    await uiDialog({
+      mode: "confirm",
+      title: "Bitacora de cambios",
+      message: lines.join("\n"),
+      confirmText: "Cerrar",
+      cancelText: "Cerrar",
+      tone: "info",
+    });
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function createManualBackup() {
+  try {
+    const reason = await uiPrompt("Motivo del respaldo (opcional):", "manual", {
+      title: "Crear respaldo",
+      confirmText: "Crear",
+      tone: "info",
+    });
+    if (reason === null) return;
+    const response = await fetch("/api/backups/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo crear el respaldo.");
+    }
+    const backup = payload.backup || {};
+    setStatus(`Respaldo creado: ${backup.file || "-"}.`, "ok");
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function restoreBackupFromDialog() {
+  try {
+    const response = await fetch("/api/backups?limit=80");
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo obtener respaldos.");
+    }
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    if (!items.length) {
+      setStatus("No hay respaldos disponibles.", "warn");
+      return;
+    }
+    const previewLines = items
+      .slice(0, 20)
+      .map((item) => `${item.file} | ${item.created_at} | ${(item.reason || "").replace(/_/g, " ")}`);
+    const selected = await uiPrompt(
+      `Escribe el nombre exacto del respaldo a restaurar:\n\n${previewLines.join("\n")}`,
+      items[0].file,
+      {
+        title: "Restaurar respaldo",
+        confirmText: "Continuar",
+        tone: "warn",
+      }
+    );
+    if (selected === null) return;
+    const file = selected.trim();
+    if (!file) {
+      setStatus("Debes indicar el nombre del respaldo.", "warn");
+      return;
+    }
+    const ok = await uiConfirm(
+      `Se restaurara el respaldo '${file}'. Se recomienda que no haya usuarios editando durante este proceso.`,
+      {
+        title: "Confirmar restauracion de respaldo",
+        confirmText: "Restaurar",
+        tone: "err",
+      }
+    );
+    if (!ok) return;
+
+    const restoreResp = await fetch("/api/backups/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file }),
+    });
+    const restorePayload = await restoreResp.json();
+    if (!restoreResp.ok || !restorePayload.ok) {
+      throw new Error(restorePayload.error || "No se pudo restaurar el respaldo.");
+    }
+    setStatus(`Respaldo restaurado: ${file}.`, "ok");
+    await loadData();
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+async function saveData() {
+  try {
+    ensureModDateColumn();
+    const response = await fetch("/api/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        headers: state.headers,
+        rows: state.rows,
+        version: state.version,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      if (response.status === 409) {
+        throw new Error("Conflicto de version: otro cambio ya fue guardado. Recarga y vuelve a intentar.");
+      }
+      throw new Error(payload.error || "No se pudo guardar.");
+    }
+    if (Number.isFinite(Number(payload.version))) {
+      state.version = Number(payload.version);
+    }
+    setDirty(false);
+    setStatus("Cambios guardados en SQLite.", "ok");
+    await loadData();
+  } catch (error) {
+    setStatus(String(error), "err");
+  }
+}
+
+function addRow() {
+  const modColIndex = ensureModDateColumn();
+  const row = Array(state.headers.length).fill("");
+  row[modColIndex] = nowStamp();
+  state.rows.push(row);
+  setDirty(true);
+  setStatus("Fila agregada.", "ok");
+  renderBody();
+  refreshConsulta();
+}
+
+function deleteSelectedRows() {
+  if (state.selected.size === 0) {
+    setStatus("Selecciona al menos una fila para eliminar.", "warn");
+    return;
+  }
+  const indexes = [...state.selected].sort((a, b) => b - a);
+  indexes.forEach((index) => state.rows.splice(index, 1));
+  state.selected.clear();
+  setDirty(true);
+  setStatus(`Se eliminaron ${indexes.length} fila(s).`, "ok");
+  renderBody();
+  refreshConsulta();
+}
+
+document.getElementById("reloadBtn").addEventListener("click", async () => {
+  if (state.dirty || state.qcDirty) {
+    const proceed = await uiConfirm("Hay cambios sin guardar. Deseas recargar de todos modos?", {
+      title: "Recargar datos",
+      confirmText: "Recargar",
+      tone: "warn",
+    });
+    if (!proceed) return;
+  }
+  loadData();
+});
+
+document.getElementById("addBtn").addEventListener("click", addRow);
+document.getElementById("deleteBtn").addEventListener("click", deleteSelectedRows);
+document.getElementById("saveBtn").addEventListener("click", saveData);
+document.getElementById("saveQcBtn").addEventListener("click", saveQcData);
+if (saveQcHumidityBtn) saveQcHumidityBtn.addEventListener("click", saveQcHumidityData);
+document.getElementById("historyBtn").addEventListener("click", openHistoryDialog);
+if (auditBtn) auditBtn.addEventListener("click", openAuditDialog);
+if (backupCreateBtn) backupCreateBtn.addEventListener("click", createManualBackup);
+if (backupRestoreBtn) backupRestoreBtn.addEventListener("click", restoreBackupFromDialog);
+
+document.getElementById("loadSelectedBtn").addEventListener("click", async () => {
+  const selectedFile = fileSelect.value;
+  if (!selectedFile) return setStatus("No hay archivo seleccionado.", "warn");
+  if (state.dirty || state.qcDirty) {
+    const proceed = await uiConfirm("Hay cambios sin guardar. Cambiar de archivo puede descartarlos. Continuar?", {
+      title: "Cambiar archivo",
+      confirmText: "Cambiar",
+      tone: "warn",
+    });
+    if (!proceed) return;
+  }
+  await selectActiveFile(selectedFile);
+});
+
+if (saveFamilyBtn) {
+  saveFamilyBtn.addEventListener("click", saveDatasetFamily);
+}
+if (datasetFamilyInput) {
+  datasetFamilyInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    saveDatasetFamily();
+  });
+}
+
+document.getElementById("uploadBtn").addEventListener("click", async () => {
+  if (state.dirty || state.qcDirty) {
+    const proceed = await uiConfirm("Hay cambios sin guardar. Cargar otro CSV puede descartarlos. Continuar?", {
+      title: "Cargar nuevo CSV",
+      confirmText: "Continuar",
+      tone: "warn",
+    });
+    if (!proceed) return;
+  }
+  uploadInput.value = "";
+  uploadInput.click();
+});
+
+document.getElementById("deleteFileBtn").addEventListener("click", async () => {
+  const selectedFile = fileSelect.value;
+  if (!selectedFile) return setStatus("No hay archivo seleccionado para eliminar.", "warn");
+  if (state.dirty || state.qcDirty) {
+    const proceed = await uiConfirm("Hay cambios sin guardar. Eliminar un CSV puede descartar estos cambios. Continuar?", {
+      title: "Eliminar CSV",
+      confirmText: "Continuar",
+      tone: "warn",
+    });
+    if (!proceed) return;
+  }
+  const confirmDelete = await uiConfirm(
+    `Seguro que quieres eliminar el dataset '${selectedFile}'?`,
+    {
+      title: "Confirmar eliminacion",
+      confirmText: "Eliminar",
+      tone: "err",
+    }
+  );
+  if (!confirmDelete) return;
+  await deleteCsvFile(selectedFile);
+});
+
+uploadInput.addEventListener("change", async (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".csv")) return setStatus("Selecciona un archivo con extension .csv", "warn");
+  await uploadNewCsv(file);
+});
+
+searchInput.addEventListener("input", (event) => {
+  state.searchText = event.target.value;
+  renderBody();
+});
+
+tabEditor.addEventListener("click", () => switchView("editor"));
+tabConsulta.addEventListener("click", () => {
+  switchView("consulta");
+  runQuery();
+});
+tabDosificador.addEventListener("click", () => {
+  switchView("dosificador");
+  runDoserSearch();
+});
+if (consultaPrevBtn) {
+  consultaPrevBtn.addEventListener("click", () => setConsultaStep(state.consultaStep - 1));
+}
+if (consultaNextBtn) {
+  consultaNextBtn.addEventListener("click", () => setConsultaStep(state.consultaStep + 1));
+}
+
+document.getElementById("runQueryBtn").addEventListener("click", runQuery);
+exportReportBtn.addEventListener("click", exportConsultaReport);
+document.getElementById("clearQueryBtn").addEventListener("click", () => {
+  queryFields.family.value = "";
+  queryFields.fc.value = "";
+  queryFields.edad.value = "";
+  queryFields.tipo.value = "";
+  queryFields.tma.value = "";
+  queryFields.rev.value = "";
+  queryFields.comp.value = "";
+  runQuery();
+});
+
+Object.values(queryFields).forEach((el) => {
+  el.addEventListener("change", runQuery);
+});
+
+document.getElementById("dSearchBtn").addEventListener("click", runDoserSearch);
+if (doserExportReportBtn) doserExportReportBtn.addEventListener("click", exportDoserReport);
+if (saveDoserParamsBtn) saveDoserParamsBtn.addEventListener("click", saveDoserParams);
+if (saveRemisionBtn) saveRemisionBtn.addEventListener("click", saveRemision);
+if (refreshRemisionBtn) refreshRemisionBtn.addEventListener("click", loadRemisiones);
+if (remisionNoInput) {
+  remisionNoInput.addEventListener("input", () => {
+    remisionNoInput.value = remisionNoInput.value.toUpperCase();
+  });
+  remisionNoInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    saveRemision();
+  });
+}
+document.getElementById("dClearBtn").addEventListener("click", () => {
+  doserFields.family.value = "";
+  doserFields.fc.value = "";
+  doserFields.edad.value = "";
+  doserFields.tipo.value = "";
+  doserFields.tma.value = "";
+  doserFields.rev.value = "";
+  doserFields.comp.value = "";
+  runDoserSearch();
+});
+
+[
+  doseM3Input,
+  tolCementoInput,
+  tolAgregadosInput,
+  tolAguaInput,
+  tolAditivoInput,
+  paramCementoPespInput,
+  paramAirePctInput,
+  paramPasa200PctInput,
+  paramPxlPctInput,
+  paramDensidadAggInput,
+].forEach((el) => {
+  if (!el) return;
+  el.addEventListener("input", () => renderDosificador());
+});
+
+document.addEventListener("keydown", (event) => {
+  const ctrlOrCmd = event.ctrlKey || event.metaKey;
+  if (ctrlOrCmd && event.key.toLowerCase() === "s") {
+    if (!state.auth.canEdit || !canAccessView("editor")) return;
+    event.preventDefault();
+    saveData();
+  }
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (!state.dirty && !state.qcDirty) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+window.addEventListener("resize", () => adjustQueryVisibleRows(5));
+
+applyRoleAccessUi();
+switchView(defaultView());
+loadData();
+

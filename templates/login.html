@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Acceso - ALMEX</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo_almex.png', v=cache_bust) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v=cache_bust) }}">
+</head>
+<body>
+  <main class="auth-layout">
+    <section class="auth-card">
+      <div class="auth-brand">
+        <img class="auth-logo" src="{{ url_for('static', filename='img/logo_almex.png', v=cache_bust) }}" alt="ALMEX">
+        <div>
+          <h1>ALMEX</h1>
+          <p>Acceso al sistema de disenos y dosificacion</p>
+        </div>
+      </div>
+      {% if error %}
+      <div class="auth-error">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('login_submit') }}" class="auth-form" autocomplete="off">
+        <label>Usuario
+          <input type="text" name="username" maxlength="64" required autofocus>
+        </label>
+        <label>Contrasena
+          <input type="password" name="password" maxlength="128" required>
+        </label>
+        <button type="submit" class="btn btn--primary">Ingresar</button>
+      </form>
+      <div class="auth-note">
+        Usuarios iniciales:
+        <ul>
+          <li><code>admin</code> / <code>Admin#2026!</code></li>
+          <li><code>jefe_planta</code> / <code>Planta#2026!</code></li>
+          <li><code>dosificador</code> / <code>Dosi#2026!</code></li>
+          <li><code>presupuestador</code> / <code>Presu#2026!</code></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
