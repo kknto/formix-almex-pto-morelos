@@ -416,18 +416,26 @@ class AppStore:
                 self.conn.close()
             def execute(self, sql, params=()):
                 cur = self.conn.cursor()
-                sql = sql.replace("?", "%s")
-                # Traducciones básicas de dialecto
-                if "INSERT OR IGNORE" in sql.upper():
-                    sql = sql.replace("INSERT OR IGNORE", "INSERT")
-                    if "INTO users" in sql: sql += " ON CONFLICT (username) DO NOTHING"
-                    elif "INTO datasets" in sql: sql += " ON CONFLICT (name) DO NOTHING"
-                if "INTEGER PRIMARY KEY AUTOINCREMENT" in sql.upper():
-                    sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-                if "REAL" in sql.upper():
-                    sql = sql.replace("REAL", "DOUBLE PRECISION")
+                # Traducir placeholders ? -> %s
+                query = sql.replace("?", "%s")
                 
-                cur.execute(sql, params)
+                # Manejar INSERT OR IGNORE de forma genérica para PostgreSQL
+                if "INSERT OR IGNORE" in query.upper():
+                    query = query.replace("INSERT OR IGNORE", "INSERT")
+                    m = re.search(r"INTO\s+(\w+)", query, re.IGNORECASE)
+                    if m:
+                        table = m.group(1).lower()
+                        keys = {"users": "username", "datasets": "name", "app_state": "key", "remisiones": "remision_no"}
+                        if table in keys:
+                            query += f" ON CONFLICT ({keys[table]}) DO NOTHING"
+                
+                # Traducir tipos de datos si se coló alguno manual
+                if "INTEGER PRIMARY KEY AUTOINCREMENT" in query.upper():
+                    query = query.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+                if "REAL" in query.upper() and "DOUBLE PRECISION" not in query.upper():
+                    query = query.replace("REAL", "DOUBLE PRECISION")
+                
+                cur.execute(query, params)
                 return cur
             def executescript(self, sql):
                 with self.conn.cursor() as cur:
@@ -456,11 +464,14 @@ class AppStore:
         conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}")
 
     def _init_db(self):
+        id_type = "SERIAL PRIMARY KEY" if self.is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        real_type = "DOUBLE PRECISION" if self.is_postgres else "REAL"
+        
         with self._conn() as conn:
             conn.executescript(
-                """
+                f"""
                 CREATE TABLE IF NOT EXISTS datasets(
-                  id SERIAL PRIMARY KEY,
+                  id {id_type},
                   name TEXT NOT NULL UNIQUE,
                   family_code TEXT NOT NULL DEFAULT '',
                   headers_json TEXT NOT NULL,
@@ -475,7 +486,7 @@ class AppStore:
                   deleted_at TEXT
                 );
                 CREATE TABLE IF NOT EXISTS dataset_revisions(
-                  id SERIAL PRIMARY KEY,
+                  id {id_type},
                   dataset_id INTEGER NOT NULL REFERENCES datasets(id),
                   headers_json TEXT NOT NULL,
                   rows_json TEXT NOT NULL,
@@ -513,7 +524,7 @@ class AppStore:
                   updated_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS users(
-                  id SERIAL PRIMARY KEY,
+                  id {id_type},
                   username TEXT NOT NULL UNIQUE,
                   role TEXT NOT NULL,
                   password_hash TEXT NOT NULL,
@@ -531,7 +542,7 @@ class AppStore:
                   last_failed_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS remisiones(
-                  id SERIAL PRIMARY KEY,
+                  id {id_type},
                   dataset_id INTEGER NOT NULL REFERENCES datasets(id),
                   remision_no TEXT NOT NULL UNIQUE,
                   formula TEXT NOT NULL DEFAULT '',
@@ -541,10 +552,10 @@ class AppStore:
                   tma TEXT NOT NULL DEFAULT '',
                   rev TEXT NOT NULL DEFAULT '',
                   comp TEXT NOT NULL DEFAULT '',
-                  dosificacion_m3 DOUBLE PRECISION NOT NULL DEFAULT 0,
-                  peso_receta DOUBLE PRECISION NOT NULL DEFAULT 0,
-                  peso_teorico_total DOUBLE PRECISION NOT NULL DEFAULT 0,
-                  peso_real_total DOUBLE PRECISION NOT NULL DEFAULT 0,
+                  dosificacion_m3 {real_type} NOT NULL DEFAULT 0,
+                  peso_receta {real_type} NOT NULL DEFAULT 0,
+                  peso_teorico_total {real_type} NOT NULL DEFAULT 0,
+                  peso_real_total {real_type} NOT NULL DEFAULT 0,
                   status TEXT NOT NULL DEFAULT 'abierta',
                   snapshot_json TEXT NOT NULL,
                   created_at TEXT NOT NULL,
@@ -555,14 +566,14 @@ class AppStore:
                 CREATE INDEX IF NOT EXISTS idx_remisiones_dataset_created ON remisiones(dataset_id, created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_remisiones_created ON remisiones(created_at DESC);
                 CREATE TABLE IF NOT EXISTS audit_log(
-                  id SERIAL PRIMARY KEY,
+                  id {id_type},
                   created_at TEXT NOT NULL,
                   username TEXT NOT NULL DEFAULT '',
                   action TEXT NOT NULL,
                   entity TEXT NOT NULL DEFAULT '',
                   entity_id TEXT NOT NULL DEFAULT '',
                   dataset_id INTEGER,
-                  details_json TEXT NOT NULL DEFAULT '{}'
+                  details_json TEXT NOT NULL DEFAULT '{{}}'
                 );
                 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_audit_dataset_created ON audit_log(dataset_id, created_at DESC);
