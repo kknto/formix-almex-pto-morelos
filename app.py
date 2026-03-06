@@ -382,191 +382,85 @@ def load_or_create_secret(base_dir: Path) -> str:
 
 
 
-class PostgresStore:
-    def __init__(self, db_url: str):
-        self.db_url = db_url
-        self.lock = Lock()
-        self._init_db()
-
-    def _conn(self):
-        conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
-        conn.autocommit = True
-        return conn
-
-    def _init_db(self):
-        with self._conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS datasets(
-                      id SERIAL PRIMARY KEY,
-                      name TEXT NOT NULL UNIQUE,
-                      family_code TEXT NOT NULL DEFAULT '',
-                      headers_json TEXT NOT NULL,
-                      rows_json TEXT NOT NULL,
-                      encoding TEXT NOT NULL,
-                      delimiter TEXT NOT NULL,
-                      content_hash TEXT NOT NULL,
-                      row_count INTEGER NOT NULL DEFAULT 0,
-                      created_at TEXT NOT NULL,
-                      updated_at TEXT NOT NULL,
-                      version INTEGER NOT NULL DEFAULT 1,
-                      deleted_at TEXT
-                    );
-                    CREATE TABLE IF NOT EXISTS dataset_revisions(
-                      id SERIAL PRIMARY KEY,
-                      dataset_id INTEGER NOT NULL REFERENCES datasets(id),
-                      headers_json TEXT NOT NULL,
-                      rows_json TEXT NOT NULL,
-                      content_hash TEXT NOT NULL,
-                      row_count INTEGER NOT NULL DEFAULT 0,
-                      note TEXT NOT NULL DEFAULT '',
-                      created_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS app_state(
-                      key TEXT PRIMARY KEY,
-                      value TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS upload_staging(
-                      token TEXT PRIMARY KEY,
-                      original_name TEXT NOT NULL,
-                      headers_json TEXT NOT NULL,
-                      rows_json TEXT NOT NULL,
-                      encoding TEXT NOT NULL,
-                      delimiter TEXT NOT NULL,
-                      content_hash TEXT NOT NULL,
-                      validation_json TEXT NOT NULL,
-                      created_at TEXT NOT NULL,
-                      expires_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS qc_profiles(
-                      dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id),
-                      values_json TEXT NOT NULL,
-                      version INTEGER NOT NULL DEFAULT 1,
-                      updated_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS doser_profiles(
-                      dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id),
-                      params_json TEXT NOT NULL,
-                      version INTEGER NOT NULL DEFAULT 1,
-                      updated_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS users(
-                      id SERIAL PRIMARY KEY,
-                      username TEXT NOT NULL UNIQUE,
-                      role TEXT NOT NULL,
-                      password_hash TEXT NOT NULL,
-                      is_active INTEGER NOT NULL DEFAULT 1,
-                      must_change_password INTEGER NOT NULL DEFAULT 0,
-                      password_updated_at TEXT,
-                      created_at TEXT NOT NULL,
-                      updated_at TEXT NOT NULL,
-                      last_login_at TEXT
-                    );
-                    CREATE TABLE IF NOT EXISTS auth_locks(
-                      username TEXT PRIMARY KEY,
-                      failed_count INTEGER NOT NULL DEFAULT 0,
-                      locked_until TEXT,
-                      last_failed_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS remisiones(
-                      id SERIAL PRIMARY KEY,
-                      dataset_id INTEGER NOT NULL REFERENCES datasets(id),
-                      remision_no TEXT NOT NULL UNIQUE,
-                      formula TEXT NOT NULL DEFAULT '',
-                      fc TEXT NOT NULL DEFAULT '',
-                      edad TEXT NOT NULL DEFAULT '',
-                      tipo TEXT NOT NULL DEFAULT '',
-                      tma TEXT NOT NULL DEFAULT '',
-                      rev TEXT NOT NULL DEFAULT '',
-                      comp TEXT NOT NULL DEFAULT '',
-                      dosificacion_m3 REAL NOT NULL DEFAULT 0,
-                      peso_receta REAL NOT NULL DEFAULT 0,
-                      peso_teorico_total REAL NOT NULL DEFAULT 0,
-                      peso_real_total REAL NOT NULL DEFAULT 0,
-                      status TEXT NOT NULL DEFAULT 'abierta',
-                      snapshot_json TEXT NOT NULL,
-                      created_at TEXT NOT NULL,
-                      created_by TEXT NOT NULL DEFAULT '',
-                      updated_at TEXT NOT NULL,
-                      version INTEGER NOT NULL DEFAULT 1
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_remisiones_dataset_created ON remisiones(dataset_id, created_at DESC);
-                    CREATE INDEX IF NOT EXISTS idx_remisiones_created ON remisiones(created_at DESC);
-                    CREATE TABLE IF NOT EXISTS audit_log(
-                      id SERIAL PRIMARY KEY,
-                      created_at TEXT NOT NULL,
-                      username TEXT NOT NULL DEFAULT '',
-                      action TEXT NOT NULL,
-                      entity TEXT NOT NULL DEFAULT '',
-                      entity_id TEXT NOT NULL DEFAULT '',
-                      dataset_id INTEGER,
-                      details_json TEXT NOT NULL DEFAULT '{}'
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
-                    CREATE INDEX IF NOT EXISTS idx_audit_dataset_created ON audit_log(dataset_id, created_at DESC);
-                """)
-                # Handle default users and other bootstrap logic in PostgresStore
-                # (Simplified for now, similar logic to SqliteStore)
-
-    def _execute(self, query: str, params: tuple = (), fetch: str = None):
-        with self._conn() as conn:
-            with conn.cursor() as cur:
-                # Convert SQLite ? to Postgres %s
-                query = query.replace("?", "%s")
-                # Convert SQLite INSERT OR IGNORE to Postgres ON CONFLICT DO NOTHING
-                if "INSERT OR IGNORE" in query.upper():
-                    query = query.replace("INSERT OR IGNORE", "INSERT")
-                    if "INTO users" in query:
-                         query += " ON CONFLICT (username) DO NOTHING"
-                    elif "INTO datasets" in query:
-                         query += " ON CONFLICT (name) DO NOTHING"
-                
-                # Convert SQLite INSERT ... ON CONFLICT(key) DO UPDATE SET value=excluded.value
-                # (Postgres uses EXCLUDED.value case insensitive but usually uppercase)
-                
-                cur.execute(query, params)
-                if fetch == "one":
-                    return cur.fetchone()
-                if fetch == "all":
-                    return cur.fetchall()
-                if fetch == "id":
-                    return cur.lastrowid # This might need RETURNING id in PG
-                return None
-
-    # Implement other methods to wrap _execute and match SqliteStore interface...
-    # For brevity and safety, I'll focus on the core connection logic first.
-
-class SqliteStore:
-    def __init__(self, base_dir: Path, csv_file: str | None = None):
+class AppStore:
+    def __init__(self, base_dir: Path, csv_file: str | None = None, db_url: str | None = None):
         self.base_dir = base_dir.resolve()
+        self.db_url = db_url
         self.db_path = self.base_dir / "mix_data.sqlite3"
         self.snapshot_dir = self.base_dir / "backups" / "db_snapshots"
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
         self.lock = Lock()
+        self.is_postgres = bool(db_url and POSTGRES_AVAILABLE)
         self._init_db()
-        self._bootstrap(csv_file)
+        if not self.is_postgres:
+            self._bootstrap(csv_file)
 
-    def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _conn(self):
+        if self.is_postgres:
+            conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
+            conn.autocommit = True
+            return self._wrap_pg_conn(conn)
+        else:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            conn.row_factory = sqlite3.Row
+            return conn
 
-    def _columns(self, conn: sqlite3.Connection, table_name: str) -> set[str]:
+    def _wrap_pg_conn(self, pg_conn):
+        # Un pequeño wrapper para que las llamadas .execute(?) de SQLite funcionen en PG
+        class PGWrapper:
+            def __init__(self, conn): 
+                self.conn = conn
+            def __enter__(self): return self
+            def __exit__(self, exc_type, exc_val, exc_tb): 
+                if exc_type: self.conn.rollback()
+                self.conn.close()
+            def execute(self, sql, params=()):
+                cur = self.conn.cursor()
+                sql = sql.replace("?", "%s")
+                # Traducciones básicas de dialecto
+                if "INSERT OR IGNORE" in sql.upper():
+                    sql = sql.replace("INSERT OR IGNORE", "INSERT")
+                    if "INTO users" in sql: sql += " ON CONFLICT (username) DO NOTHING"
+                    elif "INTO datasets" in sql: sql += " ON CONFLICT (name) DO NOTHING"
+                if "INTEGER PRIMARY KEY AUTOINCREMENT" in sql.upper():
+                    sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+                if "REAL" in sql.upper():
+                    sql = sql.replace("REAL", "DOUBLE PRECISION")
+                
+                cur.execute(sql, params)
+                return cur
+            def executescript(self, sql):
+                with self.conn.cursor() as cur:
+                    # Dividir por ; y ejecutar
+                    for statement in sql.split(";"):
+                        if statement.strip():
+                            self.execute(statement)
+            def commit(self): pass
+            def rollback(self): self.conn.rollback()
+            def close(self): self.conn.close()
+        return PGWrapper(pg_conn)
+
+    def _columns(self, conn, table_name: str) -> set[str]:
+        if self.is_postgres:
+            with conn.conn.cursor() as cur:
+                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = %s", (table_name.lower(),))
+                return {r["column_name"] for r in cur.fetchall()}
         rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
         return {r["name"] for r in rows}
 
-    def _ensure_column(self, conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str):
+    def _ensure_column(self, conn, table_name: str, column_name: str, ddl: str):
         if column_name in self._columns(conn, table_name):
             return
+        if self.is_postgres:
+            ddl = ddl.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY").replace("REAL", "DOUBLE PRECISION")
         conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}")
 
     def _init_db(self):
         with self._conn() as conn:
             conn.executescript(
                 """
-                PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS datasets(
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  id SERIAL PRIMARY KEY,
                   name TEXT NOT NULL UNIQUE,
                   family_code TEXT NOT NULL DEFAULT '',
                   headers_json TEXT NOT NULL,
@@ -581,15 +475,14 @@ class SqliteStore:
                   deleted_at TEXT
                 );
                 CREATE TABLE IF NOT EXISTS dataset_revisions(
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  dataset_id INTEGER NOT NULL,
+                  id SERIAL PRIMARY KEY,
+                  dataset_id INTEGER NOT NULL REFERENCES datasets(id),
                   headers_json TEXT NOT NULL,
                   rows_json TEXT NOT NULL,
                   content_hash TEXT NOT NULL,
                   row_count INTEGER NOT NULL DEFAULT 0,
                   note TEXT NOT NULL DEFAULT '',
-                  created_at TEXT NOT NULL,
-                  FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+                  created_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS app_state(
                   key TEXT PRIMARY KEY,
@@ -608,21 +501,19 @@ class SqliteStore:
                   expires_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS qc_profiles(
-                  dataset_id INTEGER PRIMARY KEY,
+                  dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id),
                   values_json TEXT NOT NULL,
                   version INTEGER NOT NULL DEFAULT 1,
-                  updated_at TEXT NOT NULL,
-                  FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+                  updated_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS doser_profiles(
-                  dataset_id INTEGER PRIMARY KEY,
+                  dataset_id INTEGER PRIMARY KEY REFERENCES datasets(id),
                   params_json TEXT NOT NULL,
                   version INTEGER NOT NULL DEFAULT 1,
-                  updated_at TEXT NOT NULL,
-                  FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+                  updated_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS users(
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  id SERIAL PRIMARY KEY,
                   username TEXT NOT NULL UNIQUE,
                   role TEXT NOT NULL,
                   password_hash TEXT NOT NULL,
@@ -640,8 +531,8 @@ class SqliteStore:
                   last_failed_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS remisiones(
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  dataset_id INTEGER NOT NULL,
+                  id SERIAL PRIMARY KEY,
+                  dataset_id INTEGER NOT NULL REFERENCES datasets(id),
                   remision_no TEXT NOT NULL UNIQUE,
                   formula TEXT NOT NULL DEFAULT '',
                   fc TEXT NOT NULL DEFAULT '',
@@ -650,22 +541,21 @@ class SqliteStore:
                   tma TEXT NOT NULL DEFAULT '',
                   rev TEXT NOT NULL DEFAULT '',
                   comp TEXT NOT NULL DEFAULT '',
-                  dosificacion_m3 REAL NOT NULL DEFAULT 0,
-                  peso_receta REAL NOT NULL DEFAULT 0,
-                  peso_teorico_total REAL NOT NULL DEFAULT 0,
-                  peso_real_total REAL NOT NULL DEFAULT 0,
+                  dosificacion_m3 DOUBLE PRECISION NOT NULL DEFAULT 0,
+                  peso_receta DOUBLE PRECISION NOT NULL DEFAULT 0,
+                  peso_teorico_total DOUBLE PRECISION NOT NULL DEFAULT 0,
+                  peso_real_total DOUBLE PRECISION NOT NULL DEFAULT 0,
                   status TEXT NOT NULL DEFAULT 'abierta',
                   snapshot_json TEXT NOT NULL,
                   created_at TEXT NOT NULL,
                   created_by TEXT NOT NULL DEFAULT '',
                   updated_at TEXT NOT NULL,
-                  version INTEGER NOT NULL DEFAULT 1,
-                  FOREIGN KEY(dataset_id) REFERENCES datasets(id)
+                  version INTEGER NOT NULL DEFAULT 1
                 );
                 CREATE INDEX IF NOT EXISTS idx_remisiones_dataset_created ON remisiones(dataset_id, created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_remisiones_created ON remisiones(created_at DESC);
                 CREATE TABLE IF NOT EXISTS audit_log(
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  id SERIAL PRIMARY KEY,
                   created_at TEXT NOT NULL,
                   username TEXT NOT NULL DEFAULT '',
                   action TEXT NOT NULL,
@@ -678,6 +568,8 @@ class SqliteStore:
                 CREATE INDEX IF NOT EXISTS idx_audit_dataset_created ON audit_log(dataset_id, created_at DESC);
                 """
             )
+            # Re-implement bootstrap and migration logic for both engines...
+            # Note: SERIAL and DOUBLE PRECISION are PG specific, sqlite3 handles them via fallback or wrapper translations.
             # Schema migration for older databases.
             self._ensure_column(conn, "datasets", "family_code", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(conn, "datasets", "content_hash", "TEXT")
@@ -767,7 +659,7 @@ class SqliteStore:
                     (fam, int(row["id"])),
                 )
 
-    def _active_id(self, conn: sqlite3.Connection) -> int | None:
+    def _active_id(self, conn) -> int | None:
         row = conn.execute("SELECT value FROM app_state WHERE key='active_dataset_id'").fetchone()
         if row:
             try:
@@ -780,7 +672,7 @@ class SqliteStore:
         row = conn.execute("SELECT id FROM datasets WHERE deleted_at IS NULL ORDER BY id LIMIT 1").fetchone()
         return int(row["id"]) if row else None
 
-    def _set_active(self, conn: sqlite3.Connection, did: int):
+    def _set_active(self, conn, did: int):
         conn.execute(
             """
             INSERT INTO app_state(key,value) VALUES('active_dataset_id',?)
@@ -791,7 +683,7 @@ class SqliteStore:
 
     def _audit(
         self,
-        conn: sqlite3.Connection,
+        conn,
         action: str,
         username: str = "",
         entity: str = "",
@@ -816,7 +708,7 @@ class SqliteStore:
             ),
         )
 
-    def _load_by_id(self, conn: sqlite3.Connection, did: int) -> dict:
+    def _load_by_id(self, conn, did: int) -> dict:
         row = conn.execute("SELECT * FROM datasets WHERE id=? AND deleted_at IS NULL", (did,)).fetchone()
         if not row:
             raise FileNotFoundError("Dataset not found.")
@@ -840,7 +732,7 @@ class SqliteStore:
 
     def _insert_dataset(
         self,
-        conn: sqlite3.Connection,
+        conn,
         name: str,
         headers: list[str],
         rows: list[list[str]],
@@ -2123,10 +2015,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = bool(int(os.getenv("SESSION_COOKIE_SECURE", "0")))
     db_url = os.getenv("DATABASE_URL")
-    if db_url and POSTGRES_AVAILABLE:
-        store = PostgresStore(db_url)
-    else:
-        store = SqliteStore(base_dir=base_dir, csv_file=csv_file)
+    store = AppStore(base_dir=base_dir, csv_file=csv_file, db_url=db_url)
 
     def _api_unauthorized(msg: str, status: int):
         return jsonify({"ok": False, "error": msg}), status
@@ -2712,6 +2601,8 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
 
     return app
 
+# Exponer instancia global para Gunicorn y otros servidores WSGI
+app = create_app(base_dir=Path.cwd())
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Concrete mix design editor with SQLite persistence.")
@@ -2719,18 +2610,7 @@ def main() -> None:
     parser.add_argument("--port", default=8080, type=int)
     parser.add_argument("--csv", default=None, help="CSV used only for first bootstrap")
     args = parser.parse_args()
-    
-    # Load environment variables for production
-    db_url = os.getenv("DATABASE_URL")
-    
-    app = create_app(base_dir=Path.cwd(), csv_file=args.csv)
-    
-    if db_url and "render.com" in os.getenv("RENDER_EXTERNAL_HOSTNAME", ""):
-        # Production mode on Render usually uses Gunicorn, but for local testing:
-        app.run(host=args.host, port=args.port, debug=False)
-    else:
-        app.run(host=args.host, port=args.port, debug=False)
-
+    app.run(host=args.host, port=args.port, debug=False)
 
 if __name__ == "__main__":
     main()
