@@ -2685,7 +2685,12 @@ async function loadDoserParams(fileName = state.file) {
   syncDoserParamInputs();
 }
 
+let isSavingDoserParams = false;
 async function saveDoserParams() {
+  if (isSavingDoserParams) return;
+  isSavingDoserParams = true;
+  if (typeof saveDoserParamsBtn !== "undefined" && saveDoserParamsBtn) saveDoserParamsBtn.disabled = true;
+
   if (!canEditDoserTolerances()) {
     setStatus("Solo administrador y jefe-de-planta pueden guardar parametros de dosificacion.", "warn");
     return;
@@ -2716,10 +2721,18 @@ async function saveDoserParams() {
     setStatus("Parametros de dosificacion guardados.", "ok");
   } catch (error) {
     setStatus(String(error), "err");
+  } finally {
+    isSavingDoserParams = false;
+    if (typeof saveDoserParamsBtn !== "undefined" && saveDoserParamsBtn) saveDoserParamsBtn.disabled = false;
   }
 }
 
+let isSavingQcData = false;
 async function saveQcData() {
+  if (isSavingQcData) return;
+  isSavingQcData = true;
+  if (typeof saveQcBtn !== "undefined" && saveQcBtn) saveQcBtn.disabled = true;
+
   try {
     const response = await fetch("/api/qc/save", {
       method: "POST",
@@ -2748,10 +2761,18 @@ async function saveQcData() {
     setStatus("Control de Calidad guardado.", "ok");
   } catch (error) {
     setStatus(String(error), "err");
+  } finally {
+    isSavingQcData = false;
+    if (typeof saveQcBtn !== "undefined" && saveQcBtn) saveQcBtn.disabled = false;
   }
 }
 
+let isSavingQcHumidity = false;
 async function saveQcHumidityData() {
+  if (isSavingQcHumidity) return;
+  isSavingQcHumidity = true;
+  if (typeof saveQcHumidityBtn !== "undefined" && saveQcHumidityBtn) saveQcHumidityBtn.disabled = true;
+
   if (!state.auth.canEditQcHumidity) {
     setStatus("No tienes permisos para guardar humedad.", "warn");
     return;
@@ -2790,6 +2811,9 @@ async function saveQcHumidityData() {
     setStatus("Humedad guardada correctamente.", "ok");
   } catch (error) {
     setStatus(String(error), "err");
+  } finally {
+    isSavingQcHumidity = false;
+    if (typeof saveQcHumidityBtn !== "undefined" && saveQcHumidityBtn) saveQcHumidityBtn.disabled = false;
   }
 }
 
