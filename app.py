@@ -2554,6 +2554,9 @@ def main() -> None:
     app.run(host=args.host, port=args.port, debug=False)
 
 
+# Instancia global expuesta para Gunicorn / Render
+app = create_app(base_dir=Path.cwd())
+
 if __name__ == "__main__":
     main()
 
