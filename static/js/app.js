@@ -107,6 +107,7 @@ const doserRecipeBody = document.getElementById("doserRecipeBody");
 const doserRecipeWeight = document.getElementById("doserRecipeWeight");
 const doserTheoreticalBody = document.getElementById("doserTheoreticalBody");
 const doserTheoreticalWeight = document.getElementById("doserTheoreticalWeight");
+const doserTheoreticalWeightBatch = document.getElementById("doserTheoreticalWeightBatch");
 const doserRealBody = document.getElementById("doserRealBody");
 const doserRealWeight = document.getElementById("doserRealWeight");
 const doserExportReportBtn = document.getElementById("dExportReportBtn");
@@ -192,6 +193,11 @@ function formatVol(value) {
 
 function formatMoney(value) {
   return `$${formatNum(value)}`;
+}
+
+function roundTo(value, decimals = 3) {
+  const factor = 10 ** decimals;
+  return Math.round((Number(value) + Number.EPSILON) * factor) / factor;
 }
 
 function escapeHtml(value) {
@@ -1464,16 +1470,18 @@ function buildDoserReportSnapshot() {
     qty: row.trialLoad,
   }));
   const theoreticalWeight = detailed.totals.theoreticalWeight;
+  const theoreticalWeightPerM3 = dose > 0 ? (theoreticalWeight / dose) : 0;
 
   let realWeight = 0;
   const realRows = theoretical.map((item) => {
+    const target = roundTo(item.qty, 3);
     if (typeof state.doser.realLoads[item.name] !== "number") {
-      state.doser.realLoads[item.name] = item.qty;
+      state.doser.realLoads[item.name] = target;
     }
     const real = toNumber(state.doser.realLoads[item.name]);
-    const diff = real - item.qty;
+    const diff = real - target;
     const tol = toleranceFor(item.name);
-    const lim = item.qty * (tol / 100);
+    const lim = Math.abs(target) * (tol / 100);
     const ok = Math.abs(diff) <= lim;
     realWeight += real * componentWeightFactor(item);
     return {
@@ -1486,6 +1494,7 @@ function buildDoserReportSnapshot() {
       tolerance: tol,
     };
   });
+  const realWeightPerM3 = dose > 0 ? (realWeight / dose) : 0;
 
   const formula = valueByKey(selectedRow, "formula") || "-";
   const fc = valueByKey(selectedRow, "fc") || "-";
@@ -1513,10 +1522,12 @@ function buildDoserReportSnapshot() {
     recipeWeight,
     theoretical,
     theoreticalWeight,
+    theoreticalWeightPerM3,
     theoreticalDetailed: detailed.rows,
     calcTotals: detailed.totals,
     realRows,
     realWeight,
+    realWeightPerM3,
     dose,
     qc: state.doser.quality,
     doserParams: state.doser.params,
@@ -1532,6 +1543,18 @@ function normalizeDoserReportSnapshot(raw, fallback = {}) {
     : defaultTol;
   const qcValues = snap.qc && typeof snap.qc === "object" ? snap.qc : createDefaultQuality();
 
+  const dose = toNumber(snap.dose || snap.dosificacion_m3 || 0);
+  const theoreticalWeight = toNumber(snap.theoreticalWeight || snap.peso_teorico_total || 0);
+  const realWeight = toNumber(snap.realWeight || snap.peso_real_total || 0);
+  const theoreticalWeightPerM3Raw = toNumber(
+    snap.theoreticalWeightPerM3 || snap.peso_teorico_por_m3 || snap.peso_teorico_m3 || 0
+  );
+  const realWeightPerM3Raw = toNumber(
+    snap.realWeightPerM3 || snap.peso_real_por_m3 || snap.peso_real_m3 || 0
+  );
+  const theoreticalWeightPerM3 = theoreticalWeightPerM3Raw > 0 ? theoreticalWeightPerM3Raw : (dose > 0 ? (theoreticalWeight / dose) : 0);
+  const realWeightPerM3 = realWeightPerM3Raw > 0 ? realWeightPerM3Raw : (dose > 0 ? (realWeight / dose) : 0);
+
   return {
     remisionNo: (snap.remisionNo || snap.remision_no || fallback.remisionNo || "-").toString(),
     file: snap.file || fallback.file || "-",
@@ -1544,15 +1567,17 @@ function normalizeDoserReportSnapshot(raw, fallback = {}) {
     rev: snap.rev || "-",
     comp: snap.comp || "-",
     modDate: snap.modDate || "-",
-    dose: toNumber(snap.dose || snap.dosificacion_m3 || 0),
+    dose,
     recipe: Array.isArray(snap.recipe) ? snap.recipe : [],
     recipeWeight: toNumber(snap.recipeWeight || snap.peso_receta || 0),
     theoretical: Array.isArray(snap.theoretical) ? snap.theoretical : [],
     theoreticalDetailed: Array.isArray(snap.theoreticalDetailed) ? snap.theoreticalDetailed : [],
     calcTotals: snap.calcTotals && typeof snap.calcTotals === "object" ? snap.calcTotals : {},
-    theoreticalWeight: toNumber(snap.theoreticalWeight || snap.peso_teorico_total || 0),
+    theoreticalWeight,
+    theoreticalWeightPerM3,
     realRows: Array.isArray(snap.realRows) ? snap.realRows : [],
-    realWeight: toNumber(snap.realWeight || snap.peso_real_total || 0),
+    realWeight,
+    realWeightPerM3,
     doserParams: normalizeDoserParams(snap.doserParams),
     tolerances: {
       cemento: toNumber(tolerances.cemento || 0),
@@ -1796,7 +1821,8 @@ function buildDoserReportHtml(rawSnapshot, reportDate) {
           </thead>
           <tbody>${theoreticalRowsHtml}</tbody>
         </table>
-        <div class="total-line">Peso teorico total: ${escapeHtml(formatNum(snap.theoreticalWeight))}</div>
+        <div class="total-line">Carga teorica (kg/m<sup>3</sup> eq.): ${escapeHtml(formatNum(snap.theoreticalWeightPerM3))}</div>
+        <div class="total-line">Carga teorica lote: ${escapeHtml(formatNum(snap.theoreticalWeight))}</div>
         <div class="total-line">Rel. A/C: ${escapeHtml(formatNum(toNumber(snap.calcTotals.relAc || 0)))} | Vol. Abs. + Aire: ${escapeHtml(formatNum(toNumber(snap.calcTotals.absVolumeTotal || 0)))}</div>
       </section>
     </div>
@@ -1816,7 +1842,8 @@ function buildDoserReportHtml(rawSnapshot, reportDate) {
         </thead>
         <tbody>${realRowsHtml}</tbody>
       </table>
-      <div class="total-line">Peso real total: ${escapeHtml(formatNum(snap.realWeight))}</div>
+      <div class="total-line">Carga real (kg/m<sup>3</sup> eq.): ${escapeHtml(formatNum(snap.realWeightPerM3))}</div>
+      <div class="total-line">Carga real lote: ${escapeHtml(formatNum(snap.realWeight))}</div>
     </section>
 
     <div class="sign">ForMix by Labsico - Dise&#241;a-Dosifica-Calcula</div>
@@ -2422,6 +2449,7 @@ function renderDosificador() {
   doserRealBody.innerHTML = "";
   doserRecipeWeight.textContent = "0.00";
   doserTheoreticalWeight.textContent = "0.00";
+  if (doserTheoreticalWeightBatch) doserTheoreticalWeightBatch.textContent = "0.00";
   doserRealWeight.textContent = "0.00";
 
   if (!selectedRow) {
@@ -2454,8 +2482,12 @@ function renderDosificador() {
   doserRecipeWeight.textContent = formatNum(recipeTotal);
 
   let theoTotal = 0;
+  let designATotal = 0;
+  let designHrTotal = 0;
   detailed.rows.forEach((item) => {
     theoTotal += item.trialLoad * componentWeightFactor({ unit: item.trialUnit || item.unit });
+    designATotal += toNumber(item.designA);
+    designHrTotal += toNumber(item.designReal);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${item.name}</td>
@@ -2470,26 +2502,43 @@ function renderDosificador() {
     `;
     doserTheoreticalBody.appendChild(tr);
   });
-  doserTheoreticalWeight.textContent = formatNum(theoTotal);
+  const totalTr = document.createElement("tr");
+  totalTr.className = "theoretical-total-row";
+  totalTr.innerHTML = `
+    <td><strong>TOTAL</strong></td>
+    <td><strong>${formatVol(designATotal)}</strong></td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    <td><strong>${formatVol(designHrTotal)}</strong></td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+  `;
+  doserTheoreticalBody.appendChild(totalTr);
+  const theoPerM3 = dose > 0 ? (theoTotal / dose) : 0;
+  doserTheoreticalWeight.textContent = formatNum(theoPerM3);
+  if (doserTheoreticalWeightBatch) doserTheoreticalWeightBatch.textContent = formatNum(theoTotal);
   doserSummary.innerHTML = `${baseSummary} | Rel. A/C: ${formatNum(detailed.totals.relAc || 0)} | Vol. Abs. + Aire: ${formatNum(detailed.totals.absVolumeTotal || 0)}`;
 
   let realTotal = 0;
   detailed.rows.forEach((item) => {
+    const target = roundTo(item.trialLoad, 3);
     if (typeof state.doser.realLoads[item.name] !== "number") {
-      state.doser.realLoads[item.name] = item.trialLoad;
+      state.doser.realLoads[item.name] = target;
     }
     const real = state.doser.realLoads[item.name];
     realTotal += real * componentWeightFactor({ unit: item.trialUnit || item.unit });
-    const diff = real - item.trialLoad;
+    const diff = real - target;
     const tol = toleranceFor(item.name);
-    const lim = item.trialLoad * (tol / 100);
+    const lim = Math.abs(target) * (tol / 100);
     const ok = Math.abs(diff) <= lim;
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${item.name}</td>
-      <td>${formatNum(item.trialLoad)}</td>
-      <td><input class="doser-real-input" type="number" min="0" step="0.01" value="${real.toFixed(2)}"></td>
-      <td>${diff >= 0 ? "+" : ""}${formatNum(diff)}</td>
+      <td>${formatVol(target)}</td>
+      <td><input class="doser-real-input" type="number" min="0" step="0.001" value="${real.toFixed(3)}"></td>
+      <td>${diff >= 0 ? "+" : ""}${formatVol(diff)}</td>
       <td class="${ok ? "status-ok" : "status-bad"}">${ok ? "OK" : "FUERA"}</td>
     `;
     const input = tr.querySelector("input");
