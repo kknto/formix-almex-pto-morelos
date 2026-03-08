@@ -63,6 +63,10 @@ class FleetStoreMixin:
             raise ValueError("Numero de unidad es requerido.")
         vid = data.get("id")
         with self._conn() as conn:
+            # Fix for vehicles logically deleted before the suffix fix
+            conn.execute("UPDATE vehicles SET unit_number = unit_number || '_del_' || id WHERE unit_number = ? AND status = 'inactivo'", (unit,))
+            conn.commit()
+            
             if vid:
                 conn.execute(
                     """UPDATE vehicles SET unit_number=?, phone=?, year_model=?, serial_number=?,
