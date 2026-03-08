@@ -579,7 +579,7 @@ function setConsultaStep(step) {
 
 function switchView(view) {
   if (!canAccessView(view)) {
-    setStatus("No tienes permisos para acceder a esta pestaÃ±a.", "warn");
+    setStatus("No tienes permisos para acceder a esta pestaña.", "warn");
     return;
   }
   state.view = view;
@@ -1297,7 +1297,7 @@ function renderCostTable(recipeItems) {
     const haulCell = isAgg
       ? `<div class="money-field"><span class="money-field__symbol">$</span><input class="haul-input" type="number" min="0" step="0.01" value="${haulCost.toFixed(
           2
-        )}" title="Costo de transporte por mÂ³ del agregado (del banco a la planta)" aria-label="Acarreo por mÂ³"></div>`
+        )}" title="Costo de transporte por m³ del agregado (del banco a la planta)" aria-label="Acarreo por m³"></div>`
       : "-";
     tr.innerHTML = `
       <td>${escapeHtml(item.name)}</td>
@@ -1529,9 +1529,9 @@ function exportConsultaReport() {
       <div class="item"><div class="k">Comp</div><div class="v">${escapeHtml(comp)}</div></div>
       <div class="item"><div class="k">Fecha Modif</div><div class="v">${escapeHtml(modDate)}</div></div>
       <div class="item"><div class="k">QC</div><div class="v">${escapeHtml(qcDate)}</div></div>
-      <div class="item"><div class="k">Sub-Total Acarreo mÂ³</div><div class="v">${escapeHtml(formatMoney(totalHaul))}</div></div>
-      <div class="item"><div class="k">Sub-Total Materiales mÂ³</div><div class="v">${escapeHtml(formatMoney(totalMaterials))}</div></div>
-      <div class="item"><div class="k">Total por mÂ³</div><div class="v">${escapeHtml(formatMoney(totalCost))}</div></div>
+      <div class="item"><div class="k">Sub-Total Acarreo m³</div><div class="v">${escapeHtml(formatMoney(totalHaul))}</div></div>
+      <div class="item"><div class="k">Sub-Total Materiales m³</div><div class="v">${escapeHtml(formatMoney(totalMaterials))}</div></div>
+      <div class="item"><div class="k">Total por m³</div><div class="v">${escapeHtml(formatMoney(totalCost))}</div></div>
     </div>
 
     <section class="main-grid">
@@ -1543,22 +1543,22 @@ function exportConsultaReport() {
               <th>Componente</th>
               <th>Cantidad</th>
               <th>Unidad</th>
-              <th>Vol. Est. mÂ³</th>
+              <th>Vol. Est. m³</th>
             </tr>
           </thead>
           <tbody>${recipeRowsHtml}</tbody>
         </table>
-        <div class="totals">Peso por mÂ³: ${escapeHtml(formatNum(recipeTotal))}</div>
+        <div class="totals">Peso por m³: ${escapeHtml(formatNum(recipeTotal))}</div>
       </article>
 
       <article class="section">
-        <h2>Costos por mÂ³</h2>
+        <h2>Costos por m³</h2>
         <table class="cost-table">
           <thead>
             <tr>
               <th>Componente</th>
               <th>Cant. Final</th>
-              <th>mÂ³</th>
+              <th>m³</th>
               <th>U.M.</th>
               <th>Acarreo ($)</th>
               <th>Costo Unit. ($)</th>
@@ -1567,9 +1567,9 @@ function exportConsultaReport() {
           </thead>
           <tbody>${costRowsHtml}</tbody>
         </table>
-        <div class="totals-sub">Sub-Total acarreo mÂ³: ${escapeHtml(formatMoney(totalHaul))}</div>
-        <div class="totals-sub">Sub-Total materiales mÂ³: ${escapeHtml(formatMoney(totalMaterials))}</div>
-        <div class="totals">Total por mÂ³: ${escapeHtml(formatMoney(totalCost))}</div>
+        <div class="totals-sub">Sub-Total acarreo m³: ${escapeHtml(formatMoney(totalHaul))}</div>
+        <div class="totals-sub">Sub-Total materiales m³: ${escapeHtml(formatMoney(totalMaterials))}</div>
+        <div class="totals">Total por m³: ${escapeHtml(formatMoney(totalCost))}</div>
       </article>
     </section>
 
@@ -1939,11 +1939,11 @@ function buildDoserReportHtml(rawSnapshot, reportDate) {
           <thead>
             <tr>
               <th style="width:17%;">Componente</th>
-              <th class="num" style="width:9%;">DiseÃ±o A</th>
-              <th class="num" style="width:9%;">DiseÃ±o SSS</th>
+              <th class="num" style="width:9%;">Diseño A</th>
+              <th class="num" style="width:9%;">Diseño SSS</th>
               <th class="num" style="width:10%;">Agua libre H.R.</th>
               <th class="num" style="width:9%;">Vol. Abs.</th>
-              <th class="num" style="width:9%;">DiseÃ±o H.R.</th>
+              <th class="num" style="width:9%;">Diseño H.R.</th>
               <th class="num" style="width:10%;">Mezcla Prueba</th>
               <th style="width:8%;">U.M.</th>
               <th style="width:19%;">Obs.</th>
@@ -3552,7 +3552,7 @@ if (toggleQuoteModeBtn) {
   toggleQuoteModeBtn.addEventListener("click", () => {
     state.quoteMode = !state.quoteMode;
     if (!state.quoteMode) state.quoteOverrides = {};
-    toggleQuoteModeBtn.textContent = state.quoteMode ? "Salir CotizaciÃ³n" : "Modo CotizaciÃ³n";
+    toggleQuoteModeBtn.textContent = state.quoteMode ? "Salir Cotización" : "Modo Cotización";
     toggleQuoteModeBtn.classList.toggle("btn--active", state.quoteMode);
     toggleQuoteModeBtn.classList.toggle("btn--muted", !state.quoteMode);
     // Re-render cost table with current recipe

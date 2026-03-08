@@ -5,7 +5,7 @@ let currentTestCylinderId = null;
 async function lookupRemision() {
     const remNo = document.getElementById("qcRemisionNo").value.trim();
     if (!remNo) {
-        if(typeof setStatus === 'function') setStatus("Ingresa un nÂ° de remisiÃ³n para buscar.", 'warn');
+        if(typeof setStatus === 'function') setStatus("Ingresa un nº de remisión para buscar.", 'warn');
         return;
     }
 
@@ -18,11 +18,11 @@ async function lookupRemision() {
             // Auto-fill fc if available
             if (rem.fc) {
                 document.getElementById("qcFcExpected").value = rem.fc;
-                if(typeof setStatus === 'function') setStatus(`Datos cargados de remisiÃ³n ${remNo}.`, 'ok');
+                if(typeof setStatus === 'function') setStatus(`Datos cargados de remisión ${remNo}.`, 'ok');
             }
             // We could auto-fill more if we had more fields in the form
         } else {
-            if(typeof setStatus === 'function') setStatus("RemisiÃ³n no encontrada.", 'warn');
+            if(typeof setStatus === 'function') setStatus("Remisión no encontrada.", 'warn');
         }
     } catch (err) {
         console.error("Error lookup remision:", err);
