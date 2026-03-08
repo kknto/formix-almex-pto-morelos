@@ -1053,11 +1053,12 @@ td.cell.cell-readonly {
 #doserRecipeTable th:nth-child(1) { width: 56%; }
 #doserRecipeTable th:nth-child(2) { width: 44%; }
 
-#doserRealTable th:nth-child(1) { width: 32%; }
-#doserRealTable th:nth-child(2) { width: 18%; }
-#doserRealTable th:nth-child(3) { width: 18%; }
-#doserRealTable th:nth-child(4) { width: 18%; }
+#doserRealTable th:nth-child(1) { width: 22%; }
+#doserRealTable th:nth-child(2) { width: 24%; }
+#doserRealTable th:nth-child(3) { width: 14%; }
+#doserRealTable th:nth-child(4) { width: 14%; }
 #doserRealTable th:nth-child(5) { width: 14%; }
+#doserRealTable th:nth-child(6) { width: 12%; }
 
 #doserQueryTable th:nth-child(1) { width: 10%; }
 #doserQueryTable th:nth-child(2) { width: 18%; }
@@ -1086,9 +1087,9 @@ td.cell.cell-readonly {
 #doserTheoreticalTable td:nth-child(5),
 #doserTheoreticalTable td:nth-child(6),
 #doserTheoreticalTable td:nth-child(7),
-#doserRealTable td:nth-child(2),
 #doserRealTable td:nth-child(3),
 #doserRealTable td:nth-child(4),
+#doserRealTable td:nth-child(5),
 #doserRemisionTable td:nth-child(5),
 #doserRemisionTable td:nth-child(6) {
   text-align: right;
@@ -1099,7 +1100,7 @@ td.cell.cell-readonly {
 }
 
 #doserTheoreticalTable td:nth-child(8),
-#doserRealTable td:nth-child(5),
+#doserRealTable td:nth-child(6),
 #doserQueryTable td,
 #doserRemisionTable td:nth-child(3),
 #doserRemisionTable td:nth-child(4) {

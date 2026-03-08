@@ -71,6 +71,9 @@
       renderMaterialsTab();
       renderDashboard();
       populateMaterialSelects();
+      if (AppGlobals.state && AppGlobals.state.view === "dosificador" && typeof AppGlobals.renderDosificador === "function") {
+        AppGlobals.renderDosificador();
+      }
       await loadTransactions();
       setInvStatus(`Cargados ${invMaterials.length} materiales locales.`, "ok");
     } catch (err) {
@@ -387,6 +390,10 @@
 
   // Expose loadInventoryData to window so app.js can call it sequentially 
   window.loadInventoryData = loadInventoryData;
+  
+  // Load on boot to ensure state.doser.invMaterials is populated
+  if (AppGlobals.canAccessView("dosificador") || AppGlobals.canAccessView("inventario")) {
+    loadInventoryData();
+  }
 
 })(window.AppGlobals);
-
