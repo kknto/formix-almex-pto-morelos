@@ -179,10 +179,12 @@ window.openTestModal = function(cylinderId, sampleCode) {
     document.getElementById("testModalTitle").innerText = `Ensaye Cilindro: ${sampleCode}`;
     testCylinderForm.reset();
     if(compressPreviewImg) compressPreviewImg.style.display = "none";
+    testCylinderModal.classList.remove("is-hidden");
     testCylinderModal.classList.add("is-active");
 }
 
 window.closeTestModal = function() {
+    testCylinderModal.classList.add("is-hidden");
     testCylinderModal.classList.remove("is-active");
     currentTestCylinderId = null;
 }
