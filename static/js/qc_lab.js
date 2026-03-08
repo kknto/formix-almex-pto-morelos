@@ -54,7 +54,7 @@ function getPerformanceClass(percentAchieved, targetDays) {
     return 'qc-perf-bad';
 }
 
-async function loadQcData() {
+async function loadLaboratoryData() {
     try {
         const response = await apiFetch("/api/qclab/cylinders?pending_only=false");
         const res = await response.json();
@@ -199,7 +199,7 @@ window.deleteQcSample = async function(sampleId) {
         const data = await response.json();
         if (data.ok) {
             if(typeof setStatus === 'function') setStatus("Muestra eliminada correctamente.", 'ok');
-            loadQcData();
+            loadLaboratoryData();
         } else {
             throw new Error(data.error || "Error al eliminar");
         }
@@ -262,7 +262,7 @@ function setupListeners() {
                 // Reset to defaults
                 sampleAges = [3, 7, 14, 28];
                 renderAgesBadges();
-                loadQcData();
+                loadLaboratoryData();
             } catch(err) {
                 if(typeof setStatus === 'function') setStatus("Error al guardar muestra: " + err.message, 'err');
             }
@@ -323,7 +323,7 @@ function setupListeners() {
                 
                 if(typeof setStatus === 'function') setStatus("Ruptura registrada correctamente.", 'ok');
                 closeTestModal();
-                loadQcData();
+                loadLaboratoryData();
             } catch(err) {
                 if(typeof setStatus === 'function') setStatus("Error al registrar ensaye: " + err.message, 'err');
             }
@@ -517,7 +517,7 @@ let currentCompressedFile = null;
 
 
 
-window.loadQcLabData = loadQcData;
+window.loadQcLabData = loadLaboratoryData;
 window.initQcLab = initQcLab;
 
 // Trigger listeners setup
@@ -527,7 +527,7 @@ setupListeners();
 const labView = document.getElementById("laboratorioView");
 if (labView && !labView.classList.contains("is-hidden")) {
     initQcLab();
-    loadQcData();
+    loadLaboratoryData();
 } else {
     initQcLab();
 }

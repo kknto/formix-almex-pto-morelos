@@ -536,6 +536,13 @@ td.cell.cell-readonly {
   padding: 12px;
 }
 
+#editorQcPanel.panel--consulta {
+  display: block;
+  margin-top: 20px;
+  visibility: visible;
+  opacity: 1;
+}
+
 #consultaView .consulta-grid--pair > .panel--consulta {
   display: flex;
   flex-direction: column;
