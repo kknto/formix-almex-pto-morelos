@@ -1636,6 +1636,9 @@ function buildDoserReportSnapshot() {
     return {
       name: item.name,
       material_id: state.doser.selectedMaterials[item.name] || null,
+      material_name: state.doser.selectedMaterials[item.name] 
+        ? ((state.doser.invMaterials || []).find(m => String(m.id) === String(state.doser.selectedMaterials[item.name]))?.name || "-- Sin descontar --")
+        : "-- Sin descontar --",
       unit: item.unit,
       theoretical: item.qty,
       real,
@@ -1809,6 +1812,7 @@ function buildDoserReportHtml(rawSnapshot, reportDate) {
       (item) => `
         <tr>
           <td>${escapeHtml(item.name)}</td>
+          <td>${escapeHtml(item.material_name || "-- Sin descontar --")}</td>
           <td class="num">${escapeHtml(formatNum(item.theoretical))}</td>
           <td class="num">${escapeHtml(formatNum(item.real))}</td>
           <td class="num">${item.diff >= 0 ? "+" : ""}${escapeHtml(formatNum(item.diff))}</td>
@@ -1964,11 +1968,12 @@ function buildDoserReportHtml(rawSnapshot, reportDate) {
       <table>
         <thead>
           <tr>
-            <th style="width:28%;">Componente</th>
-            <th class="num" style="width:16%;">Teorica</th>
-            <th class="num" style="width:16%;">Real</th>
-            <th class="num" style="width:16%;">Diferencia</th>
-            <th class="num" style="width:12%;">Tol. %</th>
+            <th style="width:18%;">Componente</th>
+            <th style="width:20%;">Material</th>
+            <th class="num" style="width:14%;">Teorica</th>
+            <th class="num" style="width:14%;">Real</th>
+            <th class="num" style="width:12%;">Diferencia</th>
+            <th class="num" style="width:10%;">Tol. %</th>
             <th style="width:12%;">Estatus</th>
           </tr>
         </thead>
