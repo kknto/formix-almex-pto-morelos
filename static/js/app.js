@@ -2465,6 +2465,7 @@ async function saveRemision() {
     if (remisionNoInput) remisionNoInput.value = "";
     await loadRemisiones();
     setStatus(`Remision guardada: ${payload.remision_no}`, "ok");
+    pushToast(`Remisión guardada con éxito: ${payload.remision_no}`, "ok");
   } catch (error) {
     setStatus(String(error), "err");
   }
