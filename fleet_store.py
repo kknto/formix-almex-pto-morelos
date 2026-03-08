@@ -15,6 +15,34 @@ from __future__ import annotations
 from datetime import datetime
 
 
+def _rows_to_dicts(cursor) -> list[dict]:
+    """Convert cursor results to list of dicts, works with both SQLite and PostgreSQL."""
+    rows = cursor.fetchall()
+    if not rows:
+        return []
+    # If rows are already dicts (RealDictCursor), just convert
+    if hasattr(rows[0], 'keys'):
+        return [dict(r) for r in rows]
+    # Otherwise use cursor.description to get column names
+    if cursor.description:
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, r)) for r in rows]
+    return []
+
+
+def _row_to_dict(cursor) -> dict | None:
+    """Convert a single cursor result to dict."""
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    if hasattr(row, 'keys'):
+        return dict(row)
+    if cursor.description:
+        cols = [d[0] for d in cursor.description]
+        return dict(zip(cols, row))
+    return None
+
+
 class FleetStoreMixin:
     """Mixin providing fleet management methods. Expects `self._conn()` from host class."""
 
@@ -23,11 +51,10 @@ class FleetStoreMixin:
     def list_vehicles(self, include_inactive: bool = False) -> list[dict]:
         with self._conn() as conn:
             if include_inactive:
-                rows = conn.execute("SELECT * FROM vehicles ORDER BY unit_number").fetchall()
+                cur = conn.execute("SELECT * FROM vehicles ORDER BY unit_number")
             else:
-                rows = conn.execute("SELECT * FROM vehicles WHERE status='activo' ORDER BY unit_number").fetchall()
-            cols = [d[0] for d in conn.execute("SELECT * FROM vehicles LIMIT 0").description or []]
-            return [dict(zip(cols, r)) for r in rows]
+                cur = conn.execute("SELECT * FROM vehicles WHERE status='activo' ORDER BY unit_number")
+            return _rows_to_dicts(cur)
 
     def save_vehicle(self, data: dict, actor: str = "") -> dict:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -57,8 +84,8 @@ class FleetStoreMixin:
                      float(data.get("expected_kml",0)), data.get("status","activo"),
                      data.get("notes",""), now, now))
                 conn.commit()
-                row = conn.execute("SELECT id FROM vehicles WHERE unit_number=?", (unit,)).fetchone()
-                return {"id": row[0] if row else 0, "saved": True}
+                row = _row_to_dict(conn.execute("SELECT id FROM vehicles WHERE unit_number=?", (unit,)))
+                return {"id": row["id"] if row else 0, "saved": True}
 
     def delete_vehicle(self, vehicle_id: int, actor: str = "") -> bool:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -85,14 +112,10 @@ class FleetStoreMixin:
                 params.append(date_to + " 23:59:59")
             where_sql = ("WHERE " + " AND ".join(where)) if where else ""
             params.append(limit)
-            rows = conn.execute(
+            cur = conn.execute(
                 f"SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id "
-                f"{where_sql} ORDER BY f.record_date DESC LIMIT ?", tuple(params)).fetchall()
-            cols_raw = conn.execute(
-                "SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id LIMIT 0"
-            ).description or []
-            cols = [d[0] for d in cols_raw]
-            return [dict(zip(cols, r)) for r in rows]
+                f"{where_sql} ORDER BY f.record_date DESC LIMIT ?", tuple(params))
+            return _rows_to_dicts(cur)
 
     def save_fuel_record(self, data: dict, actor: str = "") -> dict:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -114,11 +137,11 @@ class FleetStoreMixin:
         kml_real = 0.0
         cost_per_km = 0.0
         with self._conn() as conn:
-            prev = conn.execute(
+            prev = _row_to_dict(conn.execute(
                 "SELECT odometer_km FROM fuel_records WHERE vehicle_id=? ORDER BY record_date DESC, id DESC LIMIT 1",
-                (vid,)).fetchone()
-            if prev and prev[0] and odometer > 0:
-                km_traveled = max(0, odometer - float(prev[0]))
+                (vid,)))
+            if prev and prev.get("odometer_km") and odometer > 0:
+                km_traveled = max(0, odometer - float(prev["odometer_km"]))
                 if km_traveled > 0 and liters > 0:
                     kml_real = km_traveled / liters
                 if km_traveled > 0:
@@ -159,7 +182,7 @@ class FleetStoreMixin:
 
     def fleet_summary(self) -> list[dict]:
         with self._conn() as conn:
-            rows = conn.execute("""
+            cur = conn.execute("""
                 SELECT v.id, v.unit_number, v.driver, v.expected_kml, v.plate,
                   COUNT(f.id) as total_records,
                   COALESCE(SUM(f.liters), 0) as total_liters,
@@ -176,33 +199,24 @@ class FleetStoreMixin:
                 WHERE v.status = 'activo'
                 GROUP BY v.id, v.unit_number, v.driver, v.expected_kml, v.plate
                 ORDER BY v.unit_number
-            """).fetchall()
-            cols = [d[0] for d in conn.execute("""
-                SELECT v.id, v.unit_number, v.driver, v.expected_kml, v.plate,
-                  0 as total_records, 0 as total_liters, 0 as total_cost, 0 as total_km,
-                  0 as avg_kml, 0 as avg_cost_per_km, '' as last_record
-                FROM vehicles v LIMIT 0
-            """).description or []]
-            return [dict(zip(cols, r)) for r in rows]
+            """)
+            return _rows_to_dicts(cur)
 
     # ── Maintenance ──────────────────────────────────────────────
 
     def list_maintenance(self, vehicle_id: int | None = None, limit: int = 100) -> list[dict]:
         with self._conn() as conn:
             if vehicle_id:
-                rows = conn.execute(
+                cur = conn.execute(
                     "SELECT m.*, v.unit_number FROM maintenance_records m JOIN vehicles v ON v.id=m.vehicle_id "
                     "WHERE m.vehicle_id=? ORDER BY m.record_date DESC LIMIT ?",
-                    (vehicle_id, limit)).fetchall()
+                    (vehicle_id, limit))
             else:
-                rows = conn.execute(
+                cur = conn.execute(
                     "SELECT m.*, v.unit_number FROM maintenance_records m JOIN vehicles v ON v.id=m.vehicle_id "
                     "ORDER BY m.record_date DESC LIMIT ?",
-                    (limit,)).fetchall()
-            cols = [d[0] for d in conn.execute(
-                "SELECT m.*, v.unit_number FROM maintenance_records m JOIN vehicles v ON v.id=m.vehicle_id LIMIT 0"
-            ).description or []]
-            return [dict(zip(cols, r)) for r in rows]
+                    (limit,))
+            return _rows_to_dicts(cur)
 
     def save_maintenance(self, data: dict, actor: str = "") -> dict:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -239,24 +253,25 @@ class FleetStoreMixin:
 
     def maintenance_alerts(self) -> list[dict]:
         with self._conn() as conn:
-            rows = conn.execute("""
+            cur = conn.execute("""
                 SELECT m.id, m.vehicle_id, v.unit_number, m.maintenance_type, m.next_km,
                   (SELECT MAX(f.odometer_km) FROM fuel_records f WHERE f.vehicle_id=m.vehicle_id) as current_km
                 FROM maintenance_records m JOIN vehicles v ON v.id=m.vehicle_id
                 WHERE m.next_km > 0 AND v.status='activo'
                 ORDER BY m.next_km
-            """).fetchall()
+            """)
+            rows = _rows_to_dicts(cur)
             alerts = []
             for r in rows:
-                next_km = float(r[4] or 0)
-                current = float(r[5] or 0)
+                next_km = float(r.get("next_km") or 0)
+                current = float(r.get("current_km") or 0)
                 if current <= 0 or next_km <= 0:
                     continue
                 remaining = next_km - current
                 if remaining <= 1000:
                     alerts.append({
-                        "vehicle_id": r[1], "unit_number": r[2],
-                        "maintenance_type": r[3], "next_km": next_km,
+                        "vehicle_id": r["vehicle_id"], "unit_number": r["unit_number"],
+                        "maintenance_type": r["maintenance_type"], "next_km": next_km,
                         "current_km": current, "remaining_km": remaining,
                         "overdue": remaining < 0
                     })
@@ -268,31 +283,37 @@ class FleetStoreMixin:
         now = datetime.now()
         month_start = now.strftime("%Y-%m-01")
         with self._conn() as conn:
-            total_vehicles = conn.execute(
-                "SELECT COUNT(*) FROM vehicles WHERE status='activo'").fetchone()[0] or 0
-            month = conn.execute(
-                "SELECT COALESCE(SUM(liters),0), COALESCE(SUM(total_cost),0), "
-                "COALESCE(SUM(km_traveled),0), COUNT(*) "
-                "FROM fuel_records WHERE record_date >= ?", (month_start,)).fetchone()
-            avg_kml = conn.execute(
-                "SELECT CASE WHEN SUM(liters)>0 THEN SUM(km_traveled)/SUM(liters) ELSE 0 END "
+            total_row = _row_to_dict(conn.execute(
+                "SELECT COUNT(*) as cnt FROM vehicles WHERE status='activo'"))
+            total_vehicles = total_row["cnt"] if total_row else 0
+
+            month = _row_to_dict(conn.execute(
+                "SELECT COALESCE(SUM(liters),0) as sum_liters, COALESCE(SUM(total_cost),0) as sum_cost, "
+                "COALESCE(SUM(km_traveled),0) as sum_km, COUNT(*) as cnt "
+                "FROM fuel_records WHERE record_date >= ?", (month_start,)))
+
+            avg_row = _row_to_dict(conn.execute(
+                "SELECT CASE WHEN SUM(liters)>0 THEN SUM(km_traveled)/SUM(liters) ELSE 0 END as avg_kml "
                 "FROM fuel_records WHERE record_date >= ? AND km_traveled > 0",
-                (month_start,)).fetchone()
+                (month_start,)))
+
             return {
                 "total_vehicles": total_vehicles,
-                "month_liters": float(month[0]) if month else 0,
-                "month_cost": float(month[1]) if month else 0,
-                "month_km": float(month[2]) if month else 0,
-                "month_records": int(month[3]) if month else 0,
-                "month_avg_kml": round(float(avg_kml[0]), 2) if avg_kml and avg_kml[0] else 0,
+                "month_liters": float(month["sum_liters"]) if month else 0,
+                "month_cost": float(month["sum_cost"]) if month else 0,
+                "month_km": float(month["sum_km"]) if month else 0,
+                "month_records": int(month["cnt"]) if month else 0,
+                "month_avg_kml": round(float(avg_row["avg_kml"]), 2) if avg_row and avg_row["avg_kml"] else 0,
             }
 
     def fuel_trend(self, vehicle_id: int, limit: int = 30) -> list[dict]:
         with self._conn() as conn:
-            rows = conn.execute(
+            cur = conn.execute(
                 "SELECT record_date, kml_real, cost_per_km, liters, total_cost, odometer_km, driver "
                 "FROM fuel_records WHERE vehicle_id=? AND kml_real > 0 "
                 "ORDER BY record_date ASC LIMIT ?",
-                (vehicle_id, limit)).fetchall()
-            return [{"date": r[0], "kml": r[1], "cpk": r[2], "liters": r[3],
-                     "cost": r[4], "km": r[5], "driver": r[6]} for r in rows]
+                (vehicle_id, limit))
+            rows = _rows_to_dicts(cur)
+            return [{"date": r["record_date"], "kml": r["kml_real"], "cpk": r["cost_per_km"],
+                     "liters": r["liters"], "cost": r["total_cost"], "km": r["odometer_km"],
+                     "driver": r["driver"]} for r in rows]
