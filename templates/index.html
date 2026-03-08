@@ -488,99 +488,82 @@
     </section>
 
     <section id="flotillaView" class="view-pane is-hidden">
+
+      <!-- KPI Dashboard Cards -->
+      <div class="fleet-kpi-cards">
+        <div class="kpi-card"><span class="kpi-icon">🚛</span><div class="kpi-data"><span id="kpiVehicles" class="kpi-value">0</span><span class="kpi-label">Vehículos Activos</span></div></div>
+        <div class="kpi-card"><span class="kpi-icon">⛽</span><div class="kpi-data"><span id="kpiLiters" class="kpi-value">0</span><span class="kpi-label">Litros (mes)</span></div></div>
+        <div class="kpi-card"><span class="kpi-icon">💰</span><div class="kpi-data"><span id="kpiCost" class="kpi-value">$0</span><span class="kpi-label">Gasto Diesel (mes)</span></div></div>
+        <div class="kpi-card"><span class="kpi-icon">📊</span><div class="kpi-data"><span id="kpiKml" class="kpi-value">0</span><span class="kpi-label">km/L Promedio (mes)</span></div></div>
+      </div>
+
+      <!-- Alerts Banner -->
+      <div id="fleetAlertsBanner" class="fleet-alerts" style="display:none;"></div>
+
       <section class="fleet-grid">
+        <!-- Vehicle Registry -->
         <article class="panel panel--consulta">
-          <div class="consulta-head">
-            <h2>Registro de Vehículos</h2>
-            <p>Flota activa</p>
-          </div>
+          <div class="consulta-head"><h2>Registro de Vehículos</h2><p>Flota activa</p></div>
           <div class="query-actions">
             <button id="addVehicleBtn" class="btn btn--primary">Agregar Vehículo</button>
           </div>
-          <div class="result-shell" style="max-height:400px;">
-            <table id="vehiclesTable">
-              <thead>
-                <tr>
-                  <th>Unidad</th>
-                  <th>Teléfono</th>
-                  <th>Año/Modelo</th>
-                  <th># Serie</th>
-                  <th>Placa</th>
-                  <th>Chofer</th>
-                  <th>Tanque (L)</th>
-                  <th>km/L Esp.</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="vehiclesBody"></tbody>
-            </table>
-          </div>
+          <div class="result-shell" style="max-height:360px;"><table id="vehiclesTable"><thead><tr>
+            <th>Unidad</th><th>Teléfono</th><th>Año/Modelo</th><th># Serie</th><th>Placa</th><th>Chofer</th><th>Tanque</th><th>km/L Esp.</th><th>Acciones</th>
+          </tr></thead><tbody id="vehiclesBody"></tbody></table></div>
         </article>
 
+        <!-- Fuel Records -->
         <article class="panel panel--consulta">
-          <div class="consulta-head">
-            <h2>Registro de Cargas de Diesel</h2>
-            <p>Historial de consumo</p>
-          </div>
+          <div class="consulta-head"><h2>Cargas de Diesel</h2><p>Historial de consumo</p></div>
           <div class="query-actions">
-            <label>Vehículo
-              <select id="fuelVehicleSelect"><option value="">Todos</option></select>
-            </label>
+            <label>Vehículo <select id="fuelVehicleSelect"><option value="">Todos</option></select></label>
+            <label>Desde <input id="fuelDateFrom" type="date"></label>
+            <label>Hasta <input id="fuelDateTo" type="date"></label>
             <button id="addFuelBtn" class="btn btn--primary">Registrar Carga</button>
           </div>
-          <div class="result-shell" style="max-height:400px;">
-            <table id="fuelTable">
-              <thead>
-                <tr>
-                  <th>Unidad</th>
-                  <th>Fecha</th>
-                  <th>Km Odómetro</th>
-                  <th>Litros</th>
-                  <th>Costo $</th>
-                  <th>$/L</th>
-                  <th>Km Rec.</th>
-                  <th>km/L</th>
-                  <th>$/km</th>
-                  <th>Chofer</th>
-                  <th>Estación</th>
-                </tr>
-              </thead>
-              <tbody id="fuelBody"></tbody>
-            </table>
-          </div>
+          <div class="result-shell" style="max-height:360px;"><table id="fuelTable"><thead><tr>
+            <th>Unidad</th><th>Fecha</th><th>Km</th><th>Litros</th><th>Costo</th><th>$/L</th><th>Km Rec.</th><th>km/L</th><th>$/km</th><th>Chofer</th><th>Acc.</th>
+          </tr></thead><tbody id="fuelBody"></tbody></table></div>
         </article>
       </section>
 
+      <!-- Maintenance Records -->
       <section class="panel panel--consulta" style="margin-top:12px;">
-        <div class="consulta-head">
-          <h2>Resumen de Flota</h2>
-          <p>Eficiencia y costos acumulados</p>
+        <div class="consulta-head"><h2>Mantenimiento</h2><p>Historial de servicios y próximos mantenimientos</p></div>
+        <div class="query-actions">
+          <label>Vehículo <select id="maintVehicleSelect"><option value="">Todos</option></select></label>
+          <button id="addMaintBtn" class="btn btn--primary">Registrar Mantenimiento</button>
         </div>
+        <div class="result-shell" style="max-height:300px;"><table id="maintTable"><thead><tr>
+          <th>Unidad</th><th>Tipo</th><th>Descripción</th><th>Costo</th><th>Km</th><th>Próx. Km</th><th>Fecha</th><th>Proveedor</th><th>Acc.</th>
+        </tr></thead><tbody id="maintBody"></tbody></table></div>
+      </section>
+
+      <!-- Charts -->
+      <section class="fleet-grid" style="margin-top:12px;">
+        <article class="panel panel--consulta">
+          <div class="consulta-head"><h2>Tendencia km/L</h2><p>Rendimiento por vehículo</p></div>
+          <div class="query-actions"><label>Vehículo <select id="trendVehicleSelect"></select></label></div>
+          <div style="padding:8px;max-height:300px;"><canvas id="trendChart" height="220"></canvas></div>
+        </article>
+        <article class="panel panel--consulta">
+          <div class="consulta-head"><h2>Comparativa de Flota</h2><p>km/L promedio vs esperado</p></div>
+          <div style="padding:8px;max-height:300px;"><canvas id="compareChart" height="220"></canvas></div>
+        </article>
+      </section>
+
+      <!-- Summary -->
+      <section class="panel panel--consulta" style="margin-top:12px;">
+        <div class="consulta-head"><h2>Resumen de Flota</h2><p>Eficiencia y costos acumulados</p></div>
         <div class="query-actions">
           <button id="refreshSummaryBtn" class="btn btn--muted">Actualizar</button>
+          <button id="exportFleetBtn" class="btn btn--primary">Exportar Reporte</button>
         </div>
-        <div class="result-shell" style="max-height:360px;">
-          <table id="fleetSummaryTable">
-            <thead>
-              <tr>
-                <th>Unidad</th>
-                <th>Chofer</th>
-                <th>Placa</th>
-                <th>Cargas</th>
-                <th>Litros Tot.</th>
-                <th>Costo Tot. $</th>
-                <th>Km Tot.</th>
-                <th>km/L Prom.</th>
-                <th>$/km Prom.</th>
-                <th>km/L Esp.</th>
-                <th>Eficiencia</th>
-                <th>Última Carga</th>
-              </tr>
-            </thead>
-            <tbody id="fleetSummaryBody"></tbody>
-          </table>
-        </div>
+        <div class="result-shell" style="max-height:360px;"><table id="fleetSummaryTable"><thead><tr>
+          <th>Unidad</th><th>Chofer</th><th>Placa</th><th>Cargas</th><th>Litros</th><th>Costo $</th><th>Km</th><th>km/L</th><th>$/km</th><th>km/L Esp.</th><th>Eficiencia</th><th>Última Carga</th>
+        </tr></thead><tbody id="fleetSummaryBody"></tbody></table></div>
       </section>
+
     </section>
 
   </main>
@@ -590,6 +573,7 @@
   <script>
     window.APP_BOOT = {{ auth_boot | tojson }};
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='js/app.js', v=cache_bust) }}"></script>
 </body>
 

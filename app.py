@@ -609,6 +609,21 @@ class AppStore:
                   created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_date ON fuel_records(vehicle_id, record_date DESC);
+                CREATE TABLE IF NOT EXISTS maintenance_records(
+                  id {id_type},
+                  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
+                  maintenance_type TEXT NOT NULL DEFAULT '',
+                  description TEXT NOT NULL DEFAULT '',
+                  cost {real_type} NOT NULL DEFAULT 0,
+                  odometer_km {real_type} NOT NULL DEFAULT 0,
+                  next_km {real_type} NOT NULL DEFAULT 0,
+                  record_date TEXT NOT NULL,
+                  provider TEXT NOT NULL DEFAULT '',
+                  notes TEXT NOT NULL DEFAULT '',
+                  created_by TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_maint_vehicle_date ON maintenance_records(vehicle_id, record_date DESC);
                 """
             )
             # Re-implement bootstrap and migration logic for both engines...
@@ -2125,18 +2140,25 @@ class AppStore:
             conn.commit()
             return True
 
-    def list_fuel_records(self, vehicle_id: int | None = None, limit: int = 200) -> list[dict]:
+    def list_fuel_records(self, vehicle_id: int | None = None, limit: int = 200,
+                          date_from: str = "", date_to: str = "") -> list[dict]:
         with self._conn() as conn:
+            where = []
+            params: list = []
             if vehicle_id:
-                rows = conn.execute(
-                    "SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id "
-                    "WHERE f.vehicle_id=? ORDER BY f.record_date DESC LIMIT ?",
-                    (vehicle_id, limit)).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id "
-                    "ORDER BY f.record_date DESC LIMIT ?",
-                    (limit,)).fetchall()
+                where.append("f.vehicle_id=?")
+                params.append(vehicle_id)
+            if date_from:
+                where.append("f.record_date>=?")
+                params.append(date_from)
+            if date_to:
+                where.append("f.record_date<=?")
+                params.append(date_to + " 23:59:59")
+            where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+            params.append(limit)
+            rows = conn.execute(
+                f"SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id "
+                f"{where_sql} ORDER BY f.record_date DESC LIMIT ?", tuple(params)).fetchall()
             cols_raw = conn.execute(
                 "SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id LIMIT 0"
             ).description or []
@@ -2218,6 +2240,130 @@ class AppStore:
                 FROM vehicles v LIMIT 0
             """).description or []]
             return [dict(zip(cols, r)) for r in rows]
+
+    def edit_fuel_record(self, record_id: int, data: dict) -> dict:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        liters = max(float(data.get("liters", 1)), 0.01)
+        cost = float(data.get("total_cost", 0))
+        with self._conn() as conn:
+            conn.execute(
+                """UPDATE fuel_records SET record_date=?, odometer_km=?, liters=?, total_cost=?,
+                   price_per_liter=?, driver=?, station=?, notes=? WHERE id=?""",
+                (data.get("record_date", now), float(data.get("odometer_km", 0)),
+                 liters, cost, cost / liters,
+                 data.get("driver", ""), data.get("station", ""), data.get("notes", ""), record_id))
+            conn.commit()
+            return {"saved": True}
+
+    # ── Maintenance ─────────────────────────────────────────────
+
+    def list_maintenance(self, vehicle_id: int | None = None, limit: int = 100) -> list[dict]:
+        with self._conn() as conn:
+            if vehicle_id:
+                rows = conn.execute(
+                    "SELECT m.*, v.unit_number FROM maintenance_records m JOIN vehicles v ON v.id=m.vehicle_id "
+                    "WHERE m.vehicle_id=? ORDER BY m.record_date DESC LIMIT ?",
+                    (vehicle_id, limit)).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT m.*, v.unit_number FROM maintenance_records m JOIN vehicles v ON v.id=m.vehicle_id "
+                    "ORDER BY m.record_date DESC LIMIT ?",
+                    (limit,)).fetchall()
+            cols = [d[0] for d in conn.execute(
+                "SELECT m.*, v.unit_number FROM maintenance_records m JOIN vehicles v ON v.id=m.vehicle_id LIMIT 0"
+            ).description or []]
+            return [dict(zip(cols, r)) for r in rows]
+
+    def save_maintenance(self, data: dict, actor: str = "") -> dict:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        vid = int(data.get("vehicle_id", 0))
+        if not vid:
+            raise ValueError("Vehiculo es requerido.")
+        mid = data.get("id")
+        with self._conn() as conn:
+            if mid:
+                conn.execute(
+                    """UPDATE maintenance_records SET maintenance_type=?, description=?, cost=?,
+                       odometer_km=?, next_km=?, record_date=?, provider=?, notes=? WHERE id=?""",
+                    (data.get("maintenance_type", ""), data.get("description", ""),
+                     float(data.get("cost", 0)), float(data.get("odometer_km", 0)),
+                     float(data.get("next_km", 0)), data.get("record_date", now),
+                     data.get("provider", ""), data.get("notes", ""), int(mid)))
+            else:
+                conn.execute(
+                    """INSERT INTO maintenance_records (vehicle_id, maintenance_type, description, cost,
+                       odometer_km, next_km, record_date, provider, notes, created_by, created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (vid, data.get("maintenance_type", ""), data.get("description", ""),
+                     float(data.get("cost", 0)), float(data.get("odometer_km", 0)),
+                     float(data.get("next_km", 0)), data.get("record_date", now),
+                     data.get("provider", ""), data.get("notes", ""), actor, now))
+            conn.commit()
+            return {"saved": True}
+
+    def delete_maintenance(self, record_id: int) -> bool:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM maintenance_records WHERE id=?", (record_id,))
+            conn.commit()
+            return True
+
+    def maintenance_alerts(self) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute("""
+                SELECT m.id, m.vehicle_id, v.unit_number, m.maintenance_type, m.next_km,
+                  (SELECT MAX(f.odometer_km) FROM fuel_records f WHERE f.vehicle_id=m.vehicle_id) as current_km
+                FROM maintenance_records m JOIN vehicles v ON v.id=m.vehicle_id
+                WHERE m.next_km > 0 AND v.status='activo'
+                ORDER BY m.next_km
+            """).fetchall()
+            alerts = []
+            for r in rows:
+                next_km = float(r[4] or 0)
+                current = float(r[5] or 0)
+                if current <= 0 or next_km <= 0:
+                    continue
+                remaining = next_km - current
+                if remaining <= 1000:
+                    alerts.append({
+                        "vehicle_id": r[1], "unit_number": r[2],
+                        "maintenance_type": r[3], "next_km": next_km,
+                        "current_km": current, "remaining_km": remaining,
+                        "overdue": remaining < 0
+                    })
+            return alerts
+
+    def fleet_kpi_stats(self) -> dict:
+        now = datetime.now()
+        month_start = now.strftime("%Y-%m-01")
+        with self._conn() as conn:
+            total_vehicles = conn.execute(
+                "SELECT COUNT(*) FROM vehicles WHERE status='activo'").fetchone()[0] or 0
+            month = conn.execute(
+                "SELECT COALESCE(SUM(liters),0), COALESCE(SUM(total_cost),0), "
+                "COALESCE(SUM(km_traveled),0), COUNT(*) "
+                "FROM fuel_records WHERE record_date >= ?", (month_start,)).fetchone()
+            avg_kml = conn.execute(
+                "SELECT CASE WHEN SUM(liters)>0 THEN SUM(km_traveled)/SUM(liters) ELSE 0 END "
+                "FROM fuel_records WHERE record_date >= ? AND km_traveled > 0",
+                (month_start,)).fetchone()
+            return {
+                "total_vehicles": total_vehicles,
+                "month_liters": float(month[0]) if month else 0,
+                "month_cost": float(month[1]) if month else 0,
+                "month_km": float(month[2]) if month else 0,
+                "month_records": int(month[3]) if month else 0,
+                "month_avg_kml": round(float(avg_kml[0]), 2) if avg_kml and avg_kml[0] else 0,
+            }
+
+    def fuel_trend(self, vehicle_id: int, limit: int = 30) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT record_date, kml_real, cost_per_km, liters, total_cost, odometer_km, driver "
+                "FROM fuel_records WHERE vehicle_id=? AND kml_real > 0 "
+                "ORDER BY record_date ASC LIMIT ?",
+                (vehicle_id, limit)).fetchall()
+            return [{"date": r[0], "kml": r[1], "cpk": r[2], "liters": r[3],
+                     "cost": r[4], "km": r[5], "driver": r[6]} for r in rows]
 
 
 def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
@@ -2900,7 +3046,10 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
     def api_fleet_fuel_list():
         vid = request.args.get("vehicle_id", type=int)
         limit = request.args.get("limit", 200, type=int)
-        return jsonify({"ok": True, "records": store.list_fuel_records(vehicle_id=vid, limit=limit)})
+        date_from = request.args.get("date_from", "")
+        date_to = request.args.get("date_to", "")
+        return jsonify({"ok": True, "records": store.list_fuel_records(
+            vehicle_id=vid, limit=limit, date_from=date_from, date_to=date_to)})
 
     @app.route("/api/fleet/fuel", methods=["POST"])
     @login_required
@@ -2914,10 +3063,71 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
+    @app.route("/api/fleet/fuel/<int:record_id>", methods=["PUT"])
+    @login_required
+    def api_fleet_fuel_edit(record_id):
+        if not is_valid_csrf():
+            return jsonify({"ok": False, "error": "CSRF invalido."}), 403
+        data = request.get_json(silent=True) or {}
+        try:
+            result = store.edit_fuel_record(record_id, data)
+            return jsonify({"ok": True, **result})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.route("/api/fleet/fuel/<int:record_id>", methods=["DELETE"])
+    @login_required
+    def api_fleet_fuel_delete(record_id):
+        if not is_valid_csrf():
+            return jsonify({"ok": False, "error": "CSRF invalido."}), 403
+        store.delete_fuel_record(record_id)
+        return jsonify({"ok": True})
+
     @app.route("/api/fleet/summary", methods=["GET"])
     @login_required
     def api_fleet_summary():
         return jsonify({"ok": True, "summary": store.fleet_summary()})
+
+    @app.route("/api/fleet/kpis", methods=["GET"])
+    @login_required
+    def api_fleet_kpis():
+        return jsonify({"ok": True, **store.fleet_kpi_stats()})
+
+    @app.route("/api/fleet/trend/<int:vehicle_id>", methods=["GET"])
+    @login_required
+    def api_fleet_trend(vehicle_id):
+        return jsonify({"ok": True, "trend": store.fuel_trend(vehicle_id)})
+
+    @app.route("/api/fleet/maintenance", methods=["GET"])
+    @login_required
+    def api_fleet_maintenance_list():
+        vid = request.args.get("vehicle_id", type=int)
+        return jsonify({"ok": True, "records": store.list_maintenance(vehicle_id=vid)})
+
+    @app.route("/api/fleet/maintenance", methods=["POST"])
+    @login_required
+    def api_fleet_maintenance_save():
+        if not is_valid_csrf():
+            return jsonify({"ok": False, "error": "CSRF invalido."}), 403
+        data = request.get_json(silent=True) or {}
+        try:
+            result = store.save_maintenance(data, actor=request.current_user["username"])
+            return jsonify({"ok": True, **result})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.route("/api/fleet/maintenance/<int:record_id>", methods=["DELETE"])
+    @login_required
+    def api_fleet_maintenance_delete(record_id):
+        if not is_valid_csrf():
+            return jsonify({"ok": False, "error": "CSRF invalido."}), 403
+        store.delete_maintenance(record_id)
+        return jsonify({"ok": True})
+
+    @app.route("/api/fleet/alerts", methods=["GET"])
+    @login_required
+    def api_fleet_alerts():
+        return jsonify({"ok": True, "alerts": store.maintenance_alerts()})
 
     return app
 
