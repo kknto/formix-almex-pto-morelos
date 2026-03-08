@@ -275,9 +275,8 @@ if(testCylinderForm) {
         }
 
         try {
-            const response = await fetch(`/api/qclab/cylinders/${currentTestCylinderId}/test`, {
+            const response = await apiFetch(`/api/qclab/cylinders/${currentTestCylinderId}/test`, {
                 method: "POST",
-                headers: { "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
                 body: formData
             });
 
