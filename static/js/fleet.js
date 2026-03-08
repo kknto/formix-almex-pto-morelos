@@ -55,6 +55,9 @@ function loadFleetData() {
   loadMaintenance();
 }
 
+// Expose to global scope for app.js to call
+window.loadFleetData = loadFleetData;
+
 async function loadFleetKPIs() {
   try {
     const d = await fleetFetch("/api/fleet/kpis");
