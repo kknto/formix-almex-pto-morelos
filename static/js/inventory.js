@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Inventory Management Module
  * Connects with the `/api/inventory` endpoints.
  */
@@ -176,14 +176,14 @@
   // --- Actions & Dialogs ---
   function showMaterialFormDialog(mat = null) {
     const formHtml = `
-      <form id="matForm" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
-        <label>
-          Nombre Comercial (Ej. Cemento Cemex, Arena Lavada)
-          <input type="text" id="matName" value="${mat ? escapeHtml(mat.name) : ''}" required>
-        </label>
-        <label>
-          Alias en Dosificador (Puente para deducciÃ³n automÃ¡tica)
-          <select id="matAlias">
+      <form id="matForm">
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label for="matName" class="form-label">Nombre Comercial (Ej. Cemento Cemex, Arena Lavada)</label>
+          <input type="text" id="matName" class="form-input" value="${mat ? escapeHtml(mat.name) : ''}" required>
+        </div>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label for="matAlias" class="form-label">Alias en Dosificador (Puente para deducción automática)</label>
+          <select id="matAlias" class="form-input">
             <option value="">-- Sin Vincular --</option>
             <option value="Cemento" ${mat && mat.doser_alias === 'Cemento' ? 'selected' : ''}>Cemento (Dosificador)</option>
             <option value="Agua" ${mat && mat.doser_alias === 'Agua' ? 'selected' : ''}>Agua (Dosificador)</option>
@@ -193,29 +193,34 @@
             <option value="Grueso 1" ${mat && mat.doser_alias === 'Grueso 1' ? 'selected' : ''}>Grueso 1 / Grava 1</option>
             <option value="Grueso 2" ${mat && mat.doser_alias === 'Grueso 2' ? 'selected' : ''}>Grueso 2 / Grava 2</option>
           </select>
-        </label>
-        <label>
-          Unidad de Medida
-          <input type="text" id="matUnit" value="${mat ? escapeHtml(mat.unit) : 'kg'}" required>
-        </label>
-        <label>
-          Stock MÃ­nimo (Alerta)
-          <input type="number" step="any" id="matMin" value="${mat ? mat.min_stock : 0}" required>
-        </label>
+        </div>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label for="matUnit" class="form-label">Unidad de Medida</label>
+          <input type="text" id="matUnit" class="form-input" value="${mat ? escapeHtml(mat.unit) : 'kg'}" required>
+        </div>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label for="matMin" class="form-label">Stock Mínimo (Alerta)</label>
+          <input type="number" step="any" id="matMin" class="form-input" value="${mat ? mat.min_stock : 0}" required>
+        </div>
       </form>
     `;
     const dialogDiv = document.createElement("div");
     dialogDiv.className = "ui-dialog";
+    dialogDiv.setAttribute("role", "dialog");
+    dialogDiv.setAttribute("aria-modal", "true");
     dialogDiv.innerHTML = `
+      <header class="ui-dialog__header">
+        <h2 class="ui-dialog__title">${mat ? "Editar Material" : "Nuevo Material Base"}</h2>
+        <button class="ui-dialog__close" id="closeMatIconBtn">&times;</button>
+      </header>
       <div class="ui-dialog__content">
-        <h2 style="margin-bottom:8px;">${mat ? "Editar Material" : "Nuevo Material Base"}</h2>
-        <p style="color:var(--text-muted);font-size:0.9rem">
-          Al crear un nuevo material, este comenzarÃ¡ con stock de 0. Para incrementar el stock usa "Registrar Movimiento".
+        <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">
+          Al crear un nuevo material, este comenzará con stock de 0. Para incrementar el stock usa "Registrar Movimiento".
         </p>
         ${formHtml}
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:24px;">
-          <button id="cancelMatBtn" class="btn btn--muted">Cancelar</button>
-          <button id="saveMatBtn" class="btn btn--primary">Guardar</button>
+        <div class="ui-dialog__actions">
+          <button id="cancelMatBtn" class="btn btn-muted">Cancelar</button>
+          <button id="saveMatBtn" class="btn btn-primary">Guardar</button>
         </div>
       </div>
     `;
@@ -224,9 +229,9 @@
     uiDialogHost.appendChild(dialogDiv);
     uiDialogHost.classList.remove("is-hidden");
 
-    document.getElementById("cancelMatBtn").addEventListener("click", () => {
-      uiDialogHost.classList.add("is-hidden");
-    });
+    document.getElementById("cancelMatBtn").addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
+    const closeMatIconBtn = document.getElementById("closeMatIconBtn");
+    if (closeMatIconBtn) closeMatIconBtn.addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
 
     document.getElementById("saveMatBtn").addEventListener("click", async () => {
       const payload = {
@@ -264,41 +269,46 @@
     let optHtml = invMaterials.map(m => `<option value="${m.id}">${escapeHtml(m.name)} (Stock: ${formatNum(m.current_stock)} ${escapeHtml(m.unit)})</option>`).join("");
 
     const formHtml = `
-      <form id="trxForm" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
-        <label>
-          Material
-          <select id="trxMatId" required>${optHtml}</select>
-        </label>
-        <label>
-          Tipo de Movimiento
-          <select id="trxType">
+      <form id="trxForm">
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label for="trxMatId" class="form-label">Material</label>
+          <select id="trxMatId" class="form-input" required>${optHtml}</select>
+        </div>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label for="trxType" class="form-label">Tipo de Movimiento</label>
+          <select id="trxType" class="form-input">
             <option value="ENTRADA">ENTRADA (Aumentar Stock - Ej: Compra de Cemento)</option>
             <option value="SALIDA">SALIDA (Reducir Stock - Ej: Ajuste / Merma)</option>
           </select>
-        </label>
-        <label>
-          Cantidad
-          <input type="number" step="any" min="0.001" id="trxAmount" placeholder="0.0" required>
-        </label>
-        <label>
-          Referencia (Opcional)
-          <input type="text" id="trxRef" placeholder="Ej: Ticket #123 Cemex">
-        </label>
+        </div>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label for="trxAmount" class="form-label">Cantidad</label>
+          <input type="number" step="any" min="0.001" id="trxAmount" class="form-input" placeholder="0.0" required>
+        </div>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label for="trxRef" class="form-label">Referencia (Opcional)</label>
+          <input type="text" id="trxRef" class="form-input" placeholder="Ej: Ticket #123 Cemex">
+        </div>
       </form>
     `;
 
     const dialogDiv = document.createElement("div");
     dialogDiv.className = "ui-dialog";
+    dialogDiv.setAttribute("role", "dialog");
+    dialogDiv.setAttribute("aria-modal", "true");
     dialogDiv.innerHTML = `
+      <header class="ui-dialog__header">
+        <h2 class="ui-dialog__title">Registrar Movimiento</h2>
+        <button class="ui-dialog__close" id="closeTrxIconBtn">&times;</button>
+      </header>
       <div class="ui-dialog__content">
-        <h2 style="margin-bottom:8px;">Registrar Movimiento</h2>
-        <p style="color:var(--text-muted);font-size:0.9rem">
-          Registra una entrada manual de mercancÃ­a por pedido o un ajuste de inventario.
+        <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">
+          Registra una entrada manual de mercancía por pedido o un ajuste de inventario.
         </p>
         ${formHtml}
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:24px;">
-          <button id="cancelTrxBtn" class="btn btn--muted">Cancelar</button>
-          <button id="saveTrxBtn" class="btn btn--primary">Registrar</button>
+        <div class="ui-dialog__actions">
+          <button id="cancelTrxBtn" class="btn btn-muted">Cancelar</button>
+          <button id="saveTrxBtn" class="btn btn-primary">Registrar</button>
         </div>
       </div>
     `;
@@ -307,9 +317,9 @@
     uiDialogHost.appendChild(dialogDiv);
     uiDialogHost.classList.remove("is-hidden");
 
-    document.getElementById("cancelTrxBtn").addEventListener("click", () => {
-      uiDialogHost.classList.add("is-hidden");
-    });
+    document.getElementById("cancelTrxBtn").addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
+    const closeTrxIconBtn = document.getElementById("closeTrxIconBtn");
+    if (closeTrxIconBtn) closeTrxIconBtn.addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
 
     document.getElementById("saveTrxBtn").addEventListener("click", async () => {
       const payload = {
