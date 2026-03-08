@@ -460,7 +460,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin):
         if self.is_postgres:
             with conn.conn.cursor() as cur:
                 cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = %s", (table_name.lower(),))
-                return {r["column_name"] for r in cur.fetchall()}
+                return {r[0] for r in cur.fetchall()}
         rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
         return {r["name"] for r in rows}
 
