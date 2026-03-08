@@ -505,6 +505,22 @@
       <!-- Alerts Banner -->
       <div id="fleetAlertsBanner" class="fleet-alerts" style="display:none;"></div>
 
+      <!-- GPS Tracking Panel -->
+      <article class="panel panel--consulta" style="margin-bottom: 20px;">
+        <div class="consulta-head">
+          <h2>Monitoreo de Unidades en Tiempo Real</h2>
+          <p>Localización satelital de la flota</p>
+        </div>
+        <div class="fleet-monitor-wrapper">
+          <iframe 
+            id="gpsIframe"
+            src="https://www.redgps.com/" 
+            title="GPS Monitoring"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </article>
+
       <section class="fleet-grid-vertical">
         <!-- Vehicle Registry -->
         <article class="panel panel--consulta" style="margin-bottom: 20px;">
