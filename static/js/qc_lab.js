@@ -33,6 +33,27 @@ function initQcLab() {
     renderAgesBadges();
 }
 
+/**
+ * Heuristic for expected concrete strength gain percentage based on age.
+ */
+function getExpectedPercentage(days) {
+    if (days >= 28) return 100;
+    if (days >= 14) return 85;
+    if (days >= 7) return 70;
+    if (days >= 3) return 50;
+    return 10; // Under 3 days
+}
+
+function getPerformanceClass(percentAchieved, targetDays) {
+    const expected = getExpectedPercentage(targetDays);
+    // Performance relative to what is expected for that age
+    const ratio = (percentAchieved / expected) * 100;
+
+    if (ratio >= 100) return 'qc-perf-good';
+    if (ratio >= 85) return 'qc-perf-warn';
+    return 'qc-perf-bad';
+}
+
 async function loadQcData() {
     try {
         const response = await apiFetch("/api/qclab/cylinders?pending_only=false");
@@ -116,6 +137,16 @@ function renderQcCylinders() {
                 ${cyl.tipo ? ` | ${cyl.tipo}` : ''}
             </div>` : '';
 
+        // Performance Calculation
+        let perfHtml = '<span style="color:var(--text-muted); opacity:0.5">-</span>';
+        if (!isPending && cyl.fc_expected > 0) {
+            const percentAchieved = (cyl.strength_kgcm2 / cyl.fc_expected) * 100;
+            const perfClass = getPerformanceClass(percentAchieved, cyl.target_age_days);
+            perfHtml = `<span class="${perfClass}" title="Esperado para ${cyl.target_age_days}d: ${getExpectedPercentage(cyl.target_age_days)}% del f'c">
+                ${percentAchieved.toFixed(1)}%
+            </span>`;
+        }
+
         tr.innerHTML = `
             <td style="font-weight:600; color:var(--text-color);">
                 <div>${svgIcon}${cyl.sample_code}</div>
@@ -125,11 +156,12 @@ function renderQcCylinders() {
             <td style="text-align:center; color:var(--text-soft);">${cyl.expected_test_date}</td>
             <td style="text-align:center;"><span class="qc-status-badge ${badgeClass}">${cyl.status.toUpperCase()}</span></td>
             <td style="text-align:center; font-weight:600; color:${isPending ? 'var(--text-muted)' : 'var(--color-success)'};">${isPending ? '<span style="opacity:0.5">-</span>' : cyl.strength_kgcm2 + ' kg/cm²'}</td>
+            <td style="text-align:center;">${perfHtml}</td>
             <td style="text-align:center;">
                 ${cyl.image_path ? `<img src="${cyl.image_path}" class="qc-thumbnail" onclick="window.open('${cyl.image_path}')" title="Ver Evidencia">` : '<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Sin foto</span>'}
             </td>
             <td style="text-align:center; display:flex; justify-content:center; gap:8px;">
-                ${isPending ? `<button class="btn btn--primary btn--small" onclick="window.openTestModal(${cyl.id}, '${cyl.sample_code}')" style="display:inline-flex; align-items:center; gap:4px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Ensaye</button>` : '<span style="color:var(--text-muted); font-size:0.85em;">Completado</span>'}
+                ${isPending ? `<button class="btn btn--primary btn--small" onclick="window.openTestModal(${cyl.id}, '${cyl.sample_code}')" style="display:inline-flex; align-items:center; gap:4px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Ensaye</button>` : `<button class="btn btn--muted btn--small" onclick="window.openChartModal(${cyl.sample_id}, '${cyl.sample_code}')" title="Ver Gráfica de Evolución"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg></button>`}
                 <button type="button" class="btn btn--muted btn--small" onclick="window.deleteQcSample(${cyl.sample_id})" title="Eliminar Muestra Completa" style="color:var(--color-danger); border-color:transparent; padding:4px 8px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
             </td>
         `;
@@ -325,6 +357,116 @@ window.closeTestModal = function() {
         testCylinderModal.classList.remove("is-active");
     }
     currentTestCylinderId = null;
+}
+
+window.openChartModal = async function(sampleId, sampleCode) {
+    const modal = document.getElementById("qcChartModal");
+    if (!modal) return;
+
+    document.getElementById("qcChartModalTitle").innerText = `Evolución: ${sampleCode}`;
+    modal.classList.remove("is-hidden");
+    modal.classList.add("is-active");
+
+    renderEvolutionChart(sampleId);
+}
+
+window.closeChartModal = function() {
+    const modal = document.getElementById("qcChartModal");
+    if (modal) {
+        modal.classList.add("is-hidden");
+        modal.classList.remove("is-active");
+    }
+}
+
+let activeChart = null;
+
+async function renderEvolutionChart(sampleId) {
+    try {
+        const response = await apiFetch(`/api/qclab/samples/${sampleId}`);
+        const res = await response.json();
+        if (!res.ok) throw new Error(res.error);
+
+        const sample = res.sample;
+        const fcExpected = sample.fc_expected || 0;
+        const cylinders = sample.cylinders || [];
+
+        // Theoretical curve points (simplistic)
+        const theoreticalPoints = [
+            { x: 3, y: fcExpected * 0.5 },
+            { x: 7, y: fcExpected * 0.7 },
+            { x: 14, y: fcExpected * 0.85 },
+            { x: 28, y: fcExpected * 1.0 }
+        ];
+
+        // Real points
+        const realPoints = cylinders
+            .filter(c => c.status === 'ensayado')
+            .map(c => ({ x: c.target_age_days, y: c.strength_kgcm2 }))
+            .sort((a, b) => a.x - b.x);
+
+        const ctx = document.getElementById('qcEvolutionChart').getContext('2d');
+        
+        if (activeChart) activeChart.destroy();
+
+        activeChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: 'Curva Teórica Esperada',
+                        data: theoreticalPoints,
+                        borderColor: '#94a3b8',
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        tension: 0.3,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Resultados Reales (kg/cm²)',
+                        data: realPoints,
+                        borderColor: '#2563eb', // Formix Brand
+                        backgroundColor: '#2563eb',
+                        tension: 0.1,
+                        fill: false,
+                        pointRadius: 6,
+                        pointHoverRadius: 8
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'linear',
+                        title: { display: true, text: 'Edad (Días)' },
+                        min: 0,
+                        max: 30
+                    },
+                    y: {
+                        title: { display: true, text: 'Resistencia (kg/cm²)' },
+                        min: 0,
+                        suggestedMax: fcExpected * 1.2
+                    }
+                },
+                plugins: {
+                    legend: { position: 'top' }
+                }
+            }
+        });
+
+        // Details text
+        const details = document.getElementById("qcChartDetails");
+        if (details) {
+            details.innerHTML = `
+                <p><b>f'c de diseño:</b> ${fcExpected} kg/cm²</p>
+                <p><b>Muestra:</b> ${sample.sample_code} | <b>Fecha colado:</b> ${sample.cast_date}</p>
+                ${sample.formula ? `<p><b>Diseño:</b> ${sample.formula}</p>` : ''}
+            `;
+        }
+    } catch (err) {
+        console.error("Error rendering chart:", err);
+    }
 }
 
 // Compress Image Logic
