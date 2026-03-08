@@ -8,6 +8,7 @@ const state = {
     allowedViews: Array.isArray(APP_BOOT.allowed_views) ? APP_BOOT.allowed_views : ["editor", "consulta", "dosificador"],
     canEdit: Boolean(APP_BOOT.can_edit),
     canEditQcHumidity: Boolean(APP_BOOT.can_edit_qc_humidity),
+    csrfToken: APP_BOOT.csrf_token || "",
   },
   file: "",
   files: [],
@@ -62,6 +63,7 @@ const MOD_DATE_HEADER = "FECHA_MODIF";
 const QC_AGGREGATES = ["Fino 1", "Fino 2", "Grueso 1", "Grueso 2"];
 const QC_FIELDS = ["pvs", "pvc", "densidad", "absorcion", "humedad"];
 const BRAND_LOGO_URL = `${window.location.origin}/static/img/logo_almex.png`;
+const MUTATING_HTTP_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const tableHead = document.querySelector("#csvTable thead");
 const tableBody = document.querySelector("#csvTable tbody");
@@ -107,7 +109,6 @@ const doserRecipeBody = document.getElementById("doserRecipeBody");
 const doserRecipeWeight = document.getElementById("doserRecipeWeight");
 const doserTheoreticalBody = document.getElementById("doserTheoreticalBody");
 const doserTheoreticalWeight = document.getElementById("doserTheoreticalWeight");
-const doserTheoreticalWeightBatch = document.getElementById("doserTheoreticalWeightBatch");
 const doserRealBody = document.getElementById("doserRealBody");
 const doserRealWeight = document.getElementById("doserRealWeight");
 const doserExportReportBtn = document.getElementById("dExportReportBtn");
@@ -134,6 +135,20 @@ const backupRestoreBtn = document.getElementById("backupRestoreBtn");
 
 function canEditDoserTolerances() {
   return state.auth.role === "jefe-de-planta" || state.auth.role === "administrador";
+}
+
+function withCsrf(options = {}) {
+  const out = { ...options };
+  const method = (out.method || "GET").toUpperCase();
+  if (!MUTATING_HTTP_METHODS.has(method)) return out;
+  const headers = { ...(out.headers || {}) };
+  if (state.auth.csrfToken) headers["X-CSRF-Token"] = state.auth.csrfToken;
+  out.headers = headers;
+  return out;
+}
+
+function apiFetch(input, options = {}) {
+  return window.fetch(input, withCsrf(options));
 }
 
 const doserFields = {
@@ -193,11 +208,6 @@ function formatVol(value) {
 
 function formatMoney(value) {
   return `$${formatNum(value)}`;
-}
-
-function roundTo(value, decimals = 3) {
-  const factor = 10 ** decimals;
-  return Math.round((Number(value) + Number.EPSILON) * factor) / factor;
 }
 
 function escapeHtml(value) {
@@ -1124,10 +1134,10 @@ function renderRecipeAndCosts(row) {
     const volText = isAggregateComponent(item.name) ? formatVol(item.volume) : "-";
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${item.name}</td>
-      <td>${formatNum(item.qty)}</td>
-      <td>${item.unit}</td>
-      <td>${volText}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(formatNum(item.qty))}</td>
+      <td>${escapeHtml(item.unit)}</td>
+      <td>${escapeHtml(volText)}</td>
     `;
     recipeBody.appendChild(tr);
   });
@@ -1197,13 +1207,13 @@ function renderCostTable(recipeItems) {
         )}" title="Costo de transporte por m³ del agregado (del banco a la planta)" aria-label="Acarreo por m³"></div>`
       : "-";
     tr.innerHTML = `
-      <td>${item.name}</td>
-      <td>${formatNum(item.qty)}</td>
-      <td>${m3Text}</td>
-      <td>${item.unit}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(formatNum(item.qty))}</td>
+      <td>${escapeHtml(m3Text)}</td>
+      <td>${escapeHtml(item.unit)}</td>
       <td>${haulCell}</td>
       <td><div class="money-field"><span class="money-field__symbol">$</span><input class="cost-input" type="number" min="0" step="0.01" value="${unitCost.toFixed(2)}"></div></td>
-      <td class="cost-sub">${formatMoney(subtotal)}</td>
+      <td class="cost-sub">${escapeHtml(formatMoney(subtotal))}</td>
     `;
     const input = tr.querySelector(".cost-input");
     const haulInput = tr.querySelector(".haul-input");
@@ -1470,18 +1480,16 @@ function buildDoserReportSnapshot() {
     qty: row.trialLoad,
   }));
   const theoreticalWeight = detailed.totals.theoreticalWeight;
-  const theoreticalWeightPerM3 = dose > 0 ? (theoreticalWeight / dose) : 0;
 
   let realWeight = 0;
   const realRows = theoretical.map((item) => {
-    const target = roundTo(item.qty, 3);
     if (typeof state.doser.realLoads[item.name] !== "number") {
-      state.doser.realLoads[item.name] = target;
+      state.doser.realLoads[item.name] = item.qty;
     }
     const real = toNumber(state.doser.realLoads[item.name]);
-    const diff = real - target;
+    const diff = real - item.qty;
     const tol = toleranceFor(item.name);
-    const lim = Math.abs(target) * (tol / 100);
+    const lim = item.qty * (tol / 100);
     const ok = Math.abs(diff) <= lim;
     realWeight += real * componentWeightFactor(item);
     return {
@@ -1494,7 +1502,6 @@ function buildDoserReportSnapshot() {
       tolerance: tol,
     };
   });
-  const realWeightPerM3 = dose > 0 ? (realWeight / dose) : 0;
 
   const formula = valueByKey(selectedRow, "formula") || "-";
   const fc = valueByKey(selectedRow, "fc") || "-";
@@ -1522,12 +1529,10 @@ function buildDoserReportSnapshot() {
     recipeWeight,
     theoretical,
     theoreticalWeight,
-    theoreticalWeightPerM3,
     theoreticalDetailed: detailed.rows,
     calcTotals: detailed.totals,
     realRows,
     realWeight,
-    realWeightPerM3,
     dose,
     qc: state.doser.quality,
     doserParams: state.doser.params,
@@ -1543,18 +1548,6 @@ function normalizeDoserReportSnapshot(raw, fallback = {}) {
     : defaultTol;
   const qcValues = snap.qc && typeof snap.qc === "object" ? snap.qc : createDefaultQuality();
 
-  const dose = toNumber(snap.dose || snap.dosificacion_m3 || 0);
-  const theoreticalWeight = toNumber(snap.theoreticalWeight || snap.peso_teorico_total || 0);
-  const realWeight = toNumber(snap.realWeight || snap.peso_real_total || 0);
-  const theoreticalWeightPerM3Raw = toNumber(
-    snap.theoreticalWeightPerM3 || snap.peso_teorico_por_m3 || snap.peso_teorico_m3 || 0
-  );
-  const realWeightPerM3Raw = toNumber(
-    snap.realWeightPerM3 || snap.peso_real_por_m3 || snap.peso_real_m3 || 0
-  );
-  const theoreticalWeightPerM3 = theoreticalWeightPerM3Raw > 0 ? theoreticalWeightPerM3Raw : (dose > 0 ? (theoreticalWeight / dose) : 0);
-  const realWeightPerM3 = realWeightPerM3Raw > 0 ? realWeightPerM3Raw : (dose > 0 ? (realWeight / dose) : 0);
-
   return {
     remisionNo: (snap.remisionNo || snap.remision_no || fallback.remisionNo || "-").toString(),
     file: snap.file || fallback.file || "-",
@@ -1567,17 +1560,15 @@ function normalizeDoserReportSnapshot(raw, fallback = {}) {
     rev: snap.rev || "-",
     comp: snap.comp || "-",
     modDate: snap.modDate || "-",
-    dose,
+    dose: toNumber(snap.dose || snap.dosificacion_m3 || 0),
     recipe: Array.isArray(snap.recipe) ? snap.recipe : [],
     recipeWeight: toNumber(snap.recipeWeight || snap.peso_receta || 0),
     theoretical: Array.isArray(snap.theoretical) ? snap.theoretical : [],
     theoreticalDetailed: Array.isArray(snap.theoreticalDetailed) ? snap.theoreticalDetailed : [],
     calcTotals: snap.calcTotals && typeof snap.calcTotals === "object" ? snap.calcTotals : {},
-    theoreticalWeight,
-    theoreticalWeightPerM3,
+    theoreticalWeight: toNumber(snap.theoreticalWeight || snap.peso_teorico_total || 0),
     realRows: Array.isArray(snap.realRows) ? snap.realRows : [],
-    realWeight,
-    realWeightPerM3,
+    realWeight: toNumber(snap.realWeight || snap.peso_real_total || 0),
     doserParams: normalizeDoserParams(snap.doserParams),
     tolerances: {
       cemento: toNumber(tolerances.cemento || 0),
@@ -1821,8 +1812,7 @@ function buildDoserReportHtml(rawSnapshot, reportDate) {
           </thead>
           <tbody>${theoreticalRowsHtml}</tbody>
         </table>
-        <div class="total-line">Carga teorica (kg/m<sup>3</sup> eq.): ${escapeHtml(formatNum(snap.theoreticalWeightPerM3))}</div>
-        <div class="total-line">Carga teorica lote: ${escapeHtml(formatNum(snap.theoreticalWeight))}</div>
+        <div class="total-line">Peso teorico total: ${escapeHtml(formatNum(snap.theoreticalWeight))}</div>
         <div class="total-line">Rel. A/C: ${escapeHtml(formatNum(toNumber(snap.calcTotals.relAc || 0)))} | Vol. Abs. + Aire: ${escapeHtml(formatNum(toNumber(snap.calcTotals.absVolumeTotal || 0)))}</div>
       </section>
     </div>
@@ -1842,8 +1832,7 @@ function buildDoserReportHtml(rawSnapshot, reportDate) {
         </thead>
         <tbody>${realRowsHtml}</tbody>
       </table>
-      <div class="total-line">Carga real (kg/m<sup>3</sup> eq.): ${escapeHtml(formatNum(snap.realWeightPerM3))}</div>
-      <div class="total-line">Carga real lote: ${escapeHtml(formatNum(snap.realWeight))}</div>
+      <div class="total-line">Peso real total: ${escapeHtml(formatNum(snap.realWeight))}</div>
     </section>
 
     <div class="sign">ForMix by Labsico - Dise&#241;a-Dosifica-Calcula</div>
@@ -1877,7 +1866,7 @@ function exportDoserReport() {
 
 async function openRemisionReport(remisionId) {
   try {
-    const response = await fetch(`/api/remisiones/${encodeURIComponent(remisionId)}?file=${encodeURIComponent(state.file || "")}`);
+    const response = await apiFetch(`/api/remisiones/${encodeURIComponent(remisionId)}?file=${encodeURIComponent(state.file || "")}`);
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo cargar la remision.");
@@ -2197,15 +2186,15 @@ function renderDoserResults() {
     const tr = document.createElement("tr");
     if (entry.sourceIndex === state.doser.selectedRow) tr.classList.add("is-selected");
     tr.innerHTML = `
-      <td>${deriveFamily(row)}</td>
-      <td>${valueByKey(row, "formula") || "-"}</td>
-      <td>${valueByKey(row, "fc") || "-"}</td>
-      <td>${valueByKey(row, "edad") || "-"}</td>
-      <td>${valueByKey(row, "tipo") || "-"}</td>
-      <td>${valueByKey(row, "tma") || "-"}</td>
-      <td>${valueByKey(row, "rev") || "-"}</td>
-      <td>${valueByKey(row, "comp") || "-"}</td>
-      <td>${getRowModDate(row) || "-"}</td>
+      <td>${escapeHtml(deriveFamily(row))}</td>
+      <td>${escapeHtml(valueByKey(row, "formula") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "fc") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "edad") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "tipo") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "tma") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "rev") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "comp") || "-")}</td>
+      <td>${escapeHtml(getRowModDate(row) || "-")}</td>
     `;
     tr.addEventListener("click", () => {
       state.doser.selectedRow = entry.sourceIndex;
@@ -2260,7 +2249,7 @@ function renderRemisionList() {
 async function loadRemisiones() {
   if (!canAccessView("dosificador")) return;
   try {
-    const response = await fetch(`/api/remisiones?file=${encodeURIComponent(state.file || "")}&limit=80`);
+    const response = await apiFetch(`/api/remisiones?file=${encodeURIComponent(state.file || "")}&limit=80`);
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo cargar remisiones.");
@@ -2289,7 +2278,7 @@ async function deleteRemision(remisionId, remisionNo) {
       }
     );
     if (!confirmed) return;
-    const response = await fetch(`/api/remisiones/${encodeURIComponent(id)}?file=${encodeURIComponent(state.file || "")}`, {
+    const response = await apiFetch(`/api/remisiones/${encodeURIComponent(id)}?file=${encodeURIComponent(state.file || "")}`, {
       method: "DELETE",
     });
     const payload = await response.json();
@@ -2315,7 +2304,7 @@ async function saveRemision() {
       setStatus("Selecciona una mezcla para guardar la remision.", "warn");
       return;
     }
-    const response = await fetch("/api/remisiones/save", {
+    const response = await apiFetch("/api/remisiones/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2449,7 +2438,6 @@ function renderDosificador() {
   doserRealBody.innerHTML = "";
   doserRecipeWeight.textContent = "0.00";
   doserTheoreticalWeight.textContent = "0.00";
-  if (doserTheoreticalWeightBatch) doserTheoreticalWeightBatch.textContent = "0.00";
   doserRealWeight.textContent = "0.00";
 
   if (!selectedRow) {
@@ -2474,72 +2462,51 @@ function renderDosificador() {
     recipeTotal += qty * componentWeightFactor({ unit });
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${item.name}</td>
-      <td>${formatNum(qty)} <span class="recipe-inline-unit">${unit}</span></td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(formatNum(qty))} <span class="recipe-inline-unit">${escapeHtml(unit)}</span></td>
     `;
     doserRecipeBody.appendChild(tr);
   });
   doserRecipeWeight.textContent = formatNum(recipeTotal);
 
   let theoTotal = 0;
-  let designATotal = 0;
-  let designHrTotal = 0;
   detailed.rows.forEach((item) => {
     theoTotal += item.trialLoad * componentWeightFactor({ unit: item.trialUnit || item.unit });
-    designATotal += toNumber(item.designA);
-    designHrTotal += toNumber(item.designReal);
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${item.name}</td>
-      <td>${formatVol(item.designA)}</td>
-      <td>${formatVol(item.designSss)}</td>
-      <td>${formatVol(item.freeWater)}</td>
-      <td>${item.includeAbsVolume ? formatVol(item.absVolume) : "-"}</td>
-      <td>${formatVol(item.designReal)}</td>
-      <td>${formatVol(item.trialLoad)}</td>
-      <td>${item.trialUnit || item.unit}</td>
-      <td>${item.note || "-"}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(formatVol(item.designA))}</td>
+      <td>${escapeHtml(formatVol(item.designSss))}</td>
+      <td>${escapeHtml(formatVol(item.freeWater))}</td>
+      <td>${escapeHtml(item.includeAbsVolume ? formatVol(item.absVolume) : "-")}</td>
+      <td>${escapeHtml(formatVol(item.designReal))}</td>
+      <td>${escapeHtml(formatVol(item.trialLoad))}</td>
+      <td>${escapeHtml(item.trialUnit || item.unit)}</td>
+      <td>${escapeHtml(item.note || "-")}</td>
     `;
     doserTheoreticalBody.appendChild(tr);
   });
-  const totalTr = document.createElement("tr");
-  totalTr.className = "theoretical-total-row";
-  totalTr.innerHTML = `
-    <td><strong>TOTAL</strong></td>
-    <td><strong>${formatVol(designATotal)}</strong></td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td><strong>${formatVol(designHrTotal)}</strong></td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-  `;
-  doserTheoreticalBody.appendChild(totalTr);
-  const theoPerM3 = dose > 0 ? (theoTotal / dose) : 0;
-  doserTheoreticalWeight.textContent = formatNum(theoPerM3);
-  if (doserTheoreticalWeightBatch) doserTheoreticalWeightBatch.textContent = formatNum(theoTotal);
+  doserTheoreticalWeight.textContent = formatNum(theoTotal);
   doserSummary.innerHTML = `${baseSummary} | Rel. A/C: ${formatNum(detailed.totals.relAc || 0)} | Vol. Abs. + Aire: ${formatNum(detailed.totals.absVolumeTotal || 0)}`;
 
   let realTotal = 0;
   detailed.rows.forEach((item) => {
-    const target = roundTo(item.trialLoad, 3);
     if (typeof state.doser.realLoads[item.name] !== "number") {
-      state.doser.realLoads[item.name] = target;
+      state.doser.realLoads[item.name] = item.trialLoad;
     }
     const real = state.doser.realLoads[item.name];
     realTotal += real * componentWeightFactor({ unit: item.trialUnit || item.unit });
-    const diff = real - target;
+    const diff = real - item.trialLoad;
     const tol = toleranceFor(item.name);
-    const lim = Math.abs(target) * (tol / 100);
+    const lim = item.trialLoad * (tol / 100);
     const ok = Math.abs(diff) <= lim;
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${item.name}</td>
-      <td>${formatVol(target)}</td>
-      <td><input class="doser-real-input" type="number" min="0" step="0.001" value="${real.toFixed(3)}"></td>
-      <td>${diff >= 0 ? "+" : ""}${formatVol(diff)}</td>
-      <td class="${ok ? "status-ok" : "status-bad"}">${ok ? "OK" : "FUERA"}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${escapeHtml(formatNum(item.trialLoad))}</td>
+      <td><input class="doser-real-input" type="number" min="0" step="0.01" value="${real.toFixed(2)}"></td>
+      <td>${escapeHtml(`${diff >= 0 ? "+" : ""}${formatNum(diff)}`)}</td>
+      <td class="${ok ? "status-ok" : "status-bad"}">${escapeHtml(ok ? "OK" : "FUERA")}</td>
     `;
     const input = tr.querySelector("input");
     let lastCommitted = toNumber(input.value);
@@ -2613,15 +2580,15 @@ function renderQueryResults() {
     const tr = document.createElement("tr");
     if (entry.sourceIndex === state.selectedQueryRow) tr.classList.add("is-selected");
     tr.innerHTML = `
-      <td>${deriveFamily(row)}</td>
-      <td>${valueByKey(row, "formula") || "-"}</td>
-      <td>${valueByKey(row, "fc") || "-"}</td>
-      <td>${valueByKey(row, "edad") || "-"}</td>
-      <td>${valueByKey(row, "tipo") || "-"}</td>
-      <td>${valueByKey(row, "tma") || "-"}</td>
-      <td>${valueByKey(row, "rev") || "-"}</td>
-      <td>${valueByKey(row, "comp") || "-"}</td>
-      <td>${getRowModDate(row) || "-"}</td>
+      <td>${escapeHtml(deriveFamily(row))}</td>
+      <td>${escapeHtml(valueByKey(row, "formula") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "fc") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "edad") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "tipo") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "tma") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "rev") || "-")}</td>
+      <td>${escapeHtml(valueByKey(row, "comp") || "-")}</td>
+      <td>${escapeHtml(getRowModDate(row) || "-")}</td>
     `;
     tr.addEventListener("click", () => {
       state.selectedQueryRow = entry.sourceIndex;
@@ -2696,7 +2663,7 @@ function readDoserParamsFromInputs() {
 async function loadQcData(fileName = state.file) {
   state.qcError = "";
   try {
-    const response = await fetch(`/api/qc?file=${encodeURIComponent(fileName || "")}`);
+    const response = await apiFetch(`/api/qc?file=${encodeURIComponent(fileName || "")}`);
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo cargar Control de Calidad.");
@@ -2717,7 +2684,7 @@ async function loadQcData(fileName = state.file) {
 
 async function loadDoserParams(fileName = state.file) {
   try {
-    const response = await fetch(`/api/doser/params?file=${encodeURIComponent(fileName || "")}`);
+    const response = await apiFetch(`/api/doser/params?file=${encodeURIComponent(fileName || "")}`);
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudieron cargar parametros de dosificacion.");
@@ -2746,7 +2713,7 @@ async function saveDoserParams() {
   }
   try {
     const values = readDoserParamsFromInputs();
-    const response = await fetch("/api/doser/params/save", {
+    const response = await apiFetch("/api/doser/params/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2783,7 +2750,7 @@ async function saveQcData() {
   if (typeof saveQcBtn !== "undefined" && saveQcBtn) saveQcBtn.disabled = true;
 
   try {
-    const response = await fetch("/api/qc/save", {
+    const response = await apiFetch("/api/qc/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2833,7 +2800,7 @@ async function saveQcHumidityData() {
         humedad: toNumber(state.doser.quality[agg]?.humedad ?? 0),
       };
     });
-    const response = await fetch("/api/qc/humidity/save", {
+    const response = await apiFetch("/api/qc/humidity/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2868,7 +2835,7 @@ async function saveQcHumidityData() {
 
 async function loadData() {
   try {
-    const response = await fetch("/api/data");
+    const response = await apiFetch("/api/data");
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "No se pudo cargar el archivo.");
 
@@ -2910,7 +2877,7 @@ async function loadData() {
 
 async function selectActiveFile(fileName) {
   try {
-    const response = await fetch("/api/select", {
+    const response = await apiFetch("/api/select", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ file: fileName }),
@@ -2932,7 +2899,7 @@ async function saveDatasetFamily() {
     return;
   }
   try {
-    const response = await fetch("/api/family", {
+    const response = await apiFetch("/api/family", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -3025,7 +2992,7 @@ async function uploadNewCsv(file) {
   const form = new FormData();
   form.append("file", file);
   try {
-    const previewResp = await fetch("/api/upload/preview", { method: "POST", body: form });
+    const previewResp = await apiFetch("/api/upload/preview", { method: "POST", body: form });
     const preview = await previewResp.json();
     if (!previewResp.ok || !preview.ok) {
       const msg = preview?.validation?.errors?.join(" | ") || preview.error || "No se pudo validar el CSV.";
@@ -3049,7 +3016,7 @@ async function uploadNewCsv(file) {
       if (!ok) return;
     }
 
-    const commitResp = await fetch("/api/upload/commit", {
+    const commitResp = await apiFetch("/api/upload/commit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -3079,7 +3046,7 @@ async function uploadNewCsv(file) {
 
 async function deleteCsvFile(fileName) {
   try {
-    const response = await fetch("/api/delete", {
+    const response = await apiFetch("/api/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ file: fileName }),
@@ -3095,7 +3062,7 @@ async function deleteCsvFile(fileName) {
 
 async function openHistoryDialog() {
   try {
-    const response = await fetch(`/api/history?file=${encodeURIComponent(state.file)}`);
+    const response = await apiFetch(`/api/history?file=${encodeURIComponent(state.file)}`);
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo obtener historial.");
@@ -3141,7 +3108,7 @@ async function openHistoryDialog() {
 }
 
 async function restoreRevision(revisionId) {
-  const response = await fetch("/api/history/restore", {
+  const response = await apiFetch("/api/history/restore", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -3163,7 +3130,7 @@ async function restoreRevision(revisionId) {
 
 async function openAuditDialog() {
   try {
-    const response = await fetch(`/api/audit?file=${encodeURIComponent(state.file || "")}&limit=120`);
+    const response = await apiFetch(`/api/audit?file=${encodeURIComponent(state.file || "")}&limit=120`);
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo cargar la bitacora.");
@@ -3204,7 +3171,7 @@ async function createManualBackup() {
       tone: "info",
     });
     if (reason === null) return;
-    const response = await fetch("/api/backups/create", {
+    const response = await apiFetch("/api/backups/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason }),
@@ -3222,7 +3189,7 @@ async function createManualBackup() {
 
 async function restoreBackupFromDialog() {
   try {
-    const response = await fetch("/api/backups?limit=80");
+    const response = await apiFetch("/api/backups?limit=80");
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo obtener respaldos.");
@@ -3260,7 +3227,7 @@ async function restoreBackupFromDialog() {
     );
     if (!ok) return;
 
-    const restoreResp = await fetch("/api/backups/restore", {
+    const restoreResp = await apiFetch("/api/backups/restore", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ file }),
@@ -3279,7 +3246,7 @@ async function restoreBackupFromDialog() {
 async function saveData() {
   try {
     ensureModDateColumn();
-    const response = await fetch("/api/save", {
+    const response = await apiFetch("/api/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

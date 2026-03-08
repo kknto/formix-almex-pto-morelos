@@ -27,6 +27,7 @@
         <span>{{ auth_boot.role }}</span>
       </div>
       <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn--muted btn--small">Cerrar sesion</button>
       </form>
     </div>
@@ -449,12 +450,8 @@
               </table>
             </div>
             <div class="totals-line">
-              <strong>Carga teórica (kg/m<sup>3</sup> eq.):</strong>
+              <strong>Peso teorico total:</strong>
               <span id="doserTheoreticalWeight">0.00</span>
-            </div>
-            <div class="totals-line">
-              <strong>Carga teórica lote:</strong>
-              <span id="doserTheoreticalWeightBatch">0.00</span>
             </div>
           </article>
 
