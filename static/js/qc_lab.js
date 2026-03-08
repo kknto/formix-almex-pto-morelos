@@ -130,50 +130,122 @@ function renderQcCylinders() {
     if (!pendingCylindersTableBody) return;
     pendingCylindersTableBody.innerHTML = "";
 
+    // Group cylinders by sample
+    const samplesMap = new Map();
     stateQcCylinders.forEach(cyl => {
-        const tr = document.createElement("tr");
-        const isPending = cyl.status === "pendiente";
-        const badgeClass = isPending ? "qc-status-pendiente" : "qc-status-ensayado";
-        
-        const svgIcon = `<svg style="width:16px; height:16px; margin-right:6px; color:var(--brand); vertical-align:middle;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
+        if (!samplesMap.has(cyl.sample_id)) {
+            samplesMap.set(cyl.sample_id, {
+                sample_id: cyl.sample_id,
+                sample_code: cyl.sample_code,
+                formula: cyl.formula,
+                fc: cyl.fc,
+                tma: cyl.tma,
+                tipo: cyl.tipo,
+                cylinders: []
+            });
+        }
+        samplesMap.get(cyl.sample_id).cylinders.push(cyl);
+    });
 
-        const designInfo = (cyl.formula || cyl.fc || cyl.tma) ? 
-            `<div style="font-size:0.75rem; color:var(--text-soft); font-weight:400; margin-top:4px; padding:2px 4px; background:var(--bg-1); border-radius:3px; display:inline-block;">
-                ${cyl.formula ? `<b>${cyl.formula}</b>` : ''} 
-                ${cyl.fc ? ` | f'c ${cyl.fc}` : ''}
-                ${cyl.tma ? ` | TMA ${cyl.tma}` : ''}
-                ${cyl.tipo ? ` | ${cyl.tipo}` : ''}
+    // Render each group
+    samplesMap.forEach(sample => {
+        // --- 1. Header Row (The Sample) ---
+        const trHeader = document.createElement("tr");
+        trHeader.className = "qc-sample-header";
+        trHeader.style.cursor = "pointer";
+        trHeader.style.background = "#eff5fb"; // Slight highlight to distinguish groups
+        
+        // Count how many are pending vs tested
+        const total = sample.cylinders.length;
+        const pending = sample.cylinders.filter(c => c.status === "pendiente").length;
+        const tested = total - pending;
+
+        const svgIcon = `<svg style="width:16px; height:16px; margin-right:6px; color:var(--brand); vertical-align:middle; transition: transform 0.2s;" fill="none" class="qc-expand-icon" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>`;
+
+        const designInfo = (sample.formula || sample.fc || sample.tma) ? 
+            `<div style="font-size:0.8rem; color:var(--text-soft); font-weight:400; margin-top:4px; padding:2px 4px; display:inline-block;">
+                ${sample.formula ? `<b>${sample.formula}</b>` : ''} 
+                ${sample.fc ? ` | f'c ${sample.fc}` : ''}
+                ${sample.tma ? ` | TMA ${sample.tma}` : ''}
+                ${sample.tipo ? ` | ${sample.tipo}` : ''}
             </div>` : '';
 
-        // Performance Calculation
-        let perfHtml = '<span style="color:var(--text-muted); opacity:0.5">-</span>';
-        if (!isPending && cyl.fc_expected > 0) {
-            const percentAchieved = (cyl.strength_kgcm2 / cyl.fc_expected) * 100;
-            const perfClass = getPerformanceClass(percentAchieved, cyl.target_age_days);
-            perfHtml = `<span class="${perfClass}" title="Esperado para ${cyl.target_age_days}d: ${getExpectedPercentage(cyl.target_age_days)}% del f'c">
-                ${percentAchieved.toFixed(1)}%
-            </span>`;
-        }
-
-        tr.innerHTML = `
-            <td style="font-weight:600; color:var(--text-color);">
-                <div>${svgIcon}${cyl.sample_code}</div>
+        trHeader.innerHTML = `
+            <td colspan="4" style="font-weight:600; color:var(--text-color); border-bottom: 2px solid var(--line);">
+                <div style="font-size: 1.05rem;">${svgIcon}${sample.sample_code}</div>
                 ${designInfo}
             </td>
-            <td style="text-align:center;"><span style="background:var(--bg-hover); padding:2px 8px; border-radius:4px; font-size:0.9em;">${cyl.target_age_days} días</span></td>
-            <td style="text-align:center; color:var(--text-soft);">${cyl.expected_test_date}</td>
-            <td style="text-align:center;"><span class="qc-status-badge ${badgeClass}">${cyl.status.toUpperCase()}</span></td>
-            <td style="text-align:center; font-weight:600; color:${isPending ? 'var(--text-muted)' : 'var(--color-success)'};">${isPending ? '<span style="opacity:0.5">-</span>' : cyl.strength_kgcm2 + ' kg/cm²'}</td>
-            <td style="text-align:center;">${perfHtml}</td>
-            <td style="text-align:center;">
-                ${cyl.image_path ? `<img src="${cyl.image_path}" class="qc-thumbnail" onclick="window.open('${cyl.image_path}')" title="Ver Evidencia">` : '<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Sin foto</span>'}
+            <td colspan="3" style="text-align:center; color:var(--text-soft); border-bottom: 2px solid var(--line); vertical-align: middle;">
+                <span class="qc-status-badge qc-status-ensayado" style="margin-right: 8px;">${tested} Ensayados</span>
+                <span class="qc-status-badge qc-status-pendiente">${pending} Pendientes</span>
             </td>
-            <td style="text-align:center; display:flex; justify-content:center; gap:8px;">
-                ${isPending ? `<button class="btn btn--primary btn--small" onclick="window.openTestModal(${cyl.id}, '${cyl.sample_code}')" style="display:inline-flex; align-items:center; gap:4px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Ensaye</button>` : `<button class="btn btn--muted btn--small" onclick="window.openChartModal(${cyl.sample_id}, '${cyl.sample_code}')" title="Ver Gráfica de Evolución"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg></button>`}
-                <button type="button" class="btn btn--muted btn--small" onclick="window.deleteQcSample(${cyl.sample_id})" title="Eliminar Muestra Completa" style="color:var(--color-danger); border-color:transparent; padding:4px 8px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+            <td style="text-align:center; display:flex; justify-content:center; gap:8px; border-bottom: 2px solid var(--line); border-left: none;">
+                <button class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.openChartModal(${sample.sample_id}, '${sample.sample_code}')" title="Ver Gráfica de Evolución" style="padding: 6px 10px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> Gráfica</button>
+                <button type="button" class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.deleteQcSample(${sample.sample_id})" title="Eliminar Muestra Completa" style="color:var(--color-danger); border-color:transparent; padding:6px 10px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
             </td>
         `;
-        pendingCylindersTableBody.appendChild(tr);
+        pendingCylindersTableBody.appendChild(trHeader);
+
+        // --- 2. Child Rows (The Cylinders) ---
+        const childRows = [];
+        sample.cylinders.forEach(cyl => {
+            const tr = document.createElement("tr");
+            tr.className = `qc-sample-child row-sample-${sample.sample_id}`;
+            tr.style.display = "none"; // Initially hidden
+            tr.style.background = "#ffffff";
+            
+            const isPending = cyl.status === "pendiente";
+            const badgeClass = isPending ? "qc-status-pendiente" : "qc-status-ensayado";
+            
+            // Performance Calculation
+            let perfHtml = '<span style="color:var(--text-muted); opacity:0.5">-</span>';
+            if (!isPending && cyl.fc_expected > 0) {
+                const percentAchieved = (cyl.strength_kgcm2 / cyl.fc_expected) * 100;
+                const perfClass = getPerformanceClass(percentAchieved, cyl.target_age_days);
+                perfHtml = `<span class="${perfClass}" title="Esperado para ${cyl.target_age_days}d: ${getExpectedPercentage(cyl.target_age_days)}% del f'c">
+                    ${percentAchieved.toFixed(1)}%
+                </span>`;
+            }
+
+            tr.innerHTML = `
+                <td style="padding-left: 24px; color:var(--text-soft); font-size: 0.9em;">
+                    <span style="display:inline-block; width:12px; border-left:2px solid var(--line); border-bottom:2px solid var(--line); height:16px; margin-right:8px; margin-top:-8px; border-bottom-left-radius: 4px;"></span>
+                    Cilindro ${cyl.target_age_days}d
+                </td>
+                <td style="text-align:center;"><span style="background:var(--bg-0); padding:2px 8px; border-radius:4px; font-size:0.9em; border: 1px solid var(--line);">${cyl.target_age_days} días</span></td>
+                <td style="text-align:center; color:var(--text-soft);">${cyl.expected_test_date}</td>
+                <td style="text-align:center;"><span class="qc-status-badge ${badgeClass}">${cyl.status.toUpperCase()}</span></td>
+                <td style="text-align:center; font-weight:600; color:${isPending ? 'var(--text-muted)' : 'var(--color-success)'};">${isPending ? '<span style="opacity:0.5">-</span>' : cyl.strength_kgcm2 + ' kg/cm²'}</td>
+                <td style="text-align:center;">${perfHtml}</td>
+                <td style="text-align:center;">
+                    ${cyl.image_path ? `<img src="${cyl.image_path}" class="qc-thumbnail" onclick="window.open('${cyl.image_path}')" title="Ver Evidencia">` : '<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Sin foto</span>'}
+                </td>
+                <td style="text-align:center; display:flex; justify-content:center;">
+                    ${isPending ? `<button class="btn btn--primary btn--small" onclick="window.openTestModal(${cyl.id}, '${sample.sample_code}')" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 12px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Ensaye</button>` : `<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Completado</span>`}
+                </td>
+            `;
+            childRows.push(tr);
+            pendingCylindersTableBody.appendChild(tr);
+        });
+
+        // --- 3. Toggle Logic ---
+        let expanded = false;
+        trHeader.addEventListener("click", () => {
+            expanded = !expanded;
+            const icon = trHeader.querySelector('.qc-expand-icon');
+            if (expanded) {
+                icon.style.transform = "rotate(90deg)";
+                childRows.forEach(row => row.style.display = "");
+            } else {
+                icon.style.transform = "rotate(0deg)";
+                childRows.forEach(row => row.style.display = "none");
+            }
+        });
+        
+        // Auto-expand if there are pending cylinders? Or keep it collapsed. 
+        // Let's keep it expanded by default for better visibility, since they 
+        // probably want to see the dates to test.
+        trHeader.click(); // programmatically click to expand
     });
 }
 
