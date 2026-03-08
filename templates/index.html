@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
 
 <head>
@@ -185,6 +185,7 @@
             </div>
             <div class="query-actions">
               <button id="exportReportBtn" class="btn btn--secondary">Exportar Reporte</button>
+              <button id="toggleQuoteMode" class="btn btn--muted">Modo Cotización</button>
             </div>
             <div class="result-shell">
               <table id="recipeTable">
@@ -215,7 +216,9 @@
                 <thead>
                   <tr>
                     <th>Componente</th>
+                    <th id="costColMaterial">Material</th>
                     <th>Cant. Final</th>
+                    <th>PV (kg/m³)</th>
                     <th>m³</th>
                     <th>U.M.</th>
                     <th title="Costo de transporte por m³ del agregado (del banco a la planta)">Acarreo ($)</th>

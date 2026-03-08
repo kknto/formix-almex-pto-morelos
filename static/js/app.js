@@ -35,6 +35,8 @@ const state = {
   selectedQueryRow: null,
   unitCosts: {},
   haulCosts: {},
+  quoteMode: false,
+  quoteOverrides: {},
   doser: {
     dosageM3: 7.0,
     paramsVersion: 0,
@@ -92,6 +94,7 @@ const recipeMeta = document.getElementById("recipeMeta");
 const recipeBody = document.getElementById("recipeBody");
 const recipeWeight = document.getElementById("recipeWeight");
 const exportReportBtn = document.getElementById("exportReportBtn");
+const toggleQuoteModeBtn = document.getElementById("toggleQuoteMode");
 const costBody = document.getElementById("costBody");
 const costHaulTotal = document.getElementById("costHaulTotal");
 const costMaterialTotal = document.getElementById("costMaterialTotal");
@@ -1206,16 +1209,66 @@ function updateCostTotals(recipeItems) {
   costTotal.textContent = formatMoney(total);
 }
 
+function getAggregateLabel(componentName) {
+  if (!isAggregateComponent(componentName)) return "";
+  const aggregateMap = buildAggregateColumnMap();
+  const raw = (aggregateMap && aggregateMap[componentName]) || [];
+  const details = [...new Set(raw.map((h) => splitHeaderName(h).name || h).map((s) => (s || "").trim()).filter(Boolean))];
+  return details.length ? details.join(" + ") : "";
+}
+
+function getQuoteOverride(componentName) {
+  return state.quoteOverrides[componentName] || null;
+}
+
+function effectiveQty(item) {
+  if (state.quoteMode) {
+    const ov = getQuoteOverride(item.name);
+    if (ov && typeof ov.qty === "number") return ov.qty;
+  }
+  return item.qty;
+}
+
+function effectivePV(componentName) {
+  if (state.quoteMode) {
+    const ov = getQuoteOverride(componentName);
+    if (ov && typeof ov.pv === "number" && ov.pv > 0) return ov.pv;
+  }
+  return averagePV(componentName);
+}
+
 function renderCostTable(recipeItems) {
   costBody.innerHTML = "";
+  const aggregateMap = buildAggregateColumnMap();
   recipeItems.forEach((item) => {
     const tr = document.createElement("tr");
     const isAgg = isAggregateComponent(item.name);
+    const ov = state.quoteMode ? (state.quoteOverrides[item.name] || {}) : {};
+    const qty = effectiveQty(item);
     const unitCost = state.unitCosts[item.name] || 0;
     const haulCost = state.haulCosts[item.name] || 0;
-    const m3 = volumeM3ForCost(item);
+    const pvValue = isAgg ? (effectivePV(item.name) || densityFor(item.name, "kg")) : densityFor(item.name, item.unit);
+    const m3 = isAgg && pvValue > 0 ? qty / pvValue : 0;
+    const subtotal = isAgg ? m3 * (unitCost + haulCost) : unitCost * qty;
+
+    // Material label
+    const materialLabel = isAgg ? (ov.material || getAggregateLabel(item.name) || "-") : "-";
+    const materialCell = state.quoteMode && isAgg
+      ? `<input class="quote-input quote-material" type="text" value="${escapeHtml(materialLabel)}" placeholder="Nombre material">`
+      : escapeHtml(materialLabel);
+
+    // Qty cell
+    const qtyCell = state.quoteMode
+      ? `<input class="quote-input quote-qty" type="number" min="0" step="0.01" value="${qty.toFixed(2)}">`
+      : escapeHtml(formatNum(qty));
+
+    // PV cell
+    const pvDisplay = isAgg ? pvValue.toFixed(0) : "-";
+    const pvCell = state.quoteMode && isAgg
+      ? `<input class="quote-input quote-pv" type="number" min="0" step="1" value="${pvValue.toFixed(0)}" placeholder="PV">`
+      : pvDisplay;
+
     const m3Text = isAgg ? formatVol(m3) : "-";
-    const subtotal = subtotalForCost(item);
     const haulCell = isAgg
       ? `<div class="money-field"><span class="money-field__symbol">$</span><input class="haul-input" type="number" min="0" step="0.01" value="${haulCost.toFixed(
           2
@@ -1223,30 +1276,76 @@ function renderCostTable(recipeItems) {
       : "-";
     tr.innerHTML = `
       <td>${escapeHtml(item.name)}</td>
-      <td>${escapeHtml(formatNum(item.qty))}</td>
+      <td>${materialCell}</td>
+      <td>${qtyCell}</td>
+      <td class="num">${pvCell}</td>
       <td>${escapeHtml(m3Text)}</td>
       <td>${escapeHtml(item.unit)}</td>
       <td>${haulCell}</td>
       <td><div class="money-field"><span class="money-field__symbol">$</span><input class="cost-input" type="number" min="0" step="0.01" value="${unitCost.toFixed(2)}"></div></td>
       <td class="cost-sub">${escapeHtml(formatMoney(subtotal))}</td>
     `;
-    const input = tr.querySelector(".cost-input");
+
+    const costInput = tr.querySelector(".cost-input");
     const haulInput = tr.querySelector(".haul-input");
     const subCell = tr.querySelector(".cost-sub");
-    input.addEventListener("input", () => {
-      state.unitCosts[item.name] = toNumber(input.value);
-      subCell.textContent = formatMoney(subtotalForCost(item));
+
+    const recalcRow = () => {
+      const q = effectiveQty(item);
+      const pv = isAgg ? (effectivePV(item.name) || densityFor(item.name, "kg")) : densityFor(item.name, item.unit);
+      const uc = state.unitCosts[item.name] || 0;
+      const hc = state.haulCosts[item.name] || 0;
+      const mv = isAgg && pv > 0 ? q / pv : 0;
+      const st = isAgg ? mv * (uc + hc) : uc * q;
+      const pvTd = tr.querySelector(".num");
+      const m3Td = tr.children[4];
+      const qtyTd = tr.children[2];
+      if (pvTd && !state.quoteMode) pvTd.textContent = isAgg ? pv.toFixed(0) : "-";
+      if (m3Td) m3Td.textContent = isAgg ? formatVol(mv) : "-";
+      subCell.textContent = formatMoney(st);
       updateCostTotals(recipeItems);
+    };
+
+    costInput.addEventListener("input", () => {
+      state.unitCosts[item.name] = toNumber(costInput.value);
+      recalcRow();
     });
     if (haulInput) {
       haulInput.addEventListener("input", () => {
         state.haulCosts[item.name] = toNumber(haulInput.value);
-        subCell.textContent = formatMoney(subtotalForCost(item));
-        updateCostTotals(recipeItems);
+        recalcRow();
       });
     } else {
       state.haulCosts[item.name] = 0;
     }
+
+    // Quote mode editable fields
+    if (state.quoteMode) {
+      const matInput = tr.querySelector(".quote-material");
+      const qtyInput = tr.querySelector(".quote-qty");
+      const pvInput = tr.querySelector(".quote-pv");
+      if (matInput) {
+        matInput.addEventListener("input", () => {
+          if (!state.quoteOverrides[item.name]) state.quoteOverrides[item.name] = {};
+          state.quoteOverrides[item.name].material = matInput.value;
+        });
+      }
+      if (qtyInput) {
+        qtyInput.addEventListener("input", () => {
+          if (!state.quoteOverrides[item.name]) state.quoteOverrides[item.name] = {};
+          state.quoteOverrides[item.name].qty = toNumber(qtyInput.value);
+          recalcRow();
+        });
+      }
+      if (pvInput) {
+        pvInput.addEventListener("input", () => {
+          if (!state.quoteOverrides[item.name]) state.quoteOverrides[item.name] = {};
+          state.quoteOverrides[item.name].pv = toNumber(pvInput.value);
+          recalcRow();
+        });
+      }
+    }
+
     costBody.appendChild(tr);
   });
   updateCostTotals(recipeItems);
@@ -3424,6 +3523,23 @@ if (consultaNextBtn) {
 
 document.getElementById("runQueryBtn").addEventListener("click", runQuery);
 exportReportBtn.addEventListener("click", exportConsultaReport);
+if (toggleQuoteModeBtn) {
+  toggleQuoteModeBtn.addEventListener("click", () => {
+    state.quoteMode = !state.quoteMode;
+    if (!state.quoteMode) state.quoteOverrides = {};
+    toggleQuoteModeBtn.textContent = state.quoteMode ? "Salir Cotización" : "Modo Cotización";
+    toggleQuoteModeBtn.classList.toggle("btn--active", state.quoteMode);
+    toggleQuoteModeBtn.classList.toggle("btn--muted", !state.quoteMode);
+    // Re-render cost table with current recipe
+    const selectedIndex = state.selectedQueryRow;
+    const row = typeof selectedIndex === "number" ? state.rows[selectedIndex] : null;
+    if (row) {
+      const recipeItems = normalizeConsultaRecipeItems(extractRecipe(row));
+      const adjustedForCost = adjustRecipeByQuality(recipeItems, 1);
+      renderCostTable(adjustedForCost);
+    }
+  });
+}
 document.getElementById("clearQueryBtn").addEventListener("click", () => {
   queryFields.family.value = "";
   queryFields.fc.value = "";

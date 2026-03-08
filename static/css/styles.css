@@ -746,19 +746,23 @@ td.cell.cell-readonly {
 #recipeTable td:nth-child(4) { width: 20%; }
 
 #costTable th:nth-child(1),
-#costTable td:nth-child(1) { width: 22%; }
+#costTable td:nth-child(1) { width: 13%; }
 #costTable th:nth-child(2),
-#costTable td:nth-child(2) { width: 15%; }
+#costTable td:nth-child(2) { width: 14%; }
 #costTable th:nth-child(3),
 #costTable td:nth-child(3) { width: 11%; }
 #costTable th:nth-child(4),
 #costTable td:nth-child(4) { width: 9%; }
 #costTable th:nth-child(5),
-#costTable td:nth-child(5) { width: 15%; }
+#costTable td:nth-child(5) { width: 8%; }
 #costTable th:nth-child(6),
-#costTable td:nth-child(6) { width: 15%; }
+#costTable td:nth-child(6) { width: 7%; }
 #costTable th:nth-child(7),
 #costTable td:nth-child(7) { width: 13%; }
+#costTable th:nth-child(8),
+#costTable td:nth-child(8) { width: 13%; }
+#costTable th:nth-child(9),
+#costTable td:nth-child(9) { width: 12%; }
 
 #consultaView .cost-input,
 #consultaView .haul-input {
@@ -797,6 +801,40 @@ td.cell.cell-readonly {
   font-weight: 700;
   font-size: 0.9rem;
   line-height: 1;
+}
+
+.quote-input {
+  border: 1px solid #a3c4e4;
+  border-radius: 7px;
+  padding: 4px 6px;
+  background: #fffef4;
+  color: var(--text-main);
+  font-size: 0.82rem;
+  width: 100%;
+  max-width: 140px;
+  box-sizing: border-box;
+}
+
+.quote-input:focus {
+  outline: 2px solid #4a90d9;
+  outline-offset: -1px;
+  background: #fff;
+}
+
+.quote-qty,
+.quote-pv {
+  text-align: right;
+  max-width: 90px;
+}
+
+.btn--active {
+  background: #2a6eb8;
+  color: #fff;
+  border-color: #1d5a9a;
+}
+
+.btn--active:hover {
+  background: #1d5a9a;
 }
 
 .doser-grid {
