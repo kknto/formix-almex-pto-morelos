@@ -178,12 +178,12 @@
     const formHtml = `
       <form id="matForm">
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label for="matName" class="form-label">Nombre Comercial (Ej. Cemento Cemex, Arena Lavada)</label>
-          <input type="text" id="matName" class="form-input" value="${mat ? escapeHtml(mat.name) : ''}" required>
+          <label for="matName" style="color:var(--text-soft); font-size:0.85rem;">Nombre Comercial (Ej. Cemento Cemex, Arena Lavada)</label>
+          <input type="text" id="matName" class="ui-dialog__input" value="${mat ? escapeHtml(mat.name) : ''}" required>
         </div>
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label for="matAlias" class="form-label">Alias en Dosificador (Puente para deducción automática)</label>
-          <select id="matAlias" class="form-input">
+          <label for="matAlias" style="color:var(--text-soft); font-size:0.85rem;">Alias en Dosificador (Puente para deducción automática)</label>
+          <select id="matAlias" class="ui-dialog__input">
             <option value="">-- Sin Vincular --</option>
             <option value="Cemento" ${mat && mat.doser_alias === 'Cemento' ? 'selected' : ''}>Cemento (Dosificador)</option>
             <option value="Agua" ${mat && mat.doser_alias === 'Agua' ? 'selected' : ''}>Agua (Dosificador)</option>
@@ -195,34 +195,38 @@
           </select>
         </div>
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label for="matUnit" class="form-label">Unidad de Medida</label>
-          <input type="text" id="matUnit" class="form-input" value="${mat ? escapeHtml(mat.unit) : 'kg'}" required>
+          <label for="matUnit" style="color:var(--text-soft); font-size:0.85rem;">Unidad de Medida</label>
+          <input type="text" id="matUnit" class="ui-dialog__input" value="${mat ? escapeHtml(mat.unit) : 'kg'}" required>
         </div>
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label for="matMin" class="form-label">Stock Mínimo (Alerta)</label>
-          <input type="number" step="any" id="matMin" class="form-input" value="${mat ? mat.min_stock : 0}" required>
+          <label for="matMin" style="color:var(--text-soft); font-size:0.85rem;">Stock Mínimo (Alerta)</label>
+          <input type="number" step="any" id="matMin" class="ui-dialog__input" value="${mat ? mat.min_stock : 0}" required>
         </div>
       </form>
     `;
     const dialogDiv = document.createElement("div");
     dialogDiv.className = "ui-dialog";
+    dialogDiv.setAttribute("data-tone", "info");
     dialogDiv.setAttribute("role", "dialog");
     dialogDiv.setAttribute("aria-modal", "true");
     dialogDiv.innerHTML = `
-      <header class="ui-dialog__header">
-        <h2 class="ui-dialog__title">${mat ? "Editar Material" : "Nuevo Material Base"}</h2>
-        <button class="ui-dialog__close" id="closeMatIconBtn">&times;</button>
+      <header class="ui-dialog__head">
+        <div class="ui-dialog__title-wrap">
+          <svg class="ui-tone-icon ui-tone-icon--dialog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <h3 class="ui-dialog__title">${mat ? "Editar Material" : "Nuevo Material Base"}</h3>
+        </div>
+        <span class="ui-dialog__chip">ALTA / EDICIÓN</span>
       </header>
-      <div class="ui-dialog__content">
-        <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">
+      <div class="ui-dialog__body">
+        <p class="ui-dialog__message" style="margin-bottom:1rem;">
           Al crear un nuevo material, este comenzará con stock de 0. Para incrementar el stock usa "Registrar Movimiento".
         </p>
         ${formHtml}
-        <div class="ui-dialog__actions">
-          <button id="cancelMatBtn" class="btn btn-muted">Cancelar</button>
-          <button id="saveMatBtn" class="btn btn-primary">Guardar</button>
-        </div>
       </div>
+      <footer class="ui-dialog__actions">
+        <button id="cancelMatBtn" class="btn btn--muted btn--small">Cancelar</button>
+        <button id="saveMatBtn" class="btn btn--primary btn--small">Guardar</button>
+      </footer>
     `;
 
     uiDialogHost.innerHTML = "";
@@ -230,8 +234,6 @@
     uiDialogHost.classList.remove("is-hidden");
 
     document.getElementById("cancelMatBtn").addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
-    const closeMatIconBtn = document.getElementById("closeMatIconBtn");
-    if (closeMatIconBtn) closeMatIconBtn.addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
 
     document.getElementById("saveMatBtn").addEventListener("click", async () => {
       const payload = {
@@ -271,46 +273,50 @@
     const formHtml = `
       <form id="trxForm">
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label for="trxMatId" class="form-label">Material</label>
-          <select id="trxMatId" class="form-input" required>${optHtml}</select>
+          <label for="trxMatId" style="color:var(--text-soft); font-size:0.85rem;">Material</label>
+          <select id="trxMatId" class="ui-dialog__input" required>${optHtml}</select>
         </div>
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label for="trxType" class="form-label">Tipo de Movimiento</label>
-          <select id="trxType" class="form-input">
+          <label for="trxType" style="color:var(--text-soft); font-size:0.85rem;">Tipo de Movimiento</label>
+          <select id="trxType" class="ui-dialog__input">
             <option value="ENTRADA">ENTRADA (Aumentar Stock - Ej: Compra de Cemento)</option>
             <option value="SALIDA">SALIDA (Reducir Stock - Ej: Ajuste / Merma)</option>
           </select>
         </div>
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label for="trxAmount" class="form-label">Cantidad</label>
-          <input type="number" step="any" min="0.001" id="trxAmount" class="form-input" placeholder="0.0" required>
+          <label for="trxAmount" style="color:var(--text-soft); font-size:0.85rem;">Cantidad</label>
+          <input type="number" step="any" min="0.001" id="trxAmount" class="ui-dialog__input" placeholder="0.0" required>
         </div>
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label for="trxRef" class="form-label">Referencia (Opcional)</label>
-          <input type="text" id="trxRef" class="form-input" placeholder="Ej: Ticket #123 Cemex">
+          <label for="trxRef" style="color:var(--text-soft); font-size:0.85rem;">Referencia (Opcional)</label>
+          <input type="text" id="trxRef" class="ui-dialog__input" placeholder="Ej: Ticket #123 Cemex">
         </div>
       </form>
     `;
 
     const dialogDiv = document.createElement("div");
     dialogDiv.className = "ui-dialog";
+    dialogDiv.setAttribute("data-tone", "info");
     dialogDiv.setAttribute("role", "dialog");
     dialogDiv.setAttribute("aria-modal", "true");
     dialogDiv.innerHTML = `
-      <header class="ui-dialog__header">
-        <h2 class="ui-dialog__title">Registrar Movimiento</h2>
-        <button class="ui-dialog__close" id="closeTrxIconBtn">&times;</button>
+      <header class="ui-dialog__head">
+        <div class="ui-dialog__title-wrap">
+          <svg class="ui-tone-icon ui-tone-icon--dialog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <h3 class="ui-dialog__title">Registrar Movimiento</h3>
+        </div>
+        <span class="ui-dialog__chip">MOVIMIENTO</span>
       </header>
-      <div class="ui-dialog__content">
-        <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem;">
+      <div class="ui-dialog__body">
+        <p class="ui-dialog__message" style="margin-bottom:1rem;">
           Registra una entrada manual de mercancía por pedido o un ajuste de inventario.
         </p>
         ${formHtml}
-        <div class="ui-dialog__actions">
-          <button id="cancelTrxBtn" class="btn btn-muted">Cancelar</button>
-          <button id="saveTrxBtn" class="btn btn-primary">Registrar</button>
-        </div>
       </div>
+      <footer class="ui-dialog__actions">
+        <button id="cancelTrxBtn" class="btn btn--muted btn--small">Cancelar</button>
+        <button id="saveTrxBtn" class="btn btn--primary btn--small">Registrar</button>
+      </footer>
     `;
 
     uiDialogHost.innerHTML = "";
@@ -318,8 +324,6 @@
     uiDialogHost.classList.remove("is-hidden");
 
     document.getElementById("cancelTrxBtn").addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
-    const closeTrxIconBtn = document.getElementById("closeTrxIconBtn");
-    if (closeTrxIconBtn) closeTrxIconBtn.addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
 
     document.getElementById("saveTrxBtn").addEventListener("click", async () => {
       const payload = {
