@@ -46,8 +46,8 @@ DOSER_PARAM_FIELDS = (
     "densidad_agregado_fallback",
 )
 ROLE_ALLOWED_VIEWS = {
-    "administrador": {"editor", "consulta", "dosificador", "flotilla", "inventario"},
-    "jefe-de-planta": {"editor", "consulta", "dosificador", "flotilla", "inventario"},
+    "administrador": {"editor", "consulta", "dosificador", "flotilla", "inventario", "laboratorio"},
+    "jefe-de-planta": {"editor", "consulta", "dosificador", "flotilla", "inventario", "laboratorio"},
     "dosificador": {"dosificador", "flotilla", "inventario"},
     "presupuestador": {"consulta"},
 }
@@ -384,8 +384,9 @@ def load_or_create_secret(base_dir: Path) -> str:
 
 from fleet_store import FleetStoreMixin
 from inventory_store import InventoryStoreMixin
+from qc_store import QCLabStoreMixin
 
-class AppStore(FleetStoreMixin, InventoryStoreMixin):
+class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin):
     def __init__(self, base_dir: Path, csv_file: str | None = None, db_url: str | None = None):
         self.base_dir = base_dir.resolve()
         self.db_url = db_url
@@ -606,6 +607,31 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin):
                   created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_inv_trx_created ON inventory_transactions(created_at DESC);
+                CREATE TABLE IF NOT EXISTS qc_samples(
+                  id {id_type},
+                  sample_code TEXT NOT NULL UNIQUE,
+                  cast_date TEXT NOT NULL,
+                  remision_id TEXT NOT NULL DEFAULT '',
+                  fc_expected {real_type} NOT NULL DEFAULT 0,
+                  slump_cm {real_type} NOT NULL DEFAULT 0,
+                  temperature_c {real_type} NOT NULL DEFAULT 0,
+                  created_at TEXT NOT NULL,
+                  actor TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_qc_samples_cast_date ON qc_samples(cast_date DESC);
+                CREATE TABLE IF NOT EXISTS qc_cylinders(
+                  id {id_type},
+                  sample_id INTEGER NOT NULL REFERENCES qc_samples(id),
+                  target_age_days INTEGER NOT NULL DEFAULT 28,
+                  expected_test_date TEXT NOT NULL,
+                  status TEXT NOT NULL DEFAULT 'pendiente',
+                  strength_kgcm2 {real_type} NOT NULL DEFAULT 0,
+                  break_date TEXT,
+                  image_path TEXT NOT NULL DEFAULT '',
+                  notes TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_qc_cyl_expected_date ON qc_cylinders(expected_test_date ASC);
+                CREATE INDEX IF NOT EXISTS idx_qc_cyl_sample_id ON qc_cylinders(sample_id);
                 CREATE TABLE IF NOT EXISTS vehicles(
                   id {id_type},
                   unit_number TEXT NOT NULL UNIQUE,
@@ -2803,6 +2829,10 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
     # ── Inventory API ──────────────────────────────────────────────────────
     from inventory_routes import register_inventory_routes
     register_inventory_routes(app, store, login_required)
+
+    # ── QC Lab API ─────────────────────────────────────────────────────────
+    from qc_lab_routes import register_qc_lab_routes
+    register_qc_lab_routes(app, store, login_required)
 
     return app
 

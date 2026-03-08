@@ -1,0 +1,138 @@
+/* ===== QC Lab UI Components ===== */
+.qc-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.qc-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.qc-card h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+}
+
+.qc-card-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.qc-card.alert-card .qc-card-value {
+  color: #ef4444; /* Red for alert */
+}
+
+.qc-table-container {
+  overflow-x: auto;
+  margin-top: 1rem;
+  background: var(--surface);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.qc-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.qc-table th, .qc-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.qc-table th {
+  background: var(--bg);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.qc-status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qc-status-pendiente {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.qc-status-ensayado {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+/* Image Thumbnail in Table */
+.qc-thumbnail {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.qc-thumbnail:hover {
+  transform: scale(1.1);
+}
+
+/* Add Sample Form Container */
+.qc-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.qc-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.qc-form-group label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Cylinders age selector */
+.cylinder-ages-list {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cylinder-age-badge {
+  background: var(--primary);
+  color: white;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cylinder-age-badge span {
+  cursor: pointer;
+  font-weight: bold;
+}
