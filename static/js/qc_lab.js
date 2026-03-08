@@ -151,6 +151,10 @@ if(addCylinderAgeBtn) {
     addCylinderAgeBtn.addEventListener("click", () => {
         const val = parseInt(cylinderAgeInput.value);
         if(!isNaN(val) && val > 0) {
+            if (sampleAges.includes(val)) {
+                if(typeof setStatus === 'function') setStatus("Esa edad ya estÃ¡ en la lista.", 'warn');
+                return;
+            }
             sampleAges.push(val);
             // Sort ascending
             sampleAges.sort((a,b) => a - b);
@@ -320,3 +324,12 @@ if(testCylinderForm) {
 
 window.loadQcLabData = loadQcData;
 window.initQcLab = initQcLab;
+
+// Auto-init on script load if the view is already active
+if (document.getElementById("laboratorioView") && !document.getElementById("laboratorioView").classList.contains("is-hidden")) {
+    initQcLab();
+    loadQcData();
+} else {
+    // Just ensure defaults are rendered
+    initQcLab();
+}

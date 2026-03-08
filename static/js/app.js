@@ -3643,6 +3643,8 @@ if (tabLaboratorio) {
   tabLaboratorio.addEventListener("click", () => {
     if (!canAccessView("laboratorio")) return;
     switchView("laboratorio");
+    if (typeof window.initQcLab === "function") window.initQcLab();
+    if (typeof window.loadQcLabData === "function") window.loadQcLabData();
   });
 }
 
