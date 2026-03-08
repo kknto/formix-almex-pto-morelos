@@ -1,4 +1,4 @@
-﻿const APP_BOOT = window.APP_BOOT || {};
+const APP_BOOT = window.APP_BOOT || {};
 
 const state = {
   auth: {
@@ -3636,8 +3636,22 @@ let trendChartInstance = null;
 let compareChartInstance = null;
 
 async function fleetFetch(url, opts = {}) {
-  const headers = { "X-CSRF-Token": state.auth.csrfToken, ...(opts.headers || {}) };
-  const res = await fetch(url, { ...opts, headers });
+  const csrfToken = state.auth.csrfToken || "";
+  const headers = { "X-CSRF-Token": csrfToken, ...(opts.headers || {}) };
+  // For mutating requests with JSON body, ensure Content-Type and include _csrf_token
+  if (opts.method && opts.method !== "GET") {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+    if (opts.body) {
+      try {
+        const parsed = JSON.parse(opts.body);
+        parsed._csrf_token = csrfToken;
+        opts = { ...opts, body: JSON.stringify(parsed) };
+      } catch(e) { /* body is not JSON, leave as-is */ }
+    } else if (!opts.body) {
+      opts = { ...opts, body: JSON.stringify({ _csrf_token: csrfToken }) };
+    }
+  }
+  const res = await fetch(url, { ...opts, headers, credentials: "same-origin" });
   return res.json();
 }
 
