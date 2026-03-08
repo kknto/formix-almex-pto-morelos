@@ -1,21 +1,9 @@
 // qc_lab.js
 // Handles displaying and creating QC samples and testing cylinders
 
-const qcDashboardContainer = document.getElementById("qcDashboard");
-const pendingCylindersTableBody = document.getElementById("pendingCylindersTbody");
-const qcAddSampleForm = document.getElementById("addQcSampleForm");
-const qcAgesList = document.getElementById("qcAgesList");
-const addCylinderAgeBtn = document.getElementById("addCylinderAgeBtn");
-const cylinderAgeInput = document.getElementById("cylinderAgeInput");
-
-// Test Cylinder Modal logic
-const testCylinderModal = document.getElementById("testCylinderModal");
-const testCylinderForm = document.getElementById("testCylinderForm");
-const compressPreviewImg = document.getElementById("compressPreviewImg");
-let currentTestCylinderId = null;
-
 let stateQcCylinders = [];
 let sampleAges = [3, 7, 14, 28]; // Default ages for a native sample
+let currentTestCylinderId = null;
 
 function initQcLab() {
     renderAgesBadges();
@@ -31,11 +19,12 @@ async function loadQcData() {
         renderQcCylinders();
         renderQcDashboard();
     } catch (err) {
-        if(typeof setStatus === 'function') setStatus("Error cargando laboratorio: " + err.message, 'err'); else alert("Error cargando laboratorio: " + err.message);
+        if(typeof setStatus === 'function') setStatus("Error cargando laboratorio: " + err.message, 'err'); else console.error("Error cargando laboratorio: " + err.message);
     }
 }
 
 function renderQcDashboard() {
+    const qcDashboardContainer = document.getElementById("qcDashboard");
     if(!qcDashboardContainer) return;
     
     let pendingToday = 0;
@@ -84,6 +73,7 @@ function renderQcDashboard() {
 }
 
 function renderQcCylinders() {
+    const pendingCylindersTableBody = document.getElementById("pendingCylindersTbody");
     if (!pendingCylindersTableBody) return;
     pendingCylindersTableBody.innerHTML = "";
 
@@ -92,7 +82,7 @@ function renderQcCylinders() {
         const isPending = cyl.status === "pendiente";
         const badgeClass = isPending ? "qc-status-pendiente" : "qc-status-ensayado";
         
-        const svgIcon = `<svg style="width:16px; height:16px; margin-right:6px; color:var(--color-primary); vertical-align:middle;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
+        const svgIcon = `<svg style="width:16px; height:16px; margin-right:6px; color:var(--brand); vertical-align:middle;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
 
         tr.innerHTML = `
             <td style="font-weight:600; color:var(--text-color);">${svgIcon}${cyl.sample_code}</td>
@@ -113,7 +103,11 @@ function renderQcCylinders() {
 }
 
 function renderAgesBadges() {
-    if(!qcAgesList) return;
+    const qcAgesList = document.getElementById("qcAgesList");
+    if(!qcAgesList) {
+        console.warn("QC: Element 'qcAgesList' not found in DOM");
+        return;
+    }
     qcAgesList.innerHTML = "";
     sampleAges.forEach((age, index) => {
         const badge = document.createElement("div");
@@ -137,83 +131,159 @@ window.deleteQcSample = async function(sampleId) {
         const response = await apiFetch("/api/qclab/samples/" + sampleId, { method: "DELETE" });
         const data = await response.json();
         if (data.ok) {
-            if(typeof setStatus === 'function') setStatus("Muestra eliminada correctamente.", 'ok'); else alert("Muestra eliminada.");
+            if(typeof setStatus === 'function') setStatus("Muestra eliminada correctamente.", 'ok');
             loadQcData();
         } else {
             throw new Error(data.error || "Error al eliminar");
         }
     } catch(err) {
-        if(typeof setStatus === 'function') setStatus("Error al eliminar: " + err.message, 'err'); else alert("Error al eliminar: " + err.message);
+        if(typeof setStatus === 'function') setStatus("Error al eliminar: " + err.message, 'err');
     }
 }
 
-if(addCylinderAgeBtn) {
-    addCylinderAgeBtn.addEventListener("click", () => {
-        const val = parseInt(cylinderAgeInput.value);
-        if(!isNaN(val) && val > 0) {
-            if (sampleAges.includes(val)) {
-                if(typeof setStatus === 'function') setStatus("Esa edad ya estÃ¡ en la lista.", 'warn');
+function setupListeners() {
+    const addCylinderAgeBtn = document.getElementById("addCylinderAgeBtn");
+    const cylinderAgeInput = document.getElementById("cylinderAgeInput");
+    
+    if(addCylinderAgeBtn && cylinderAgeInput) {
+        addCylinderAgeBtn.addEventListener("click", () => {
+            const val = parseInt(cylinderAgeInput.value);
+            if(!isNaN(val) && val > 0) {
+                if (sampleAges.includes(val)) {
+                    if(typeof setStatus === 'function') setStatus("Esa edad ya esta en la lista.", 'warn');
+                    return;
+                }
+                sampleAges.push(val);
+                // Sort ascending
+                sampleAges.sort((a,b) => a - b);
+                renderAgesBadges();
+                cylinderAgeInput.value = "";
+            }
+        });
+    }
+
+    const qcAddSampleForm = document.getElementById("addQcSampleForm");
+    if(qcAddSampleForm) {
+        qcAddSampleForm.addEventListener("submit", async(e) => {
+            e.preventDefault();
+            
+            if (sampleAges.length === 0) {
+                if(typeof setStatus === 'function') setStatus("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).", 'err');
                 return;
             }
-            sampleAges.push(val);
-            // Sort ascending
-            sampleAges.sort((a,b) => a - b);
-            renderAgesBadges();
-            cylinderAgeInput.value = "";
-        }
-    });
-}
 
-if(qcAddSampleForm) {
-    qcAddSampleForm.addEventListener("submit", async(e) => {
-        e.preventDefault();
-        
-        if (sampleAges.length === 0) {
-            if(typeof setStatus === 'function') setStatus("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).", 'err'); else alert("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).");
-            return;
-        }
+            const payload = {
+                sample_code: document.getElementById("qcSampleCode").value,
+                cast_date: document.getElementById("qcCastDate").value,
+                fc_expected: document.getElementById("qcFcExpected").value,
+                slump_cm: document.getElementById("qcSlump").value,
+                cylinder_ages: sampleAges
+            };
 
-        const payload = {
-            sample_code: document.getElementById("qcSampleCode").value,
-            cast_date: document.getElementById("qcCastDate").value,
-            fc_expected: document.getElementById("qcFcExpected").value,
-            slump_cm: document.getElementById("qcSlump").value,
-            cylinder_ages: sampleAges
-        };
+            try {
+                const response = await apiFetch("/api/qclab/samples", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (!data.ok) throw new Error(data.error || "Error del servidor al guardar muestra");
 
-        try {
-            const response = await apiFetch("/api/qclab/samples", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json();
-            if (!data.ok) throw new Error(data.error || "Error del servidor al guardar muestra");
+                if(typeof setStatus === 'function') setStatus("Muestra guardada correctamente.", 'ok');
+                qcAddSampleForm.reset();
+                // Reset to defaults
+                sampleAges = [3, 7, 14, 28];
+                renderAgesBadges();
+                loadQcData();
+            } catch(err) {
+                if(typeof setStatus === 'function') setStatus("Error al guardar muestra: " + err.message, 'err');
+            }
+        });
+    }
 
-            if(typeof setStatus === 'function') setStatus("Muestra guardada correctamente.", 'ok'); else alert("Muestra guardada correctamente.");
-            qcAddSampleForm.reset();
-            // Reset to defaults
-            sampleAges = [3, 7, 14, 28];
-            renderAgesBadges();
-            loadQcData();
-        } catch(err) {
-            if(typeof setStatus === 'function') setStatus("Error al guardar muestra: " + err.message, 'err'); else alert("Error al guardar muestra: " + err.message);
-        }
-    });
+    const testImageInput = document.getElementById("testImageInput");
+    if (testImageInput) {
+        testImageInput.addEventListener("change", async (e) => {
+            const file = e.target.files[0];
+            const compressPreviewImg = document.getElementById("compressPreviewImg");
+            if (!file) {
+                currentCompressedFile = null;
+                if (compressPreviewImg) compressPreviewImg.style.display = "none";
+                return;
+            }
+
+            try {
+                // Compress down to 1200px max width/height, 80% quality
+                currentCompressedFile = await compressImage(file, 1200, 1200, 0.8);
+                
+                // Preview
+                if (compressPreviewImg) {
+                    compressPreviewImg.src = URL.createObjectURL(currentCompressedFile);
+                    compressPreviewImg.style.display = "block";
+                }
+            } catch (error) {
+                if(typeof setStatus === 'function') setStatus("Error procesando imagen: " + error.message, 'err');
+            }
+        });
+    }
+
+    const testCylinderForm = document.getElementById("testCylinderForm");
+    if(testCylinderForm) {
+        testCylinderForm.addEventListener("submit", async(e) => {
+            e.preventDefault();
+            
+            if(!currentTestCylinderId) return;
+
+            const formData = new FormData();
+            formData.append("strength_kgcm2", document.getElementById("testStrength").value);
+            formData.append("notes", document.getElementById("testNotes").value);
+            formData.append("break_date", new Date().toISOString().split("T")[0]);
+            formData.append("status", "ensayado");
+
+            if (currentCompressedFile) {
+                formData.append("image", currentCompressedFile);
+            }
+
+            try {
+                const response = await apiFetch(`/api/qclab/cylinders/${currentTestCylinderId}/test`, {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (!data.ok) throw new Error(data.error);
+                
+                if(typeof setStatus === 'function') setStatus("Ruptura registrada correctamente.", 'ok');
+                closeTestModal();
+                loadQcData();
+            } catch(err) {
+                if(typeof setStatus === 'function') setStatus("Error al registrar ensaye: " + err.message, 'err');
+            }
+        });
+    }
 }
 
 window.openTestModal = function(cylinderId, sampleCode) {
+    const testCylinderModal = document.getElementById("testCylinderModal");
+    const testCylinderForm = document.getElementById("testCylinderForm");
+    const compressPreviewImg = document.getElementById("compressPreviewImg");
+    
     currentTestCylinderId = cylinderId;
     document.getElementById("testModalTitle").innerText = `Ensaye Cilindro: ${sampleCode}`;
-    testCylinderForm.reset();
+    if (testCylinderForm) testCylinderForm.reset();
     if(compressPreviewImg) compressPreviewImg.style.display = "none";
-    testCylinderModal.classList.remove("is-hidden");
-    testCylinderModal.classList.add("is-active");
+    if (testCylinderModal) {
+        testCylinderModal.classList.remove("is-hidden");
+        testCylinderModal.classList.add("is-active");
+    }
 }
 
 window.closeTestModal = function() {
-    testCylinderModal.classList.add("is-hidden");
-    testCylinderModal.classList.remove("is-active");
+    const testCylinderModal = document.getElementById("testCylinderModal");
+    if (testCylinderModal) {
+        testCylinderModal.classList.add("is-hidden");
+        testCylinderModal.classList.remove("is-active");
+    }
     currentTestCylinderId = null;
 }
 
@@ -261,75 +331,21 @@ function compressImage(file, maxWidth, maxHeight, quality) {
 }
 
 // Preview Compressed image
-const testImageInput = document.getElementById("testImageInput");
 let currentCompressedFile = null;
 
-if (testImageInput) {
-    testImageInput.addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (!file) {
-            currentCompressedFile = null;
-            if (compressPreviewImg) compressPreviewImg.style.display = "none";
-            return;
-        }
 
-        try {
-            // Compress down to 1200px max width/height, 80% quality
-            currentCompressedFile = await compressImage(file, 1200, 1200, 0.8);
-            
-            // Preview
-            if (compressPreviewImg) {
-                compressPreviewImg.src = URL.createObjectURL(currentCompressedFile);
-                compressPreviewImg.style.display = "block";
-            }
-        } catch (error) {
-            if(typeof setStatus === 'function') setStatus("Error procesando imagen: " + error.message, 'err'); else alert("Error procesando imagen: " + error.message);
-        }
-    });
-}
-
-if(testCylinderForm) {
-    testCylinderForm.addEventListener("submit", async(e) => {
-        e.preventDefault();
-        
-        if(!currentTestCylinderId) return;
-
-        const formData = new FormData();
-        formData.append("strength_kgcm2", document.getElementById("testStrength").value);
-        formData.append("notes", document.getElementById("testNotes").value);
-        formData.append("break_date", new Date().toISOString().split("T")[0]);
-        formData.append("status", "ensayado");
-
-        if (currentCompressedFile) {
-            formData.append("image", currentCompressedFile);
-        }
-
-        try {
-            const response = await apiFetch(`/api/qclab/cylinders/${currentTestCylinderId}/test`, {
-                method: "POST",
-                body: formData
-            });
-
-            const data = await response.json();
-            if (!data.ok) throw new Error(data.error);
-            
-            if(typeof setStatus === 'function') setStatus("Ruptura registrada correctamente.", 'ok'); else alert("Ruptura registrada correctamente.");
-            closeTestModal();
-            loadQcData();
-        } catch(err) {
-            if(typeof setStatus === 'function') setStatus("Error al registrar ensaye: " + err.message, 'err'); else alert("Error al registrar ensaye: " + err.message);
-        }
-    });
-}
 
 window.loadQcLabData = loadQcData;
 window.initQcLab = initQcLab;
 
+// Trigger listeners setup
+setupListeners();
+
 // Auto-init on script load if the view is already active
-if (document.getElementById("laboratorioView") && !document.getElementById("laboratorioView").classList.contains("is-hidden")) {
+const labView = document.getElementById("laboratorioView");
+if (labView && !labView.classList.contains("is-hidden")) {
     initQcLab();
     loadQcData();
 } else {
-    // Just ensure defaults are rendered
     initQcLab();
 }

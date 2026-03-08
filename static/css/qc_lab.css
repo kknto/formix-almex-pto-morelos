@@ -122,7 +122,7 @@
 }
 
 .cylinder-age-badge {
-  background: var(--primary);
+  background: var(--brand);
   color: white;
   padding: 0.2rem 0.6rem;
   border-radius: 4px;
