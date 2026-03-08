@@ -576,6 +576,39 @@ class AppStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_audit_dataset_created ON audit_log(dataset_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS vehicles(
+                  id {id_type},
+                  unit_number TEXT NOT NULL UNIQUE,
+                  phone TEXT NOT NULL DEFAULT '',
+                  year_model TEXT NOT NULL DEFAULT '',
+                  serial_number TEXT NOT NULL DEFAULT '',
+                  plate TEXT NOT NULL DEFAULT '',
+                  driver TEXT NOT NULL DEFAULT '',
+                  tank_capacity {real_type} NOT NULL DEFAULT 0,
+                  expected_kml {real_type} NOT NULL DEFAULT 0,
+                  status TEXT NOT NULL DEFAULT 'activo',
+                  notes TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS fuel_records(
+                  id {id_type},
+                  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id),
+                  record_date TEXT NOT NULL,
+                  odometer_km {real_type} NOT NULL DEFAULT 0,
+                  liters {real_type} NOT NULL DEFAULT 0,
+                  total_cost {real_type} NOT NULL DEFAULT 0,
+                  price_per_liter {real_type} NOT NULL DEFAULT 0,
+                  driver TEXT NOT NULL DEFAULT '',
+                  station TEXT NOT NULL DEFAULT '',
+                  km_traveled {real_type} NOT NULL DEFAULT 0,
+                  kml_real {real_type} NOT NULL DEFAULT 0,
+                  cost_per_km {real_type} NOT NULL DEFAULT 0,
+                  notes TEXT NOT NULL DEFAULT '',
+                  created_by TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_date ON fuel_records(vehicle_id, record_date DESC);
                 """
             )
             # Re-implement bootstrap and migration logic for both engines...
@@ -2043,6 +2076,149 @@ class AppStore:
                 self._set_active(conn, ds["id"])
                 return new_ver
 
+    # ── Fleet / Vehicles ────────────────────────────────────────────
+
+    def list_vehicles(self, include_inactive: bool = False) -> list[dict]:
+        with self._conn() as conn:
+            if include_inactive:
+                rows = conn.execute("SELECT * FROM vehicles ORDER BY unit_number").fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM vehicles WHERE status='activo' ORDER BY unit_number").fetchall()
+            cols = [d[0] for d in conn.execute("SELECT * FROM vehicles LIMIT 0").description or []]
+            return [dict(zip(cols, r)) for r in rows]
+
+    def save_vehicle(self, data: dict, actor: str = "") -> dict:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        unit = (data.get("unit_number") or "").strip()
+        if not unit:
+            raise ValueError("Numero de unidad es requerido.")
+        vid = data.get("id")
+        with self._conn() as conn:
+            if vid:
+                conn.execute(
+                    """UPDATE vehicles SET unit_number=?, phone=?, year_model=?, serial_number=?,
+                       plate=?, driver=?, tank_capacity=?, expected_kml=?, status=?, notes=?, updated_at=?
+                       WHERE id=?""",
+                    (unit, data.get("phone",""), data.get("year_model",""), data.get("serial_number",""),
+                     data.get("plate",""), data.get("driver",""), float(data.get("tank_capacity",0)),
+                     float(data.get("expected_kml",0)), data.get("status","activo"),
+                     data.get("notes",""), now, int(vid)))
+                conn.commit()
+                return {"id": int(vid), "saved": True}
+            else:
+                conn.execute(
+                    """INSERT INTO vehicles (unit_number, phone, year_model, serial_number, plate,
+                       driver, tank_capacity, expected_kml, status, notes, created_at, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (unit, data.get("phone",""), data.get("year_model",""), data.get("serial_number",""),
+                     data.get("plate",""), data.get("driver",""), float(data.get("tank_capacity",0)),
+                     float(data.get("expected_kml",0)), data.get("status","activo"),
+                     data.get("notes",""), now, now))
+                conn.commit()
+                row = conn.execute("SELECT id FROM vehicles WHERE unit_number=?", (unit,)).fetchone()
+                return {"id": row[0] if row else 0, "saved": True}
+
+    def delete_vehicle(self, vehicle_id: int, actor: str = "") -> bool:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._conn() as conn:
+            conn.execute("UPDATE vehicles SET status='inactivo', updated_at=? WHERE id=?", (now, vehicle_id))
+            conn.commit()
+            return True
+
+    def list_fuel_records(self, vehicle_id: int | None = None, limit: int = 200) -> list[dict]:
+        with self._conn() as conn:
+            if vehicle_id:
+                rows = conn.execute(
+                    "SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id "
+                    "WHERE f.vehicle_id=? ORDER BY f.record_date DESC LIMIT ?",
+                    (vehicle_id, limit)).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id "
+                    "ORDER BY f.record_date DESC LIMIT ?",
+                    (limit,)).fetchall()
+            cols_raw = conn.execute(
+                "SELECT f.*, v.unit_number FROM fuel_records f JOIN vehicles v ON v.id=f.vehicle_id LIMIT 0"
+            ).description or []
+            cols = [d[0] for d in cols_raw]
+            return [dict(zip(cols, r)) for r in rows]
+
+    def save_fuel_record(self, data: dict, actor: str = "") -> dict:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        vid = int(data.get("vehicle_id", 0))
+        if not vid:
+            raise ValueError("Vehiculo es requerido.")
+        odometer = float(data.get("odometer_km", 0))
+        liters = float(data.get("liters", 0))
+        total_cost = float(data.get("total_cost", 0))
+        if liters <= 0:
+            raise ValueError("Litros debe ser mayor a 0.")
+        price_per_liter = total_cost / liters if liters > 0 else 0
+        record_date = data.get("record_date") or now
+        driver = data.get("driver", "")
+        station = data.get("station", "")
+        notes = data.get("notes", "")
+
+        # Calculate km traveled from previous record
+        km_traveled = 0.0
+        kml_real = 0.0
+        cost_per_km = 0.0
+        with self._conn() as conn:
+            prev = conn.execute(
+                "SELECT odometer_km FROM fuel_records WHERE vehicle_id=? ORDER BY record_date DESC, id DESC LIMIT 1",
+                (vid,)).fetchone()
+            if prev and prev[0] and odometer > 0:
+                km_traveled = max(0, odometer - float(prev[0]))
+                if km_traveled > 0 and liters > 0:
+                    kml_real = km_traveled / liters
+                if km_traveled > 0:
+                    cost_per_km = total_cost / km_traveled
+
+            conn.execute(
+                """INSERT INTO fuel_records (vehicle_id, record_date, odometer_km, liters, total_cost,
+                   price_per_liter, driver, station, km_traveled, kml_real, cost_per_km, notes,
+                   created_by, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (vid, record_date, odometer, liters, total_cost, price_per_liter,
+                 driver, station, km_traveled, kml_real, cost_per_km, notes, actor, now))
+            conn.commit()
+            return {"saved": True, "km_traveled": km_traveled, "kml_real": round(kml_real, 2),
+                    "cost_per_km": round(cost_per_km, 2)}
+
+    def delete_fuel_record(self, record_id: int) -> bool:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM fuel_records WHERE id=?", (record_id,))
+            conn.commit()
+            return True
+
+    def fleet_summary(self) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute("""
+                SELECT v.id, v.unit_number, v.driver, v.expected_kml, v.plate,
+                  COUNT(f.id) as total_records,
+                  COALESCE(SUM(f.liters), 0) as total_liters,
+                  COALESCE(SUM(f.total_cost), 0) as total_cost,
+                  COALESCE(SUM(f.km_traveled), 0) as total_km,
+                  CASE WHEN COALESCE(SUM(f.liters), 0) > 0
+                       THEN COALESCE(SUM(f.km_traveled), 0) / SUM(f.liters)
+                       ELSE 0 END as avg_kml,
+                  CASE WHEN COALESCE(SUM(f.km_traveled), 0) > 0
+                       THEN COALESCE(SUM(f.total_cost), 0) / SUM(f.km_traveled)
+                       ELSE 0 END as avg_cost_per_km,
+                  MAX(f.record_date) as last_record
+                FROM vehicles v LEFT JOIN fuel_records f ON f.vehicle_id = v.id
+                WHERE v.status = 'activo'
+                GROUP BY v.id, v.unit_number, v.driver, v.expected_kml, v.plate
+                ORDER BY v.unit_number
+            """).fetchall()
+            cols = [d[0] for d in conn.execute("""
+                SELECT v.id, v.unit_number, v.driver, v.expected_kml, v.plate,
+                  0 as total_records, 0 as total_liters, 0 as total_cost, 0 as total_km,
+                  0 as avg_kml, 0 as avg_cost_per_km, '' as last_record
+                FROM vehicles v LIMIT 0
+            """).description or []]
+            return [dict(zip(cols, r)) for r in rows]
+
 
 def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
     app = Flask(__name__)
@@ -2691,6 +2867,57 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": False, "error": str(exc)}), 404
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # ── Fleet API ──────────────────────────────────────────────────
+
+    @app.route("/api/fleet/vehicles", methods=["GET"])
+    @require_auth
+    def api_fleet_vehicles_list():
+        return jsonify({"ok": True, "vehicles": store.list_vehicles()})
+
+    @app.route("/api/fleet/vehicles", methods=["POST"])
+    @require_auth
+    def api_fleet_vehicles_save():
+        if not is_valid_csrf():
+            return jsonify({"ok": False, "error": "CSRF invalido."}), 403
+        data = request.get_json(silent=True) or {}
+        try:
+            result = store.save_vehicle(data, actor=request.current_user["username"])
+            return jsonify({"ok": True, **result, "vehicles": store.list_vehicles()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.route("/api/fleet/vehicles/<int:vehicle_id>", methods=["DELETE"])
+    @require_auth
+    def api_fleet_vehicles_delete(vehicle_id):
+        if not is_valid_csrf():
+            return jsonify({"ok": False, "error": "CSRF invalido."}), 403
+        store.delete_vehicle(vehicle_id, actor=request.current_user["username"])
+        return jsonify({"ok": True, "vehicles": store.list_vehicles()})
+
+    @app.route("/api/fleet/fuel", methods=["GET"])
+    @require_auth
+    def api_fleet_fuel_list():
+        vid = request.args.get("vehicle_id", type=int)
+        limit = request.args.get("limit", 200, type=int)
+        return jsonify({"ok": True, "records": store.list_fuel_records(vehicle_id=vid, limit=limit)})
+
+    @app.route("/api/fleet/fuel", methods=["POST"])
+    @require_auth
+    def api_fleet_fuel_save():
+        if not is_valid_csrf():
+            return jsonify({"ok": False, "error": "CSRF invalido."}), 403
+        data = request.get_json(silent=True) or {}
+        try:
+            result = store.save_fuel_record(data, actor=request.current_user["username"])
+            return jsonify({"ok": True, **result})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.route("/api/fleet/summary", methods=["GET"])
+    @require_auth
+    def api_fleet_summary():
+        return jsonify({"ok": True, "summary": store.fleet_summary()})
 
     return app
 

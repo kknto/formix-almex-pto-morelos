@@ -1656,3 +1656,106 @@ td.cell.cell-readonly {
     height: 56px;
   }
 }
+
+/* ── Fleet Module ──────────────────────────────────────────── */
+
+.fleet-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .fleet-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fleet-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.fleet-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+
+.fleet-form input,
+.fleet-form select {
+  border: 1px solid #c6d5e5;
+  border-radius: 7px;
+  padding: 7px 8px;
+  background: #fff;
+  color: var(--text-main);
+}
+
+.ui-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 35, 55, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.ui-dialog h3 {
+  margin: 0 0 12px;
+  padding: 14px 16px 0;
+  font-size: 1.05rem;
+  color: #163a5a;
+}
+
+.ui-dialog .fleet-form {
+  padding: 0 16px;
+}
+
+.ui-dialog .query-actions {
+  padding: 0 16px 14px;
+}
+
+.btn--small {
+  padding: 3px 8px;
+  font-size: 0.76rem;
+}
+
+.btn--danger {
+  background: #f5dde0;
+  color: #a12b38;
+  border-color: #e2b3ba;
+}
+
+.btn--danger:hover {
+  background: #eac4c9;
+}
+
+td.num, th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#flotillaView table {
+  width: 100%;
+  table-layout: auto;
+}
+
+#flotillaView th,
+#flotillaView td {
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+  padding: 5px 6px;
+  font-size: 0.81rem;
+}
+
+#flotillaView thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #eaf2fb;
+}

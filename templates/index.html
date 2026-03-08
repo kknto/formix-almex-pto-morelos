@@ -37,6 +37,7 @@
     <button id="tabEditor" class="view-tab view-tab--active">Editor CSV</button>
     <button id="tabConsulta" class="view-tab">Consulta Mix</button>
     <button id="tabDosificador" class="view-tab">Dosificador</button>
+    <button id="tabFlotilla" class="view-tab">Flotilla</button>
   </nav>
 
   <main class="layout">
@@ -485,6 +486,103 @@
         </div>
       </section>
     </section>
+
+    <section id="flotillaView" class="view-pane is-hidden">
+      <section class="fleet-grid">
+        <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Registro de Vehículos</h2>
+            <p>Flota activa</p>
+          </div>
+          <div class="query-actions">
+            <button id="addVehicleBtn" class="btn btn--primary">Agregar Vehículo</button>
+          </div>
+          <div class="result-shell" style="max-height:400px;">
+            <table id="vehiclesTable">
+              <thead>
+                <tr>
+                  <th>Unidad</th>
+                  <th>Teléfono</th>
+                  <th>Año/Modelo</th>
+                  <th># Serie</th>
+                  <th>Placa</th>
+                  <th>Chofer</th>
+                  <th>Tanque (L)</th>
+                  <th>km/L Esp.</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="vehiclesBody"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Registro de Cargas de Diesel</h2>
+            <p>Historial de consumo</p>
+          </div>
+          <div class="query-actions">
+            <label>Vehículo
+              <select id="fuelVehicleSelect"><option value="">Todos</option></select>
+            </label>
+            <button id="addFuelBtn" class="btn btn--primary">Registrar Carga</button>
+          </div>
+          <div class="result-shell" style="max-height:400px;">
+            <table id="fuelTable">
+              <thead>
+                <tr>
+                  <th>Unidad</th>
+                  <th>Fecha</th>
+                  <th>Km Odómetro</th>
+                  <th>Litros</th>
+                  <th>Costo $</th>
+                  <th>$/L</th>
+                  <th>Km Rec.</th>
+                  <th>km/L</th>
+                  <th>$/km</th>
+                  <th>Chofer</th>
+                  <th>Estación</th>
+                </tr>
+              </thead>
+              <tbody id="fuelBody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel panel--consulta" style="margin-top:12px;">
+        <div class="consulta-head">
+          <h2>Resumen de Flota</h2>
+          <p>Eficiencia y costos acumulados</p>
+        </div>
+        <div class="query-actions">
+          <button id="refreshSummaryBtn" class="btn btn--muted">Actualizar</button>
+        </div>
+        <div class="result-shell" style="max-height:360px;">
+          <table id="fleetSummaryTable">
+            <thead>
+              <tr>
+                <th>Unidad</th>
+                <th>Chofer</th>
+                <th>Placa</th>
+                <th>Cargas</th>
+                <th>Litros Tot.</th>
+                <th>Costo Tot. $</th>
+                <th>Km Tot.</th>
+                <th>km/L Prom.</th>
+                <th>$/km Prom.</th>
+                <th>km/L Esp.</th>
+                <th>Eficiencia</th>
+                <th>Última Carga</th>
+              </tr>
+            </thead>
+            <tbody id="fleetSummaryBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
   </main>
   <div id="uiToastHost" class="ui-toast-host" aria-live="polite" aria-atomic="false"></div>
   <div id="uiDialogHost" class="ui-dialog-host is-hidden" aria-hidden="true"></div>

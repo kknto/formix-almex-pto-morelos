@@ -85,6 +85,12 @@ const dosificadorView = document.getElementById("dosificadorView");
 const tabEditor = document.getElementById("tabEditor");
 const tabConsulta = document.getElementById("tabConsulta");
 const tabDosificador = document.getElementById("tabDosificador");
+const tabFlotilla = document.getElementById("tabFlotilla");
+const flotillaView = document.getElementById("flotillaView");
+const vehiclesBody = document.getElementById("vehiclesBody");
+const fuelBody = document.getElementById("fuelBody");
+const fuelVehicleSelect = document.getElementById("fuelVehicleSelect");
+const fleetSummaryBody = document.getElementById("fleetSummaryBody");
 const familiasBoard = document.getElementById("familiasBoard");
 const updatedStamp = document.getElementById("updatedStamp");
 const queryTable = document.getElementById("queryTable");
@@ -497,6 +503,7 @@ function applyRoleAccessUi() {
   tabEditor.style.display = canAccessView("editor") ? "" : "none";
   tabConsulta.style.display = canAccessView("consulta") ? "" : "none";
   tabDosificador.style.display = canAccessView("dosificador") ? "" : "none";
+  if (tabFlotilla) tabFlotilla.style.display = canAccessView("flotilla") ? "" : "none";
   if (auditBtn) auditBtn.style.display = state.auth.canEdit ? "" : "none";
   if (backupCreateBtn) backupCreateBtn.style.display = state.auth.canEdit ? "" : "none";
   if (backupRestoreBtn) backupRestoreBtn.style.display = state.auth.role === "administrador" ? "" : "none";
@@ -573,17 +580,21 @@ function switchView(view) {
   const isEditor = view === "editor";
   const isConsulta = view === "consulta";
   const isDoser = view === "dosificador";
+  const isFleet = view === "flotilla";
   editorView.classList.toggle("is-hidden", !isEditor);
   consultaView.classList.toggle("is-hidden", !isConsulta);
   dosificadorView.classList.toggle("is-hidden", !isDoser);
+  if (flotillaView) flotillaView.classList.toggle("is-hidden", !isFleet);
   tabEditor.classList.toggle("view-tab--active", isEditor);
   tabConsulta.classList.toggle("view-tab--active", isConsulta);
   tabDosificador.classList.toggle("view-tab--active", isDoser);
+  if (tabFlotilla) tabFlotilla.classList.toggle("view-tab--active", isFleet);
   if (isConsulta) setConsultaStep(state.consultaStep);
   if (isDoser) {
     renderDosificador();
     loadRemisiones();
   }
+  if (isFleet) loadFleetData();
 }
 
 function compareValues(a, b) {
@@ -3618,3 +3629,325 @@ applyRoleAccessUi();
 switchView(defaultView());
 loadData();
 
+// ── Fleet Module ──────────────────────────────────────────────────
+
+const fleetState = { vehicles: [], fuelRecords: [], summary: [] };
+
+async function fleetFetch(url, opts = {}) {
+  const headers = { "X-CSRF-Token": state.auth.csrfToken, ...(opts.headers || {}) };
+  const res = await fetch(url, { ...opts, headers });
+  return res.json();
+}
+
+function loadFleetData() {
+  loadVehicles();
+  loadFuelRecords();
+  loadFleetSummary();
+}
+
+async function loadVehicles() {
+  try {
+    const data = await fleetFetch("/api/fleet/vehicles");
+    if (data.ok) {
+      fleetState.vehicles = data.vehicles || [];
+      renderVehiclesTable();
+      populateFuelVehicleSelect();
+    }
+  } catch (e) { console.error("loadVehicles", e); }
+}
+
+function renderVehiclesTable() {
+  if (!vehiclesBody) return;
+  vehiclesBody.innerHTML = "";
+  if (!fleetState.vehicles.length) {
+    vehiclesBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#6b8299;padding:16px;">Sin veh\u00edculos registrados.</td></tr>';
+    return;
+  }
+  fleetState.vehicles.forEach((v) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${esc(v.unit_number)}</strong></td>
+      <td>${esc(v.phone)}</td>
+      <td>${esc(v.year_model)}</td>
+      <td>${esc(v.serial_number)}</td>
+      <td>${esc(v.plate)}</td>
+      <td>${esc(v.driver)}</td>
+      <td class="num">${fmtN(v.tank_capacity)}</td>
+      <td class="num">${fmtN(v.expected_kml)}</td>
+      <td>
+        <button class="btn btn--muted btn--small fleet-edit-btn" data-id="${v.id}">Editar</button>
+        <button class="btn btn--danger btn--small fleet-del-btn" data-id="${v.id}">Eliminar</button>
+      </td>
+    `;
+    tr.querySelector(".fleet-edit-btn").addEventListener("click", () => showVehicleDialog(v));
+    tr.querySelector(".fleet-del-btn").addEventListener("click", () => deleteVehicle(v.id));
+    vehiclesBody.appendChild(tr);
+  });
+}
+
+function esc(v) { return escapeHtml(String(v || "")); }
+function fmtN(v) { return formatNum(Number(v) || 0); }
+
+function populateFuelVehicleSelect() {
+  if (!fuelVehicleSelect) return;
+  const current = fuelVehicleSelect.value;
+  fuelVehicleSelect.innerHTML = '<option value="">Todos</option>';
+  fleetState.vehicles.forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = String(v.id);
+    opt.textContent = v.unit_number;
+    if (String(v.id) === current) opt.selected = true;
+    fuelVehicleSelect.appendChild(opt);
+  });
+}
+
+function showVehicleDialog(existing) {
+  const isEdit = !!existing;
+  const v = existing || {};
+  const host = document.getElementById("uiDialogHost");
+  if (!host) return;
+  host.innerHTML = `
+    <div class="ui-dialog-backdrop">
+      <div class="ui-dialog" style="max-width:520px;">
+        <h3>${isEdit ? "Editar" : "Agregar"} Veh\u00edculo</h3>
+        <div class="fleet-form">
+          <label>N\u00famero Unidad <input id="fvUnit" type="text" value="${esc(v.unit_number)}" required></label>
+          <label>Tel\u00e9fono <input id="fvPhone" type="text" value="${esc(v.phone)}"></label>
+          <label>A\u00f1o y Modelo <input id="fvYearModel" type="text" value="${esc(v.year_model)}"></label>
+          <label># Serie <input id="fvSerial" type="text" value="${esc(v.serial_number)}"></label>
+          <label>Placa <input id="fvPlate" type="text" value="${esc(v.plate)}"></label>
+          <label>Chofer <input id="fvDriver" type="text" value="${esc(v.driver)}"></label>
+          <label>Tanque (L) <input id="fvTank" type="number" min="0" step="1" value="${v.tank_capacity || 0}"></label>
+          <label>km/L Esperado <input id="fvKml" type="number" min="0" step="0.1" value="${v.expected_kml || 0}"></label>
+        </div>
+        <div class="query-actions" style="margin-top:12px;justify-content:flex-end;">
+          <button id="fvCancel" class="btn btn--muted">Cancelar</button>
+          <button id="fvSave" class="btn btn--primary">Guardar</button>
+        </div>
+      </div>
+    </div>
+  `;
+  host.classList.remove("is-hidden");
+  host.setAttribute("aria-hidden", "false");
+  document.getElementById("fvCancel").addEventListener("click", closeDialog);
+  document.getElementById("fvSave").addEventListener("click", async () => {
+    const payload = {
+      unit_number: document.getElementById("fvUnit").value,
+      phone: document.getElementById("fvPhone").value,
+      year_model: document.getElementById("fvYearModel").value,
+      serial_number: document.getElementById("fvSerial").value,
+      plate: document.getElementById("fvPlate").value,
+      driver: document.getElementById("fvDriver").value,
+      tank_capacity: Number(document.getElementById("fvTank").value) || 0,
+      expected_kml: Number(document.getElementById("fvKml").value) || 0,
+    };
+    if (isEdit) payload.id = v.id;
+    const res = await fleetFetch("/api/fleet/vehicles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      fleetState.vehicles = res.vehicles || [];
+      renderVehiclesTable();
+      populateFuelVehicleSelect();
+      closeDialog();
+      showToast(isEdit ? "Veh\u00edculo actualizado" : "Veh\u00edculo registrado", "ok");
+    } else {
+      showToast(res.error || "Error al guardar", "error");
+    }
+  });
+}
+
+async function deleteVehicle(id) {
+  if (!confirm("\u00bfEliminar este veh\u00edculo? Se marcara como inactivo.")) return;
+  const res = await fleetFetch(`/api/fleet/vehicles/${id}`, { method: "DELETE" });
+  if (res.ok) {
+    fleetState.vehicles = res.vehicles || [];
+    renderVehiclesTable();
+    populateFuelVehicleSelect();
+    showToast("Veh\u00edculo eliminado", "ok");
+  }
+}
+
+function closeDialog() {
+  const host = document.getElementById("uiDialogHost");
+  if (host) { host.classList.add("is-hidden"); host.setAttribute("aria-hidden", "true"); host.innerHTML = ""; }
+}
+
+async function loadFuelRecords() {
+  try {
+    const vid = fuelVehicleSelect ? fuelVehicleSelect.value : "";
+    const url = vid ? `/api/fleet/fuel?vehicle_id=${vid}` : "/api/fleet/fuel";
+    const data = await fleetFetch(url);
+    if (data.ok) {
+      fleetState.fuelRecords = data.records || [];
+      renderFuelTable();
+    }
+  } catch (e) { console.error("loadFuelRecords", e); }
+}
+
+function renderFuelTable() {
+  if (!fuelBody) return;
+  fuelBody.innerHTML = "";
+  if (!fleetState.fuelRecords.length) {
+    fuelBody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#6b8299;padding:16px;">Sin registros de carga.</td></tr>';
+    return;
+  }
+  fleetState.fuelRecords.forEach((r) => {
+    const tr = document.createElement("tr");
+    const kmlClass = r.kml_real > 0 ? "" : "";
+    tr.innerHTML = `
+      <td><strong>${esc(r.unit_number)}</strong></td>
+      <td>${esc(r.record_date)}</td>
+      <td class="num">${fmtN(r.odometer_km)}</td>
+      <td class="num">${fmtN(r.liters)}</td>
+      <td class="num">$${fmtN(r.total_cost)}</td>
+      <td class="num">$${fmtN(r.price_per_liter)}</td>
+      <td class="num">${fmtN(r.km_traveled)}</td>
+      <td class="num"><strong>${r.kml_real > 0 ? fmtN(r.kml_real) : "-"}</strong></td>
+      <td class="num">${r.cost_per_km > 0 ? "$" + fmtN(r.cost_per_km) : "-"}</td>
+      <td>${esc(r.driver)}</td>
+      <td>${esc(r.station)}</td>
+    `;
+    fuelBody.appendChild(tr);
+  });
+}
+
+function showFuelDialog() {
+  const host = document.getElementById("uiDialogHost");
+  if (!host) return;
+  const now = new Date();
+  const dateStr = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0")
+    + " " + String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+  let vehicleOpts = fleetState.vehicles.map((v) => `<option value="${v.id}">${esc(v.unit_number)} - ${esc(v.driver)}</option>`).join("");
+  host.innerHTML = `
+    <div class="ui-dialog-backdrop">
+      <div class="ui-dialog" style="max-width:480px;">
+        <h3>Registrar Carga de Diesel</h3>
+        <div class="fleet-form">
+          <label>Veh\u00edculo <select id="ffVehicle">${vehicleOpts}</select></label>
+          <label>Fecha/Hora <input id="ffDate" type="text" value="${dateStr}"></label>
+          <label>Km Od\u00f3metro <input id="ffKm" type="number" min="0" step="0.1" value="0"></label>
+          <label>Litros <input id="ffLiters" type="number" min="0" step="0.1" value="0"></label>
+          <label>Costo Total $ <input id="ffCost" type="number" min="0" step="0.01" value="0"></label>
+          <label>Chofer <input id="ffDriver" type="text" value=""></label>
+          <label>Estaci\u00f3n <input id="ffStation" type="text" value=""></label>
+          <label>Notas <input id="ffNotes" type="text" value=""></label>
+        </div>
+        <div class="query-actions" style="margin-top:12px;justify-content:flex-end;">
+          <button id="ffCancel" class="btn btn--muted">Cancelar</button>
+          <button id="ffSave" class="btn btn--primary">Guardar Carga</button>
+        </div>
+      </div>
+    </div>
+  `;
+  host.classList.remove("is-hidden");
+  host.setAttribute("aria-hidden", "false");
+  // auto-fill driver from vehicle
+  const vehicleSel = document.getElementById("ffVehicle");
+  const driverInput = document.getElementById("ffDriver");
+  if (vehicleSel && driverInput) {
+    const autoFillDriver = () => {
+      const veh = fleetState.vehicles.find((v) => String(v.id) === vehicleSel.value);
+      if (veh) driverInput.value = veh.driver || "";
+    };
+    autoFillDriver();
+    vehicleSel.addEventListener("change", autoFillDriver);
+  }
+  document.getElementById("ffCancel").addEventListener("click", closeDialog);
+  document.getElementById("ffSave").addEventListener("click", async () => {
+    const payload = {
+      vehicle_id: Number(document.getElementById("ffVehicle").value),
+      record_date: document.getElementById("ffDate").value,
+      odometer_km: Number(document.getElementById("ffKm").value) || 0,
+      liters: Number(document.getElementById("ffLiters").value) || 0,
+      total_cost: Number(document.getElementById("ffCost").value) || 0,
+      driver: document.getElementById("ffDriver").value,
+      station: document.getElementById("ffStation").value,
+      notes: document.getElementById("ffNotes").value,
+    };
+    const res = await fleetFetch("/api/fleet/fuel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      closeDialog();
+      const msg = res.kml_real > 0 ? `Carga registrada. Rendimiento: ${res.kml_real} km/L` : "Carga registrada (primera carga, sin c\u00e1lculo de km/L).";
+      showToast(msg, "ok");
+      loadFuelRecords();
+      loadFleetSummary();
+    } else {
+      showToast(res.error || "Error al guardar", "error");
+    }
+  });
+}
+
+async function loadFleetSummary() {
+  try {
+    const data = await fleetFetch("/api/fleet/summary");
+    if (data.ok) {
+      fleetState.summary = data.summary || [];
+      renderFleetSummary();
+    }
+  } catch (e) { console.error("loadFleetSummary", e); }
+}
+
+function renderFleetSummary() {
+  if (!fleetSummaryBody) return;
+  fleetSummaryBody.innerHTML = "";
+  if (!fleetState.summary.length) {
+    fleetSummaryBody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#6b8299;padding:16px;">Sin datos de flota.</td></tr>';
+    return;
+  }
+  fleetState.summary.forEach((s) => {
+    const tr = document.createElement("tr");
+    const avgKml = Number(s.avg_kml) || 0;
+    const expKml = Number(s.expected_kml) || 0;
+    let effPct = "-";
+    let effClass = "";
+    if (expKml > 0 && avgKml > 0) {
+      const pct = (avgKml / expKml) * 100;
+      effPct = pct.toFixed(0) + "%";
+      effClass = pct >= 90 ? "status-ok" : pct >= 70 ? "" : "status-bad";
+    }
+    tr.innerHTML = `
+      <td><strong>${esc(s.unit_number)}</strong></td>
+      <td>${esc(s.driver)}</td>
+      <td>${esc(s.plate)}</td>
+      <td class="num">${s.total_records || 0}</td>
+      <td class="num">${fmtN(s.total_liters)}</td>
+      <td class="num">$${fmtN(s.total_cost)}</td>
+      <td class="num">${fmtN(s.total_km)}</td>
+      <td class="num"><strong>${avgKml > 0 ? avgKml.toFixed(2) : "-"}</strong></td>
+      <td class="num">${Number(s.avg_cost_per_km) > 0 ? "$" + Number(s.avg_cost_per_km).toFixed(2) : "-"}</td>
+      <td class="num">${expKml > 0 ? expKml.toFixed(1) : "-"}</td>
+      <td class="num ${effClass}"><strong>${effPct}</strong></td>
+      <td>${esc(s.last_record || "-")}</td>
+    `;
+    fleetSummaryBody.appendChild(tr);
+  });
+}
+
+function showToast(msg, type) {
+  const host = document.getElementById("uiToastHost");
+  if (!host) return;
+  const toast = document.createElement("div");
+  toast.className = "ui-toast";
+  toast.style.borderLeftColor = type === "ok" ? "#28a745" : type === "error" ? "#dc3545" : "#17a2b8";
+  toast.textContent = msg;
+  host.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+// Fleet event listeners
+const addVehicleBtn = document.getElementById("addVehicleBtn");
+const addFuelBtn = document.getElementById("addFuelBtn");
+const refreshSummaryBtn = document.getElementById("refreshSummaryBtn");
+
+if (addVehicleBtn) addVehicleBtn.addEventListener("click", () => showVehicleDialog(null));
+if (addFuelBtn) addFuelBtn.addEventListener("click", showFuelDialog);
+if (refreshSummaryBtn) refreshSummaryBtn.addEventListener("click", loadFleetSummary);
+if (fuelVehicleSelect) fuelVehicleSelect.addEventListener("change", loadFuelRecords);
+if (tabFlotilla) tabFlotilla.addEventListener("click", () => switchView("flotilla"));
