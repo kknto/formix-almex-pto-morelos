@@ -144,7 +144,7 @@ if(qcAddSampleForm) {
         e.preventDefault();
         
         if (sampleAges.length === 0) {
-            if(typeof setStatus === 'function') setStatus("Agrega al menos una edad de cilindro (Ej: 3, 7, 28, 'err'); else alert("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).");
+            if(typeof setStatus === 'function') setStatus("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).", 'err'); else alert("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).");
             return;
         }
 
