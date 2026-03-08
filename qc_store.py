@@ -34,7 +34,9 @@ class QCLabStoreMixin:
                 now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
                 if not sample_id:
-                    code = payload.get("sample_code", f"M-{now[:10]}-{uuid.uuid4().hex[:4]}")
+                    code = payload.get("sample_code")
+                    if not code or str(code).strip() == "":
+                        code = f"M-{now[:10]}-{uuid.uuid4().hex[:4]}"
                     cur = conn.execute(
                         """
                         INSERT INTO qc_samples (
@@ -90,7 +92,7 @@ class QCLabStoreMixin:
                         )
                     )
                 
-                return self.get_qc_sample(sample_id)
+            return self.get_qc_sample(sample_id)
 
     def get_qc_sample(self, sample_id: int) -> dict | None:
         with self._conn() as conn:
@@ -133,4 +135,4 @@ class QCLabStoreMixin:
                 if not r:
                     return {}
                 s_id = r["sample_id"] if isinstance(r, dict) else r[0]
-                return self.get_qc_sample(s_id)
+            return self.get_qc_sample(s_id)
