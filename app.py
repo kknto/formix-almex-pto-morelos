@@ -2871,12 +2871,12 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
     # ── Fleet API ──────────────────────────────────────────────────
 
     @app.route("/api/fleet/vehicles", methods=["GET"])
-    @require_auth
+    @login_required
     def api_fleet_vehicles_list():
         return jsonify({"ok": True, "vehicles": store.list_vehicles()})
 
     @app.route("/api/fleet/vehicles", methods=["POST"])
-    @require_auth
+    @login_required
     def api_fleet_vehicles_save():
         if not is_valid_csrf():
             return jsonify({"ok": False, "error": "CSRF invalido."}), 403
@@ -2888,7 +2888,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.route("/api/fleet/vehicles/<int:vehicle_id>", methods=["DELETE"])
-    @require_auth
+    @login_required
     def api_fleet_vehicles_delete(vehicle_id):
         if not is_valid_csrf():
             return jsonify({"ok": False, "error": "CSRF invalido."}), 403
@@ -2896,14 +2896,14 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
         return jsonify({"ok": True, "vehicles": store.list_vehicles()})
 
     @app.route("/api/fleet/fuel", methods=["GET"])
-    @require_auth
+    @login_required
     def api_fleet_fuel_list():
         vid = request.args.get("vehicle_id", type=int)
         limit = request.args.get("limit", 200, type=int)
         return jsonify({"ok": True, "records": store.list_fuel_records(vehicle_id=vid, limit=limit)})
 
     @app.route("/api/fleet/fuel", methods=["POST"])
-    @require_auth
+    @login_required
     def api_fleet_fuel_save():
         if not is_valid_csrf():
             return jsonify({"ok": False, "error": "CSRF invalido."}), 403
@@ -2915,7 +2915,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.route("/api/fleet/summary", methods=["GET"])
-    @require_auth
+    @login_required
     def api_fleet_summary():
         return jsonify({"ok": True, "summary": store.fleet_summary()})
 
