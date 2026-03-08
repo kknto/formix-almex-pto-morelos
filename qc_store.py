@@ -4,15 +4,23 @@ import datetime
 class QCLabStoreMixin:
     def list_qc_samples(self, limit: int = 100) -> list[dict]:
         with self._conn() as conn:
-            cur = conn.execute("SELECT * FROM qc_samples ORDER BY cast_date DESC, created_at DESC LIMIT ?", (limit,))
+            query = """
+                SELECT s.*, r.formula, r.fc, r.tma, r.tipo, r.rev, r.comp
+                FROM qc_samples s
+                LEFT JOIN remisiones r ON s.remision_id = r.remision_no
+                ORDER BY s.cast_date DESC, s.created_at DESC LIMIT ?
+            """
+            cur = conn.execute(query, (limit,))
             return [dict(r) for r in cur.fetchall()]
 
     def list_qc_cylinders(self, sample_id: int | None = None, pending_only: bool = False, limit: int = 500) -> list[dict]:
         with self._conn() as conn:
             query = """
-                SELECT c.*, s.sample_code, s.fc_expected 
+                SELECT c.*, s.sample_code, s.fc_expected, 
+                       r.formula, r.fc, r.tma, r.tipo, r.rev, r.comp
                 FROM qc_cylinders c
                 JOIN qc_samples s ON c.sample_id = s.id
+                LEFT JOIN remisiones r ON s.remision_id = r.remision_no
                 WHERE 1=1
             """
             params = []
@@ -96,13 +104,25 @@ class QCLabStoreMixin:
 
     def get_qc_sample(self, sample_id: int) -> dict | None:
         with self._conn() as conn:
-            cur = conn.execute("SELECT * FROM qc_samples WHERE id = ?", (sample_id,))
+            query = """
+                SELECT s.*, r.formula, r.fc, r.tma, r.tipo, r.rev, r.comp
+                FROM qc_samples s
+                LEFT JOIN remisiones r ON s.remision_id = r.remision_no
+                WHERE s.id = ?
+            """
+            cur = conn.execute(query, (sample_id,))
             row = cur.fetchone()
             if not row:
                 return None
             sample = dict(row)
             sample["cylinders"] = self.list_qc_cylinders(sample_id=sample_id)
             return sample
+
+    def get_remision_by_no(self, remision_no: str) -> dict | None:
+        with self._conn() as conn:
+            cur = conn.execute("SELECT * FROM remisiones WHERE remision_no = ?", (remision_no,))
+            row = cur.fetchone()
+            return dict(row) if row else None
 
     def delete_qc_sample(self, sample_id: int) -> bool:
         with self.lock:

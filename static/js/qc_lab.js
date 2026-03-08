@@ -1,9 +1,33 @@
-// qc_lab.js
-// Handles displaying and creating QC samples and testing cylinders
-
 let stateQcCylinders = [];
 let sampleAges = [3, 7, 14, 28]; // Default ages for a native sample
 let currentTestCylinderId = null;
+
+async function lookupRemision() {
+    const remNo = document.getElementById("qcRemisionNo").value.trim();
+    if (!remNo) {
+        if(typeof setStatus === 'function') setStatus("Ingresa un nÂ° de remisiÃ³n para buscar.", 'warn');
+        return;
+    }
+
+    try {
+        const response = await apiFetch("/api/qclab/lookup_remision/" + encodeURIComponent(remNo));
+        const res = await response.json();
+        
+        if (res.ok && res.remision) {
+            const rem = res.remision;
+            // Auto-fill fc if available
+            if (rem.fc) {
+                document.getElementById("qcFcExpected").value = rem.fc;
+                if(typeof setStatus === 'function') setStatus(`Datos cargados de remisiÃ³n ${remNo}.`, 'ok');
+            }
+            // We could auto-fill more if we had more fields in the form
+        } else {
+            if(typeof setStatus === 'function') setStatus("RemisiÃ³n no encontrada.", 'warn');
+        }
+    } catch (err) {
+        console.error("Error lookup remision:", err);
+    }
+}
 
 function initQcLab() {
     renderAgesBadges();
@@ -84,8 +108,19 @@ function renderQcCylinders() {
         
         const svgIcon = `<svg style="width:16px; height:16px; margin-right:6px; color:var(--brand); vertical-align:middle;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
 
+        const designInfo = (cyl.formula || cyl.fc || cyl.tma) ? 
+            `<div style="font-size:0.75rem; color:var(--text-soft); font-weight:400; margin-top:4px; padding:2px 4px; background:var(--bg-1); border-radius:3px; display:inline-block;">
+                ${cyl.formula ? `<b>${cyl.formula}</b>` : ''} 
+                ${cyl.fc ? ` | f'c ${cyl.fc}` : ''}
+                ${cyl.tma ? ` | TMA ${cyl.tma}` : ''}
+                ${cyl.tipo ? ` | ${cyl.tipo}` : ''}
+            </div>` : '';
+
         tr.innerHTML = `
-            <td style="font-weight:600; color:var(--text-color);">${svgIcon}${cyl.sample_code}</td>
+            <td style="font-weight:600; color:var(--text-color);">
+                <div>${svgIcon}${cyl.sample_code}</div>
+                ${designInfo}
+            </td>
             <td style="text-align:center;"><span style="background:var(--bg-hover); padding:2px 8px; border-radius:4px; font-size:0.9em;">${cyl.target_age_days} días</span></td>
             <td style="text-align:center; color:var(--text-soft);">${cyl.expected_test_date}</td>
             <td style="text-align:center;"><span class="qc-status-badge ${badgeClass}">${cyl.status.toUpperCase()}</span></td>
@@ -174,6 +209,7 @@ function setupListeners() {
 
             const payload = {
                 sample_code: document.getElementById("qcSampleCode").value,
+                remision_id: document.getElementById("qcRemisionNo").value,
                 cast_date: document.getElementById("qcCastDate").value,
                 fc_expected: document.getElementById("qcFcExpected").value,
                 slump_cm: document.getElementById("qcSlump").value,
@@ -260,6 +296,10 @@ function setupListeners() {
                 if(typeof setStatus === 'function') setStatus("Error al registrar ensaye: " + err.message, 'err');
             }
         });
+    }
+    const lookupBtn = document.getElementById("lookupRemisionBtn");
+    if (lookupBtn) {
+        lookupBtn.addEventListener("click", lookupRemision);
     }
 }
 

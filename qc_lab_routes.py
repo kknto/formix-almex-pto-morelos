@@ -39,6 +39,17 @@ def register_qc_lab_routes(app, store, login_required):
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    @qc_bp.route("/lookup_remision/<remision_no>", methods=["GET"])
+    @login_required
+    def api_lookup_remision(remision_no):
+        try:
+            remision = store.get_remision_by_no(remision_no)
+            if not remision:
+                return jsonify({"ok": False, "error": "Remision no encontrada"}), 404
+            return jsonify({"ok": True, "remision": remision})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
     @qc_bp.route("/samples", methods=["POST"])
     @login_required
     def api_save_sample():
