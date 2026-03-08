@@ -145,24 +145,36 @@ td.num, th.num {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.fleet-monitor-wrapper {
-  padding: 8px;
-  background: var(--bg-1);
+.fleet-monitor-card {
+  padding: 32px 16px;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef4fb 100%);
   border-radius: 12px;
-  border: 1px solid #d0dfe8;
-  overflow: hidden;
+  border: 1px dashed #bdd3e7;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
 }
 
-#gpsIframe {
-  width: 100%;
-  height: 600px;
-  border: none;
-  border-radius: 8px;
-  display: block;
+.fleet-monitor-info {
+  max-width: 500px;
 }
 
-@media (max-width: 768px) {
-  #gpsIframe {
-    height: 400px;
-  }
+.fleet-monitor-info h3 {
+  margin: 0 0 8px;
+  color: #163a5a;
+  font-size: 1.25rem;
 }
+
+.fleet-monitor-info p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.btn--large {
+  font-size: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 93, 166, 0.2);
+}
+

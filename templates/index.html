@@ -505,19 +505,22 @@
       <!-- Alerts Banner -->
       <div id="fleetAlertsBanner" class="fleet-alerts" style="display:none;"></div>
 
-      <!-- GPS Tracking Panel -->
+      <!-- GPS Tracking Panel (Link version due to CSP restrictions) -->
       <article class="panel panel--consulta" style="margin-bottom: 20px;">
         <div class="consulta-head">
           <h2>Monitoreo de Unidades en Tiempo Real</h2>
           <p>Localización satelital de la flota</p>
         </div>
-        <div class="fleet-monitor-wrapper">
-          <iframe 
-            id="gpsIframe"
-            src="https://www.redgps.com/" 
-            title="GPS Monitoring"
-            allowfullscreen
-          ></iframe>
+        <div class="fleet-monitor-card">
+          <div class="fleet-monitor-info">
+            <span style="font-size: 2.5rem; margin-bottom: 12px; display: block;">🛰️</span>
+            <h3>Mapa de Rastreo en Vivo</h3>
+            <p>Accede a la plataforma de monitoreo satelital para ver la ubicación de las unidades, rutas y estados en tiempo real.</p>
+            <a href="https://www.redgps.com/" target="_blank" class="btn btn--primary btn--large" style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; font-weight: 600;">
+              <svg style="width:20px; height:20px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+              Abrir Monitoreo GPS
+            </a>
+          </div>
         </div>
       </article>
 
