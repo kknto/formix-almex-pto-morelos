@@ -12,6 +12,12 @@
   }
 }
 
+.fleet-grid-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 .fleet-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -90,8 +96,8 @@ td.num, th.num {
   min-width: 0;
   max-width: none;
   white-space: nowrap;
-  padding: 5px 6px;
-  font-size: 0.81rem;
+  padding: 4px 5px;
+  font-size: 0.78rem;
 }
 
 #flotillaView thead th {
