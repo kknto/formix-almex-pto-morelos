@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Inventory Management Module
  * Connects with the `/api/inventory` endpoints.
  */
@@ -95,7 +95,7 @@
     if (!invDashboardGrid) return;
     invDashboardGrid.innerHTML = "";
     if (!invMaterials.length) {
-      invDashboardGrid.innerHTML = `<div><p style="color:var(--text-muted)">No hay materiales en el inventario aún.</p></div>`;
+      invDashboardGrid.innerHTML = `<div><p style="color:var(--text-muted)">No hay materiales en el inventario aÃºn.</p></div>`;
       return;
     }
 
@@ -108,7 +108,7 @@
             <div style="font-size:1.8rem; font-weight:600; color:${isLow ? 'var(--color-danger)' : 'var(--text-color)'};">
               ${formatNum(mat.current_stock)} <span style="font-size:1rem">${escapeHtml(mat.unit)}</span>
             </div>
-            ${isLow ? `<div style="color:var(--color-danger); font-size:0.85rem; margin-top:4px;">âš ï¸ Stock Bajo (MÃ­n: ${formatNum(mat.min_stock)})</div>` : ''}
+            ${isLow ? `<div style="color:var(--color-danger); font-size:0.85rem; margin-top:4px;">&#9888; Stock Bajo (Min: ${formatNum(mat.min_stock)})</div>` : ''}
           </div>
         </article>
       `;
@@ -182,7 +182,7 @@
           <input type="text" id="matName" value="${mat ? escapeHtml(mat.name) : ''}" required>
         </label>
         <label>
-          Alias en Dosificador (Puente para deducción automática)
+          Alias en Dosificador (Puente para deducciÃ³n automÃ¡tica)
           <select id="matAlias">
             <option value="">-- Sin Vincular --</option>
             <option value="Cemento" ${mat && mat.doser_alias === 'Cemento' ? 'selected' : ''}>Cemento (Dosificador)</option>
@@ -199,22 +199,24 @@
           <input type="text" id="matUnit" value="${mat ? escapeHtml(mat.unit) : 'kg'}" required>
         </label>
         <label>
-          Stock Mínimo (Alerta)
+          Stock MÃ­nimo (Alerta)
           <input type="number" step="any" id="matMin" value="${mat ? mat.min_stock : 0}" required>
         </label>
       </form>
     `;
     const dialogDiv = document.createElement("div");
-    dialogDiv.className = "ui-dialog-content";
+    dialogDiv.className = "ui-dialog";
     dialogDiv.innerHTML = `
-      <h2 style="margin-bottom:8px;">${mat ? "Editar Material" : "Nuevo Material Base"}</h2>
-      <p style="color:var(--text-muted);font-size:0.9rem">
-        Al crear un nuevo material, este comenzará con stock de 0. Para incrementar el stock usa "Registrar Movimiento".
-      </p>
-      ${formHtml}
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:24px;">
-        <button id="cancelMatBtn" class="btn btn--muted">Cancelar</button>
-        <button id="saveMatBtn" class="btn btn--primary">Guardar</button>
+      <div class="ui-dialog__content">
+        <h2 style="margin-bottom:8px;">${mat ? "Editar Material" : "Nuevo Material Base"}</h2>
+        <p style="color:var(--text-muted);font-size:0.9rem">
+          Al crear un nuevo material, este comenzarÃ¡ con stock de 0. Para incrementar el stock usa "Registrar Movimiento".
+        </p>
+        ${formHtml}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:24px;">
+          <button id="cancelMatBtn" class="btn btn--muted">Cancelar</button>
+          <button id="saveMatBtn" class="btn btn--primary">Guardar</button>
+        </div>
       </div>
     `;
 
@@ -257,7 +259,7 @@
   }
 
   function showTransactionFormDialog() {
-    if (!invMaterials.length) return alert("Primero debes dar de alta un material en el Catálogo.");
+    if (!invMaterials.length) return alert("Primero debes dar de alta un material en el CatÃ¡logo.");
     
     let optHtml = invMaterials.map(m => `<option value="${m.id}">${escapeHtml(m.name)} (Stock: ${formatNum(m.current_stock)} ${escapeHtml(m.unit)})</option>`).join("");
 
@@ -286,16 +288,18 @@
     `;
 
     const dialogDiv = document.createElement("div");
-    dialogDiv.className = "ui-dialog-content";
+    dialogDiv.className = "ui-dialog";
     dialogDiv.innerHTML = `
-      <h2 style="margin-bottom:8px;">Registrar Movimiento</h2>
-      <p style="color:var(--text-muted);font-size:0.9rem">
-        Registra una entrada manual de mercancía por pedido o un ajuste de inventario.
-      </p>
-      ${formHtml}
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:24px;">
-        <button id="cancelTrxBtn" class="btn btn--muted">Cancelar</button>
-        <button id="saveTrxBtn" class="btn btn--primary">Registrar</button>
+      <div class="ui-dialog__content">
+        <h2 style="margin-bottom:8px;">Registrar Movimiento</h2>
+        <p style="color:var(--text-muted);font-size:0.9rem">
+          Registra una entrada manual de mercancÃ­a por pedido o un ajuste de inventario.
+        </p>
+        ${formHtml}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:24px;">
+          <button id="cancelTrxBtn" class="btn btn--muted">Cancelar</button>
+          <button id="saveTrxBtn" class="btn btn--primary">Registrar</button>
+        </div>
       </div>
     `;
 
@@ -315,7 +319,7 @@
         reference: document.getElementById("trxRef").value.trim()
       };
 
-      if (!payload.amount || payload.amount <= 0) return alert("Ingresa una cantidad válida mayor a 0");
+      if (!payload.amount || payload.amount <= 0) return alert("Ingresa una cantidad vÃ¡lida mayor a 0");
 
       try {
         const res = await invFetch("/api/inventory/transactions", {
@@ -330,7 +334,7 @@
         renderDashboard();
         await loadTransactions();
         
-        setInvStatus("Movimiento registrado con éxito.", "ok");
+        setInvStatus("Movimiento registrado con Ã©xito.", "ok");
       } catch (e) {
         alert(e.message);
       }
@@ -338,7 +342,7 @@
   }
 
   async function deleteMaterial(mat) {
-    if(!confirm(`¿Seguro que deseas ELIMINAR '${mat.name}'? Ya no aparecerá en el dosificador ni reportes.`)) return;
+    if(!confirm(`Â¿Seguro que deseas ELIMINAR '${mat.name}'? Ya no aparecerÃ¡ en el dosificador ni reportes.`)) return;
     try {
       const res = await invFetch(`/api/inventory/materials/${mat.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(res.error || "Error al eliminar");
@@ -370,3 +374,4 @@
   window.loadInventoryData = loadInventoryData;
 
 })(window.AppGlobals);
+
