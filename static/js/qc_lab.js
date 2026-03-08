@@ -28,7 +28,7 @@ async function loadQcData() {
         renderQcCylinders();
         renderQcDashboard();
     } catch (err) {
-        showError("Error cargando laboratorio: " + err.message);
+        if(typeof setStatus === 'function') setStatus("Error cargando laboratorio: " + err.message, 'err'); else alert("Error cargando laboratorio: " + err.message);
     }
 }
 
@@ -53,21 +53,30 @@ function renderQcDashboard() {
     });
 
     qcDashboardContainer.innerHTML = `
-        <div class="qc-card">
-            <h3>Cilindros Pendientes</h3>
-            <div class="qc-card-value">${totalPending}</div>
-            <span style="font-size: 0.9rem; color: var(--text-secondary)">Total en espera</span>
-        </div>
-        <div class="qc-card">
-            <h3>Para Ensayar Hoy</h3>
-            <div class="qc-card-value">${pendingToday}</div>
-            <span style="font-size: 0.9rem; color: var(--text-secondary)">Fecha: ${todayStr}</span>
-        </div>
-        <div class="qc-card ${overdue > 0 ? 'alert-card' : ''}">
-            <h3>Vencidos (Atrasados)</h3>
-            <div class="qc-card-value">${overdue}</div>
-            <span style="font-size: 0.9rem; color: var(--text-secondary)">Requieren atención</span>
-        </div>
+        <article class="panel panel--consulta" style="border-left: 4px solid var(--color-primary);">
+            <div style="padding: 16px;">
+                <h3 style="margin:0 0 8px 0; font-size:1.1rem; color:var(--text-soft);">Cilindros Pendientes</h3>
+                <div style="font-size:1.8rem; font-weight:600; color:var(--text-color);">
+                  ${totalPending} <span style="font-size:1rem; color:var(--text-muted); font-weight:400;">Total en espera</span>
+                </div>
+            </div>
+        </article>
+        <article class="panel panel--consulta" style="border-left: 4px solid var(--color-success);">
+            <div style="padding: 16px;">
+                <h3 style="margin:0 0 8px 0; font-size:1.1rem; color:var(--text-soft);">Para Ensayar Hoy</h3>
+                <div style="font-size:1.8rem; font-weight:600; color:var(--text-color);">
+                  ${pendingToday} <span style="font-size:1rem; color:var(--text-muted); font-weight:400;">Fecha: ${todayStr}</span>
+                </div>
+            </div>
+        </article>
+        <article class="panel panel--consulta" style="border-left: 4px solid ${overdue > 0 ? 'var(--color-danger)' : 'var(--border-color)'};">
+            <div style="padding: 16px;">
+                <h3 style="margin:0 0 8px 0; font-size:1.1rem; color:var(--text-soft);">Vencidos (Atrasados)</h3>
+                <div style="font-size:1.8rem; font-weight:600; color: ${overdue > 0 ? 'var(--color-danger)' : 'var(--text-color)'};">
+                  ${overdue} <span style="font-size:1rem; color:var(--text-muted); font-weight:400;">Requieren atención</span>
+                </div>
+            </div>
+        </article>
     `;
 }
 
@@ -135,7 +144,7 @@ if(qcAddSampleForm) {
         e.preventDefault();
         
         if (sampleAges.length === 0) {
-            showError("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).");
+            if(typeof setStatus === 'function') setStatus("Agrega al menos una edad de cilindro (Ej: 3, 7, 28, 'err'); else alert("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).");
             return;
         }
 
@@ -153,14 +162,14 @@ if(qcAddSampleForm) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
-            showSuccess("Muestra guardada correctamente.");
+            if(typeof setStatus === 'function') setStatus("Muestra guardada correctamente.", 'ok'); else alert("Muestra guardada correctamente.");
             qcAddSampleForm.reset();
             // Reset to defaults
             sampleAges = [3, 7, 14, 28];
             renderAgesBadges();
             loadQcData();
         } catch(err) {
-            showError("Error al guardar muestra: " + err.message);
+            if(typeof setStatus === 'function') setStatus("Error al guardar muestra: " + err.message, 'err'); else alert("Error al guardar muestra: " + err.message);
         }
     });
 }
@@ -244,7 +253,7 @@ if (testImageInput) {
                 compressPreviewImg.style.display = "block";
             }
         } catch (error) {
-            showError("Error procesando imagen: " + error.message);
+            if(typeof setStatus === 'function') setStatus("Error procesando imagen: " + error.message, 'err'); else alert("Error procesando imagen: " + error.message);
         }
     });
 }
@@ -275,11 +284,11 @@ if(testCylinderForm) {
             const data = await response.json();
             if (!data.ok) throw new Error(data.error);
             
-            showSuccess("Ruptura registrada correctamente.");
+            if(typeof setStatus === 'function') setStatus("Ruptura registrada correctamente.", 'ok'); else alert("Ruptura registrada correctamente.");
             closeTestModal();
             loadQcData();
         } catch(err) {
-            showError("Error al registrar ensaye: " + err.message);
+            if(typeof setStatus === 'function') setStatus("Error al registrar ensaye: " + err.message, 'err'); else alert("Error al registrar ensaye: " + err.message);
         }
     });
 }

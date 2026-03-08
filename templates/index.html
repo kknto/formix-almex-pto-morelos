@@ -647,47 +647,57 @@
           <p>Registro de muestras de concreto y control de ensayes a compresión de cilindros.</p>
         </header>
         
-        <div id="qcDashboard" class="qc-dashboard"></div>
+        <div id="qcDashboard" class="status-grid" style="margin-bottom: 16px;"></div>
         
-        <div class="panel">
-          <h3>Registrar Nueva Muestra</h3>
-          <form id="addQcSampleForm" class="form-layout">
-            <div class="qc-form-row">
-              <div class="qc-form-group">
-                <label for="qcSampleCode">Código / Etiqueta Muestra (Automático si está vacío)</label>
-                <input type="text" id="qcSampleCode" class="form-input">
-              </div>
-              <div class="qc-form-group">
-                <label for="qcCastDate">Fecha de Colado</label>
-                <input type="date" id="qcCastDate" class="form-input" required>
-              </div>
-              <div class="qc-form-group">
-                <label for="qcFcExpected">f'c de diseño esperado (kg/cm²)</label>
-                <input type="number" id="qcFcExpected" class="form-input" min="50" max="600" required>
-              </div>
-              <div class="qc-form-group">
-                <label for="qcSlump">Revenimiento (cm)</label>
-                <input type="number" id="qcSlump" class="form-input" step="0.5" min="0" max="30">
-              </div>
+        <div class="panel-list">
+          <article class="panel panel--editor">
+            <header class="panel-header">
+              <h3>Registrar Nueva Muestra</h3>
+            </header>
+            <div style="padding: 16px;">
+              <form id="addQcSampleForm" style="display: flex; flex-direction: column; gap: 12px;">
+                <label>
+                  Código / Etiqueta Muestra (Automático si está vacío)
+                  <input type="text" id="qcSampleCode" class="form-input">
+                </label>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                  <label style="flex:1;">
+                    Fecha de Colado
+                    <input type="date" id="qcCastDate" class="form-input" required>
+                  </label>
+                  <label style="flex:1;">
+                    f'c de diseño esperado (kg/cm²)
+                    <input type="number" id="qcFcExpected" class="form-input" min="50" max="600" required>
+                  </label>
+                  <label style="flex:1;">
+                    Revenimiento (cm)
+                    <input type="number" id="qcSlump" class="form-input" step="0.5" min="0" max="30">
+                  </label>
+                </div>
+                
+                <div style="margin-top: 8px;">
+                  <label>Edades a Ensayar (días):</label>
+                  <div style="display: flex; gap: 8px; margin-top: 4px;">
+                    <input type="number" id="cylinderAgeInput" class="form-input" style="width: 100px;" placeholder="Ej: 3">
+                    <button type="button" id="addCylinderAgeBtn" class="btn btn--muted">Añadir Cilindro</button>
+                  </div>
+                  <div id="qcAgesList" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;"></div>
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                  <button type="submit" class="btn btn--primary">Crear Muestra y Cilindros</button>
+                </div>
+              </form>
             </div>
-            
-            <div class="qc-form-group" style="grid-column: 1 / -1; margin-bottom:1rem;">
-              <label>Edades a Ensayar (días):</label>
-              <div style="display: flex; gap: 0.5rem;">
-                <input type="number" id="cylinderAgeInput" class="form-input" style="width: 80px;" placeholder="Ej: 3">
-                <button type="button" id="addCylinderAgeBtn" class="btn btn-secondary">Añadir Cilindro</button>
-              </div>
-              <div id="qcAgesList" class="cylinder-ages-list"></div>
-            </div>
-            
-            <button type="submit" class="btn btn-primary">Crear Muestra y Cilindros</button>
-          </form>
+          </article>
         </div>
 
-        <div class="panel" style="margin-top: 1rem;">
-          <h3>Pizarra de Cilindros Activos</h3>
-          <div class="qc-table-container">
-            <table class="qc-table">
+        <div class="panel panel--consulta" style="margin-top: 1rem;">
+          <header class="panel-header">
+            <h3>Pizarra de Cilindros Activos</h3>
+          </header>
+          <div class="table-container">
+            <table class="table-consulta">
               <thead>
                 <tr>
                   <th>Muestra</th>
@@ -711,38 +721,39 @@
 
   <!-- Test Cylinder Modal -->
   <div id="testCylinderModal" class="ui-dialog-host is-hidden" aria-hidden="true">
-    <div class="ui-dialog" role="dialog" aria-modal="true" aria-labelledby="testModalTitle">
-      <header class="ui-dialog__header">
-        <h2 id="testModalTitle" class="ui-dialog__title">Registrar Ensaye</h2>
-        <button class="ui-dialog__close" aria-label="Cerrar" onclick="window.closeTestModal()">&times;</button>
+    <div class="ui-dialog" data-tone="info" role="dialog" aria-modal="true" aria-labelledby="testModalTitle">
+      <header class="ui-dialog__head">
+        <div class="ui-dialog__title-wrap">
+          <svg class="ui-tone-icon ui-tone-icon--dialog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <h3 id="testModalTitle" class="ui-dialog__title">Registrar Ensaye</h3>
+        </div>
+        <span class="ui-dialog__chip">PRUEBA DE COMPRESIÓN</span>
       </header>
-      <div class="ui-dialog__content">
+      <div class="ui-dialog__body">
         <form id="testCylinderForm">
           <div class="form-group" style="margin-bottom: 1rem;">
-            <label for="testStrength" class="form-label">Resistencia a la compresión obtenida (kg/cm²)</label>
-            <input type="number" id="testStrength" class="form-input" step="0.1" required>
+            <label for="testStrength" style="color:var(--text-soft); font-size:0.85rem;">Resistencia a la compresión obtenida (kg/cm²)</label>
+            <input type="number" id="testStrength" class="ui-dialog__input" step="0.1" required>
           </div>
           
           <div class="form-group" style="margin-bottom: 1rem;">
-            <label for="testImageInput" class="form-label">Evidencia Fotográfica (Se comprimirá &lt; 1MB)</label>
-            <input type="file" id="testImageInput" accept="image/jpeg, image/png" class="form-input">
+            <label for="testImageInput" style="color:var(--text-soft); font-size:0.85rem;">Evidencia Fotográfica (Opcional, Se comprimirá &lt; 1MB)</label>
+            <input type="file" id="testImageInput" accept="image/jpeg, image/png" class="ui-dialog__input">
             <img id="compressPreviewImg" src="" alt="Vista previa" style="display:none; max-width:100%; margin-top:10px; border-radius:4px; max-height:200px; object-fit:contain;">
           </div>
           
           <div class="form-group" style="margin-bottom: 1rem;">
-            <label for="testNotes" class="form-label">Notas / Observaciones</label>
-            <textarea id="testNotes" class="form-input" rows="2" placeholder="Ej: Cabeceo irregular, falla tipo 2..."></textarea>
-          </div>
-          
-          <div class="ui-dialog__actions">
-            <button type="button" class="btn btn-muted" onclick="window.closeTestModal()">Cancelar</button>
-            <button type="submit" class="btn btn-primary">Registrar y Subir</button>
+            <label for="testNotes" style="color:var(--text-soft); font-size:0.85rem;">Notas / Observaciones</label>
+            <textarea id="testNotes" class="ui-dialog__input" rows="2" placeholder="Ej: Cabeceo irregular, falla tipo 2..."></textarea>
           </div>
         </form>
       </div>
+      <footer class="ui-dialog__actions">
+        <button type="button" class="btn btn--muted btn--small" onclick="window.closeTestModal()">Cancelar</button>
+        <button type="submit" form="testCylinderForm" class="btn btn--primary btn--small">Registrar y Subir</button>
+      </footer>
     </div>
   </div>
-
   <script>
     window.APP_BOOT = {{ auth_boot | tojson }};
   </script>
