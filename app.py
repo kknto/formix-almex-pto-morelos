@@ -1291,12 +1291,23 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin):
                 # Auto-deduct inventory
                 for rr in snap.get("realRows", []):
                     alias = str(rr.get("name", "")).strip()
+                    mat_id_snap = rr.get("material_id")
                     amount = float(rr.get("real", 0))
-                    if alias and amount > 0:
-                        mat_row = conn.execute(
-                            "SELECT id, current_stock FROM materials WHERE doser_alias=? AND status='activo'", 
-                            (alias,)
-                        ).fetchone()
+                    
+                    if amount > 0:
+                        mat_row = None
+                        if mat_id_snap:
+                            mat_row = conn.execute(
+                                "SELECT id, current_stock FROM materials WHERE id=? AND status='activo'", 
+                                (mat_id_snap,)
+                            ).fetchone()
+                        
+                        if not mat_row and alias:
+                            mat_row = conn.execute(
+                                "SELECT id, current_stock FROM materials WHERE doser_alias=? AND status='activo' LIMIT 1", 
+                                (alias,)
+                            ).fetchone()
+
                         if mat_row:
                             mat_id = int(mat_row["id"])
                             current_stock = float(mat_row["current_stock"])

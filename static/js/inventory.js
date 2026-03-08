@@ -67,6 +67,7 @@
       const res = await invFetch("/api/inventory/materials");
       if (!res.ok) throw new Error(res.error || "Error al cargar materiales");
       invMaterials = res.materials || [];
+      state.doser.invMaterials = invMaterials;
       renderMaterialsTab();
       renderDashboard();
       populateMaterialSelects();

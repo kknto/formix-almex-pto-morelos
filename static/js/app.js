@@ -59,6 +59,8 @@ const state = {
     },
     tolerances: { cemento: 1, agregados: 3, agua: 2, aditivo: 1 },
     realLoads: {},
+    selectedMaterials: {},
+    invMaterials: [],
   },
 };
 const MOD_DATE_HEADER = "FECHA_MODIF";
@@ -1633,6 +1635,7 @@ function buildDoserReportSnapshot() {
     realWeight += real * componentWeightFactor(item);
     return {
       name: item.name,
+      material_id: state.doser.selectedMaterials[item.name] || null,
       unit: item.unit,
       theoretical: item.qty,
       real,
@@ -2637,15 +2640,36 @@ function renderDosificador() {
     const tol = toleranceFor(item.name);
     const lim = item.trialLoad * (tol / 100);
     const ok = Math.abs(diff) <= lim;
+
+    // Material Selection for Deduction
+    const alias = item.name;
+    const options = (state.doser.invMaterials || []).filter(m => m.doser_alias === alias);
+    
+    // Auto-select if only one option or preserve selection
+    if (options.length === 1 && !state.doser.selectedMaterials[alias]) {
+      state.doser.selectedMaterials[alias] = options[0].id;
+    }
+    const currentSelectedId = state.doser.selectedMaterials[alias];
+
+    let matSelectHtml = `<select class="doser-mat-select"><option value="">-- Sin Descontar --</option>`;
+    options.forEach(m => {
+      const selected = Number(currentSelectedId) === m.id ? 'selected' : '';
+      matSelectHtml += `<option value="${m.id}" ${selected}>${escapeHtml(m.name)}</option>`;
+    });
+    matSelectHtml += `</select>`;
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(item.name)}</td>
+      <td>${matSelectHtml}</td>
       <td>${escapeHtml(formatNum(item.trialLoad))}</td>
       <td><input class="doser-real-input" type="number" min="0" step="0.01" value="${real.toFixed(2)}"></td>
       <td>${escapeHtml(`${diff >= 0 ? "+" : ""}${formatNum(diff)}`)}</td>
       <td class="${ok ? "status-ok" : "status-bad"}">${escapeHtml(ok ? "OK" : "FUERA")}</td>
     `;
-    const input = tr.querySelector("input");
+
+    // Listen to real value changes
+    const input = tr.querySelector(".doser-real-input");
     let lastCommitted = toNumber(input.value);
     const commitRealValue = () => {
       const next = toNumber(input.value);
@@ -2662,6 +2686,13 @@ function renderDosificador() {
       commitRealValue();
       input.blur();
     });
+
+    // Listen to material selection changes
+    const select = tr.querySelector(".doser-mat-select");
+    select.addEventListener("change", () => {
+      state.doser.selectedMaterials[alias] = select.value ? Number(select.value) : null;
+    });
+
     doserRealBody.appendChild(tr);
   });
   doserRealWeight.textContent = formatNum(realTotal);
