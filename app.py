@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
+    from psycopg2.pool import ThreadedConnectionPool
     POSTGRES_AVAILABLE = True
 except ImportError:
     POSTGRES_AVAILABLE = False
@@ -393,30 +394,36 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin):
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
         self.lock = Lock()
         self.is_postgres = bool(db_url and POSTGRES_AVAILABLE)
+        self.pg_pool = None
+        if self.is_postgres:
+            self.pg_pool = ThreadedConnectionPool(1, 20, self.db_url)
         self._init_db()
         self._bootstrap(csv_file)
 
     def _conn(self):
         if self.is_postgres:
-            conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
-            return self._wrap_pg_conn(conn)
+            return self._wrap_pg_conn(self.pg_pool.getconn())
         else:
             conn = sqlite3.connect(self.db_path, timeout=30.0)
             conn.row_factory = sqlite3.Row
             return conn
 
     def _wrap_pg_conn(self, pg_conn):
+        pool = getattr(self, "pg_pool", None)
         # Un pequeÃ±o wrapper para que las llamadas .execute(?) de SQLite funcionen en PG
         class PGWrapper:
             def __init__(self, conn): 
                 self.conn = conn
             def __enter__(self): return self
             def __exit__(self, exc_type, exc_val, exc_tb): 
-                if exc_type: self.conn.rollback()
-                else: self.conn.commit()
-                self.conn.close()
+                try:
+                    if exc_type: self.conn.rollback()
+                    else: self.conn.commit()
+                finally:
+                    if pool: pool.putconn(self.conn)
+                    else: self.conn.close()
             def execute(self, sql, params=()):
-                cur = self.conn.cursor()
+                cur = self.conn.cursor(cursor_factory=RealDictCursor)
                 # Traducir placeholders ? -> %s
                 query = sql.replace("?", "%s")
                 
