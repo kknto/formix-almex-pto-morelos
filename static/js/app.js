@@ -506,6 +506,7 @@ function applyRoleAccessUi() {
   tabConsulta.style.display = canAccessView("consulta") ? "" : "none";
   tabDosificador.style.display = canAccessView("dosificador") ? "" : "none";
   if (tabFlotilla) tabFlotilla.style.display = canAccessView("flotilla") ? "" : "none";
+  if (tabInventario) tabInventario.style.display = canAccessView("inventario") ? "" : "none";
   if (auditBtn) auditBtn.style.display = state.auth.canEdit ? "" : "none";
   if (backupCreateBtn) backupCreateBtn.style.display = state.auth.canEdit ? "" : "none";
   if (backupRestoreBtn) backupRestoreBtn.style.display = state.auth.role === "administrador" ? "" : "none";

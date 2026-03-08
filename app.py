@@ -46,9 +46,9 @@ DOSER_PARAM_FIELDS = (
     "densidad_agregado_fallback",
 )
 ROLE_ALLOWED_VIEWS = {
-    "administrador": {"editor", "consulta", "dosificador", "flotilla"},
-    "jefe-de-planta": {"editor", "consulta", "dosificador", "flotilla"},
-    "dosificador": {"dosificador", "flotilla"},
+    "administrador": {"editor", "consulta", "dosificador", "flotilla", "inventario"},
+    "jefe-de-planta": {"editor", "consulta", "dosificador", "flotilla", "inventario"},
+    "dosificador": {"dosificador", "flotilla", "inventario"},
     "presupuestador": {"consulta"},
 }
 EDITOR_ROLES = {"administrador", "jefe-de-planta"}

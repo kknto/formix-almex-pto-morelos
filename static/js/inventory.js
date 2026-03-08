@@ -355,7 +355,7 @@
   // --- Hooking the Events ---
   if (tabInventario) {
     tabInventario.addEventListener("click", () => {
-      if (!canAccessView("flotilla")) return; // Using fleet access logic temporarily for security parity
+      if (!canAccessView("inventario")) return;
       switchView("inventario");
       loadInventoryData();
     });
