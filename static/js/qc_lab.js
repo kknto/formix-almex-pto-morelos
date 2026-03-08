@@ -23,7 +23,10 @@ function initQcLab() {
 
 async function loadQcData() {
     try {
-        const res = await apiFetch("/api/qclab/cylinders?pending_only=false");
+        const response = await apiFetch("/api/qclab/cylinders?pending_only=false");
+        const res = await response.json();
+        if (!res.ok) throw new Error(res.error || "Error cargando cilindros");
+
         stateQcCylinders = res.cylinders || [];
         renderQcCylinders();
         renderQcDashboard();
@@ -157,11 +160,14 @@ if(qcAddSampleForm) {
         };
 
         try {
-            await apiFetch("/api/qclab/samples", {
+            const response = await apiFetch("/api/qclab/samples", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
+            const data = await response.json();
+            if (!data.ok) throw new Error(data.error || "Error del servidor al guardar muestra");
+
             if(typeof setStatus === 'function') setStatus("Muestra guardada correctamente.", 'ok'); else alert("Muestra guardada correctamente.");
             qcAddSampleForm.reset();
             // Reset to defaults
