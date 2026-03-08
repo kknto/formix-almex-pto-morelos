@@ -86,7 +86,9 @@ const tabEditor = document.getElementById("tabEditor");
 const tabConsulta = document.getElementById("tabConsulta");
 const tabDosificador = document.getElementById("tabDosificador");
 const tabFlotilla = document.getElementById("tabFlotilla");
+const tabInventario = document.getElementById("tabInventario");
 const flotillaView = document.getElementById("flotillaView");
+const inventarioView = document.getElementById("inventarioView");
 const vehiclesBody = document.getElementById("vehiclesBody");
 const fuelBody = document.getElementById("fuelBody");
 const fuelVehicleSelect = document.getElementById("fuelVehicleSelect");
@@ -581,20 +583,24 @@ function switchView(view) {
   const isConsulta = view === "consulta";
   const isDoser = view === "dosificador";
   const isFleet = view === "flotilla";
+  const isInv = view === "inventario";
   editorView.classList.toggle("is-hidden", !isEditor);
   consultaView.classList.toggle("is-hidden", !isConsulta);
   dosificadorView.classList.toggle("is-hidden", !isDoser);
   if (flotillaView) flotillaView.classList.toggle("is-hidden", !isFleet);
+  if (inventarioView) inventarioView.classList.toggle("is-hidden", !isInv);
   tabEditor.classList.toggle("view-tab--active", isEditor);
   tabConsulta.classList.toggle("view-tab--active", isConsulta);
   tabDosificador.classList.toggle("view-tab--active", isDoser);
   if (tabFlotilla) tabFlotilla.classList.toggle("view-tab--active", isFleet);
+  if (tabInventario) tabInventario.classList.toggle("view-tab--active", isInv);
   if (isConsulta) setConsultaStep(state.consultaStep);
   if (isDoser) {
     renderDosificador();
     loadRemisiones();
   }
   if (isFleet) loadFleetData();
+  if (isInv && typeof window.loadInventoryData === "function") window.loadInventoryData();
 }
 
 function compareValues(a, b) {
@@ -3643,6 +3649,7 @@ window.AppGlobals = {
   fuelVehicleSelect,
   fleetSummaryBody,
   tabFlotilla,
+  tabInventario,
   uiDialogHost,
   uiToastHost
 };

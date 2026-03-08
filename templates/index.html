@@ -8,6 +8,7 @@
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo_almex.png', v=cache_bust) }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v=cache_bust) }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/fleet.css', v=cache_bust) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/inventory.css', v=cache_bust) }}">
 </head>
 
 <body>
@@ -39,6 +40,7 @@
     <button id="tabConsulta" class="view-tab">Consulta Mix</button>
     <button id="tabDosificador" class="view-tab">Dosificador</button>
     <button id="tabFlotilla" class="view-tab">Flotilla</button>
+    <button id="tabInventario" class="view-tab">Inventario</button>
   </nav>
 
   <main class="layout">
@@ -565,6 +567,77 @@
         </tr></thead><tbody id="fleetSummaryBody"></tbody></table></div>
       </section>
 
+      <!-- Inventory View -->
+      <section id="inventarioView" class="view-pane is-hidden">
+        <section class="panel panel--controls">
+          <div class="controls">
+            <button id="invReloadBtn" class="btn btn--muted">Recargar Inventario</button>
+            <button id="invAddMaterialBtn" class="btn btn--secondary">Nuevo Material</button>
+            <button id="invAddTransactionBtn" class="btn btn--primary">Registrar Movimiento</button>
+          </div>
+          <div class="status" id="invStatusBar"></div>
+        </section>
+
+        <!-- Dashboard Widgets -->
+        <section class="fleet-grid" id="invDashboardGrid">
+          <!-- Populated dynamically by inventory.js -->
+        </section>
+
+        <!-- Catalog & Transactions -->
+        <section class="fleet-grid" style="margin-top:12px;">
+          <!-- Catalog List -->
+          <article class="panel panel--consulta">
+            <div class="consulta-head">
+              <h2>Catálogo de Materiales</h2>
+              <p>Existencias actuales y configuración</p>
+            </div>
+            <div class="result-shell">
+              <table id="invMaterialsTable">
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Alias Dosificador</th>
+                    <th>Stock Actual</th>
+                    <th>Min. Requerido</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="invMaterialsBody"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <!-- Transaction History -->
+          <article class="panel panel--consulta">
+            <div class="consulta-head">
+              <h2>Kardex de Movimientos</h2>
+              <p>Historial de Entradas y Salidas</p>
+            </div>
+            <div class="query-actions" style="margin-top:8px;">
+              <label for="invTrxFilter">Filtrar por material:</label>
+              <select id="invTrxFilter">
+                <option value="">Todos los materiales</option>
+              </select>
+            </div>
+            <div class="result-shell" style="max-height: 400px; overflow-y: auto;">
+              <table id="invTransactionsTable">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Material</th>
+                    <th>Tipo</th>
+                    <th>Cantidad</th>
+                    <th>Referencia</th>
+                    <th>Usuario</th>
+                  </tr>
+                </thead>
+                <tbody id="invTransactionsBody"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+
     </section>
 
   </main>
@@ -577,6 +650,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='js/app.js', v=cache_bust) }}"></script>
   <script src="{{ url_for('static', filename='js/fleet.js', v=cache_bust) }}"></script>
+  <script src="{{ url_for('static', filename='js/inventory.js', v=cache_bust) }}"></script>
 </body>
 
 </html>

@@ -382,8 +382,9 @@ def load_or_create_secret(base_dir: Path) -> str:
 
 
 from fleet_store import FleetStoreMixin
+from inventory_store import InventoryStoreMixin
 
-class AppStore(FleetStoreMixin):
+class AppStore(FleetStoreMixin, InventoryStoreMixin):
     def __init__(self, base_dir: Path, csv_file: str | None = None, db_url: str | None = None):
         self.base_dir = base_dir.resolve()
         self.db_url = db_url
@@ -577,6 +578,27 @@ class AppStore(FleetStoreMixin):
                 );
                 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_audit_dataset_created ON audit_log(dataset_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS materials(
+                  id {id_type},
+                  name TEXT NOT NULL UNIQUE,
+                  doser_alias TEXT NOT NULL DEFAULT '',
+                  unit TEXT NOT NULL DEFAULT 'kg',
+                  current_stock {real_type} NOT NULL DEFAULT 0,
+                  min_stock {real_type} NOT NULL DEFAULT 0,
+                  status TEXT NOT NULL DEFAULT 'activo',
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS inventory_transactions(
+                  id {id_type},
+                  material_id INTEGER NOT NULL REFERENCES materials(id),
+                  transaction_type TEXT NOT NULL,
+                  amount {real_type} NOT NULL DEFAULT 0,
+                  reference TEXT NOT NULL DEFAULT '',
+                  actor TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_inv_trx_created ON inventory_transactions(created_at DESC);
                 CREATE TABLE IF NOT EXISTS vehicles(
                   id {id_type},
                   unit_number TEXT NOT NULL UNIQUE,
@@ -1232,6 +1254,30 @@ class AppStore(FleetStoreMixin):
                     dataset_id=ds["id"],
                     details={"file": ds["name"], "remision_no": remision},
                 )
+
+                # Auto-deduct inventory
+                for rr in snap.get("realRows", []):
+                    alias = str(rr.get("name", "")).strip()
+                    amount = float(rr.get("real", 0))
+                    if alias and amount > 0:
+                        mat_row = conn.execute(
+                            "SELECT id, current_stock FROM materials WHERE doser_alias=? AND status='activo'", 
+                            (alias,)
+                        ).fetchone()
+                        if mat_row:
+                            mat_id = int(mat_row["id"])
+                            current_stock = float(mat_row["current_stock"])
+                            new_stock = current_stock - amount
+                            conn.execute(
+                                """INSERT INTO inventory_transactions (material_id, transaction_type, amount, reference, actor, created_at)
+                                   VALUES (?, 'SALIDA', ?, ?, ?, ?)""",
+                                (mat_id, amount, f"Remision #{remision}", "Auto", ts)
+                            )
+                            conn.execute(
+                                "UPDATE materials SET current_stock=?, updated_at=? WHERE id=?",
+                                (new_stock, ts, mat_id)
+                            )
+
                 return {
                     "id": int(row["id"]),
                     "remision_no": row["remision_no"],
@@ -2747,6 +2793,9 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
     from fleet_routes import register_fleet_routes
     register_fleet_routes(app, store, login_required)
 
+    # ── Inventory API ──────────────────────────────────────────────────────
+    from inventory_routes import register_inventory_routes
+    register_inventory_routes(app, store, login_required)
 
     return app
 
