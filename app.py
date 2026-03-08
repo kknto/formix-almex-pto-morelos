@@ -2758,8 +2758,10 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             result = store.save_vehicle(data, actor=request.current_user["username"])
             return jsonify({"ok": True, **result, "vehicles": store.list_vehicles()})
         except Exception as exc:
-            import traceback; traceback.print_exc()
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            msg = str(exc)
+            if "unique" in msg.lower() or "duplicate" in msg.lower():
+                msg = f"Ya existe un vehiculo con ese numero de unidad."
+            return jsonify({"ok": False, "error": msg}), 400
 
     @app.route("/api/fleet/vehicles/<int:vehicle_id>", methods=["DELETE"])
     @login_required
