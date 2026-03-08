@@ -1,4 +1,4 @@
-﻿const APP_BOOT = window.APP_BOOT || {};
+const APP_BOOT = window.APP_BOOT || {};
 
 const state = {
   auth: {
@@ -1065,7 +1065,7 @@ function extractRecipe(row) {
 
   const withVolume = ordered.map((item) => ({
     ...item,
-    volume: isAggregateComponent(item.name) ? item.qty / densityFor(item.name, item.unit) : 0,
+    volume: isAggregateComponent(item.name) ? item.qty / (averagePV(item.name) || densityFor(item.name, item.unit)) : 0,
   }));
 
   return withVolume;
@@ -1147,11 +1147,26 @@ function renderRecipeAndCosts(row) {
   renderCostTable(adjustedForCost);
 }
 
+function averagePV(componentName) {
+  if (!isAggregateComponent(componentName)) return null;
+  const q = getQualityFor(componentName);
+  const pvs = toNumber(q.pvs);
+  const pvc = toNumber(q.pvc);
+  if (pvs > 0 && pvc > 0) return (pvs + pvc) / 2;
+  if (pvs > 0) {
+    console.warn(`[QC] ${componentName}: PVC es 0, usando solo PVS (${pvs})`);
+    return pvs;
+  }
+  if (pvc > 0) {
+    console.warn(`[QC] ${componentName}: PVS es 0, usando solo PVC (${pvc})`);
+    return pvc;
+  }
+  return null;
+}
+
 function volumetricWeightForCost(item) {
   if (!isAggregateComponent(item.name)) return densityFor(item.name, item.unit);
-  const quality = getQualityFor(item.name);
-  const pv = [quality.pvc, quality.pvs, quality.densidad].map((v) => toNumber(v)).find((v) => v > 0);
-  return pv || densityFor(item.name, "kg");
+  return averagePV(item.name) || densityFor(item.name, "kg");
 }
 
 function volumeM3ForCost(item) {
@@ -1936,12 +1951,10 @@ function doserComponentOrder(recipeItems) {
 }
 
 function resolveAggregateDensityKgPerLt(componentName, params) {
-  const q = getQualityFor(componentName);
-  const candidates = [toNumber(q.densidad), toNumber(q.pvc), toNumber(q.pvs)];
-  for (const raw of candidates) {
-    if (raw <= 0) continue;
-    if (raw > 50) return { value: raw / 1000, source: "qc_kg_m3" };
-    return { value: raw, source: "qc_kg_l" };
+  const avg = averagePV(componentName);
+  if (avg && avg > 0) {
+    if (avg > 50) return { value: avg / 1000, source: "qc_avg_kg_m3" };
+    return { value: avg, source: "qc_avg_kg_l" };
   }
   return {
     value: Math.max(0, toNumber(params.densidad_agregado_fallback)),
