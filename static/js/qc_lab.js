@@ -17,7 +17,15 @@ async function lookupRemision() {
             const rem = res.remision;
             // Auto-fill fc if available
             if (rem.fc) {
-                document.getElementById("qcFcExpected").value = rem.fc;
+                document.getElementById("qcFcExpected").value = rem.fc || "";
+            }
+            if (rem.rev) {
+                const slumpNum = parseFloat(rem.rev);
+                if (!isNaN(slumpNum)) {
+                    document.getElementById("qcSlump").value = slumpNum;
+                }
+            }
+            if (rem.fc || rem.rev) {
                 if(typeof setStatus === 'function') setStatus(`Datos cargados de remisión ${remNo}.`, 'ok');
             }
             // We could auto-fill more if we had more fields in the form
