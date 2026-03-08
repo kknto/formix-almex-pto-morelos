@@ -655,37 +655,52 @@
               <h3>Registrar Nueva Muestra</h3>
             </header>
             <div style="padding: 16px;">
-              <form id="addQcSampleForm" style="display: flex; flex-direction: column; gap: 12px;">
-                <label>
-                  Código / Etiqueta Muestra (Automático si está vacío)
-                  <input type="text" id="qcSampleCode" class="form-input">
-                </label>
-                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                  <label style="flex:1;">
+              <form id="addQcSampleForm" style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; align-items: start;">
+                
+                <div style="grid-column: span 12;">
+                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
+                    Código / Etiqueta Muestra (Automático si está vacío)
+                  </label>
+                  <input type="text" id="qcSampleCode" class="form-input" style="width: 100%; max-width: 400px;">
+                </div>
+                
+                <div style="grid-column: span 4;">
+                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
                     Fecha de Colado
-                    <input type="date" id="qcCastDate" class="form-input" required>
                   </label>
-                  <label style="flex:1;">
+                  <input type="date" id="qcCastDate" class="form-input" style="width: 100%;" required>
+                </div>
+                
+                <div style="grid-column: span 4;">
+                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
                     f'c de diseño esperado (kg/cm²)
-                    <input type="number" id="qcFcExpected" class="form-input" min="50" max="600" required>
                   </label>
-                  <label style="flex:1;">
+                  <input type="number" id="qcFcExpected" class="form-input" min="50" max="600" style="width: 100%;" required>
+                </div>
+                
+                <div style="grid-column: span 4;">
+                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
                     Revenimiento (cm)
-                    <input type="number" id="qcSlump" class="form-input" step="0.5" min="0" max="30">
                   </label>
+                  <input type="number" id="qcSlump" class="form-input" step="0.5" min="0" max="30" style="width: 100%;">
                 </div>
                 
-                <div style="margin-top: 8px;">
-                  <label>Edades a Ensayar (días):</label>
-                  <div style="display: flex; gap: 8px; margin-top: 4px;">
-                    <input type="number" id="cylinderAgeInput" class="form-input" style="width: 100px;" placeholder="Ej: 3">
-                    <button type="button" id="addCylinderAgeBtn" class="btn btn--muted">Añadir Cilindro</button>
+                <div style="grid-column: span 12; display: flex; align-items: center; gap: 16px; margin-top: 8px;">
+                  <div>
+                    <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">Añadir Edad (días)</label>
+                    <div style="display: flex; gap: 8px;">
+                      <input type="number" id="cylinderAgeInput" class="form-input" style="width: 90px;" placeholder="Ej: 3">
+                      <button type="button" id="addCylinderAgeBtn" class="btn btn--muted" style="padding: 6px 12px;">+</button>
+                    </div>
                   </div>
-                  <div id="qcAgesList" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;"></div>
+                  <div style="flex: 1;">
+                    <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">Edades a ensayar</label>
+                    <div id="qcAgesList" style="display: flex; gap: 8px; flex-wrap: wrap; min-height: 36px; padding: 4px; border: 1px dashed var(--border-color); border-radius: 4px; align-items: center;"></div>
+                  </div>
                 </div>
                 
-                <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-                  <button type="submit" class="btn btn--primary">Crear Muestra y Cilindros</button>
+                <div style="grid-column: span 12; display: flex; justify-content: flex-end; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                  <button type="submit" class="btn btn--primary">Registrar Muestra y Cilindros</button>
                 </div>
               </form>
             </div>
@@ -701,12 +716,12 @@
               <thead>
                 <tr>
                   <th>Muestra</th>
-                  <th>Edad Obj.</th>
-                  <th>Fecha Prog.</th>
-                  <th>Estatus</th>
-                  <th>Resistencia</th>
-                  <th>Evidencia</th>
-                  <th>Acción</th>
+                  <th style="text-align:center;">Edad Obj.</th>
+                  <th style="text-align:center;">Fecha Prog.</th>
+                  <th style="text-align:center;">Estatus</th>
+                  <th style="text-align:center;">Resistencia</th>
+                  <th style="text-align:center;">Evidencia</th>
+                  <th style="text-align:center;">Acción</th>
                 </tr>
               </thead>
               <tbody id="pendingCylindersTbody"></tbody>

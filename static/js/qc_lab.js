@@ -89,21 +89,22 @@ function renderQcCylinders() {
 
     stateQcCylinders.forEach(cyl => {
         const tr = document.createElement("tr");
-        
-        const badgeClass = cyl.status === "pendiente" ? "qc-status-pendiente" : "qc-status-ensayado";
         const isPending = cyl.status === "pendiente";
+        const badgeClass = isPending ? "qc-status-pendiente" : "qc-status-ensayado";
+        
+        const svgIcon = `<svg style="width:16px; height:16px; margin-right:6px; color:var(--color-primary); vertical-align:middle;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>`;
 
         tr.innerHTML = `
-            <td><strong>${cyl.sample_code}</strong></td>
-            <td>${cyl.target_age_days} días</td>
-            <td>${cyl.expected_test_date}</td>
-            <td><span class="qc-status-badge ${badgeClass}">${cyl.status.toUpperCase()}</span></td>
-            <td>${isPending ? '-' : cyl.strength_kgcm2 + ' kg/cm²'}</td>
-            <td>
-                ${cyl.image_path ? `<img src="${cyl.image_path}" class="qc-thumbnail" onclick="window.open('${cyl.image_path}')" title="Ver foto">` : '-'}
+            <td style="font-weight:600; color:var(--text-color);">${svgIcon}${cyl.sample_code}</td>
+            <td style="text-align:center;"><span style="background:var(--bg-hover); padding:2px 8px; border-radius:4px; font-size:0.9em;">${cyl.target_age_days} días</span></td>
+            <td style="text-align:center; color:var(--text-soft);">${cyl.expected_test_date}</td>
+            <td style="text-align:center;"><span class="qc-status-badge ${badgeClass}">${cyl.status.toUpperCase()}</span></td>
+            <td style="text-align:center; font-weight:600; color:${isPending ? 'var(--text-muted)' : 'var(--color-success)'};">${isPending ? '<span style="opacity:0.5">-</span>' : cyl.strength_kgcm2 + ' kg/cm²'}</td>
+            <td style="text-align:center;">
+                ${cyl.image_path ? `<img src="${cyl.image_path}" class="qc-thumbnail" onclick="window.open('${cyl.image_path}')" title="Ver Evidencia">` : '<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Sin foto</span>'}
             </td>
-            <td>
-                ${isPending ? `<button class="btn btn-primary" onclick="window.openTestModal(${cyl.id}, '${cyl.sample_code}')">Registrar Ruptura</button>` : ''}
+            <td style="text-align:center;">
+                ${isPending ? `<button class="btn btn--primary btn--small" onclick="window.openTestModal(${cyl.id}, '${cyl.sample_code}')" style="display:inline-flex; align-items:center; gap:4px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Ensaye</button>` : '<span style="color:var(--text-muted); font-size:0.85em;">Completado</span>'}
             </td>
         `;
         pendingCylindersTableBody.appendChild(tr);
