@@ -28,6 +28,17 @@ def register_qc_lab_routes(app, store, login_required):
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    @qc_bp.route("/samples/<int:sample_id>", methods=["DELETE"])
+    @login_required
+    def api_delete_sample(sample_id):
+        try:
+            success = store.delete_qc_sample(sample_id)
+            if not success:
+                return jsonify({"ok": False, "error": "Muestra no encontrada"}), 404
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
     @qc_bp.route("/samples", methods=["POST"])
     @login_required
     def api_save_sample():

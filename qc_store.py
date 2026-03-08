@@ -104,6 +104,13 @@ class QCLabStoreMixin:
             sample["cylinders"] = self.list_qc_cylinders(sample_id=sample_id)
             return sample
 
+    def delete_qc_sample(self, sample_id: int) -> bool:
+        with self.lock:
+            with self._conn() as conn:
+                conn.execute("DELETE FROM qc_cylinders WHERE sample_id = ?", (sample_id,))
+                cur = conn.execute("DELETE FROM qc_samples WHERE id = ?", (sample_id,))
+                return cur.rowcount > 0
+
     def test_qc_cylinder(self, cylinder_id: int, payload: dict, image_path: str = "") -> dict:
         with self.lock:
             with self._conn() as conn:

@@ -103,8 +103,9 @@ function renderQcCylinders() {
             <td style="text-align:center;">
                 ${cyl.image_path ? `<img src="${cyl.image_path}" class="qc-thumbnail" onclick="window.open('${cyl.image_path}')" title="Ver Evidencia">` : '<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Sin foto</span>'}
             </td>
-            <td style="text-align:center;">
+            <td style="text-align:center; display:flex; justify-content:center; gap:8px;">
                 ${isPending ? `<button class="btn btn--primary btn--small" onclick="window.openTestModal(${cyl.id}, '${cyl.sample_code}')" style="display:inline-flex; align-items:center; gap:4px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Ensaye</button>` : '<span style="color:var(--text-muted); font-size:0.85em;">Completado</span>'}
+                <button type="button" class="btn btn--muted btn--small" onclick="window.deleteQcSample(${cyl.sample_id})" title="Eliminar Muestra Completa" style="color:var(--color-danger); border-color:transparent; padding:4px 8px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
             </td>
         `;
         pendingCylindersTableBody.appendChild(tr);
@@ -128,6 +129,22 @@ function renderAgesBadges() {
 window.removeQcAge = function(index) {
     sampleAges.splice(index, 1);
     renderAgesBadges();
+}
+
+window.deleteQcSample = async function(sampleId) {
+    if(!confirm("¿Seguro que deseas eliminar toda la muestra y todos sus cilindros asociados? Esta acción no se puede deshacer.")) return;
+    try {
+        const response = await apiFetch("/api/qclab/samples/" + sampleId, { method: "DELETE" });
+        const data = await response.json();
+        if (data.ok) {
+            if(typeof setStatus === 'function') setStatus("Muestra eliminada correctamente.", 'ok'); else alert("Muestra eliminada.");
+            loadQcData();
+        } else {
+            throw new Error(data.error || "Error al eliminar");
+        }
+    } catch(err) {
+        if(typeof setStatus === 'function') setStatus("Error al eliminar: " + err.message, 'err'); else alert("Error al eliminar: " + err.message);
+    }
 }
 
 if(addCylinderAgeBtn) {
