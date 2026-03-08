@@ -90,7 +90,10 @@ class FleetStoreMixin:
     def delete_vehicle(self, vehicle_id: int, actor: str = "") -> bool:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._conn() as conn:
-            conn.execute("UPDATE vehicles SET status='inactivo', updated_at=? WHERE id=?", (now, vehicle_id))
+            conn.execute(
+                "UPDATE vehicles SET status='inactivo', unit_number=unit_number || '_del_' || id, updated_at=? WHERE id=?", 
+                (now, vehicle_id)
+            )
             conn.commit()
             return True
 
