@@ -10,7 +10,7 @@ class UserStoreMixin:
             return [dict(row) for row in cur.fetchall()]
 
     def save_user(self, payload: dict) -> dict:
-        username = payload.get("username", "").strip()
+        username = payload.get("username", "").strip().lower()
         role = payload.get("role", "operador")
         is_active = payload.get("is_active", 1)
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
