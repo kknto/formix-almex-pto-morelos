@@ -460,7 +460,7 @@
   }
 
   function renderDailyReport(summary) {
-    if (!dailyReportContainer) return;
+    if (!dailyReportModal) return;
 
     const { production, consumption, date } = summary;
 
