@@ -138,13 +138,27 @@
   function renderTransactions() {
     if (!invTransactionsBody) return;
     invTransactionsBody.innerHTML = "";
+
+    // Check if the current user is an admin
+    const isAdmin = window.AppGlobals && window.AppGlobals.session && window.AppGlobals.session.role === "administrador";
+    const colCount = isAdmin ? 7 : 6;
+
     if (!invTransactions.length) {
-      invTransactionsBody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No hay movimientos logueados.</td></tr>`;
+      invTransactionsBody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;color:var(--text-muted)">No hay movimientos logueados.</td></tr>`;
       return;
     }
+
     invTransactions.forEach(trx => {
       const isEntry = trx.transaction_type === "ENTRADA";
       const tr = document.createElement("tr");
+
+      let actionHtml = '';
+      if (isAdmin) {
+        actionHtml = `<td><button class="btn btn--small btn--danger delete-trx-btn" style="padding: 2px 6px; font-size: 0.75rem;" data-id="${trx.id}">Borrar</button></td>`;
+      } else {
+        actionHtml = `<td></td>`;
+      }
+
       tr.innerHTML = `
         <td>${escapeHtml(trx.created_at)}</td>
         <td><strong>${escapeHtml(trx.material_name)}</strong></td>
@@ -152,9 +166,46 @@
         <td>${isEntry ? '+' : '-'}${formatNum(trx.amount)} ${escapeHtml(trx.unit)}</td>
         <td>${escapeHtml(trx.reference || "-")}</td>
         <td>${escapeHtml(trx.actor)}</td>
+        ${actionHtml}
       `;
+
+      if (isAdmin) {
+        const deleteBtn = tr.querySelector('.delete-trx-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', () => deleteTransaction(trx));
+        }
+      }
+
       invTransactionsBody.appendChild(tr);
     });
+  }
+
+  async function deleteTransaction(trx) {
+    const isEntry = trx.transaction_type === "ENTRADA";
+    const msg = isEntry
+      ? `¿Seguro que deseas ELIMINAR la ENTRADA de ${trx.amount} ${trx.unit} de ${trx.material_name}? Esto restará el material del stock actual.`
+      : `¿Seguro que deseas ELIMINAR la SALIDA de ${trx.amount} ${trx.unit} de ${trx.material_name}? Esto sumará el material de regreso al stock.`;
+
+    const confirmed = await window.AppGlobals.uiConfirm(msg, {
+      title: "Eliminar Movimiento",
+      confirmText: "Sí, Eliminar",
+      tone: "err"
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await invFetch(`/api/inventory/transactions/${trx.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(res.error || "Error al eliminar movimiento");
+
+      invTransactions = res.transactions;
+      invMaterials = res.materials;
+      renderTransactions();
+      renderMaterialsTab();
+      renderDashboard();
+      setInvStatus("Movimiento eliminado exitosamente.", "ok");
+    } catch (e) {
+      alert(e.message);
+    }
   }
 
   function populateMaterialSelects() {

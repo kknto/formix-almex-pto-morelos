@@ -55,6 +55,22 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
+    @inv_bp.route("/transactions/<int:transaction_id>", methods=["DELETE"])
+    @login_required
+    def api_inv_transactions_delete(transaction_id):
+        if request.current_user.get("role") != "administrador":
+            return jsonify({"ok": False, "error": "Acceso denegado: se requiere rol de administrador"}), 403
+            
+        try:
+            store.delete_inventory_transaction(transaction_id, actor=request.current_user["username"])
+            return jsonify({
+                "ok": True, 
+                "materials": store.list_materials(),
+                "transactions": store.list_inventory_transactions()
+            })
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
     @inv_bp.route("/transactions", methods=["DELETE"])
     @login_required
     def api_inv_transactions_clear():

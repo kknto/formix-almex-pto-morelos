@@ -155,6 +155,58 @@ class InventoryStoreMixin:
                     "new_stock": new_stock
                 }
 
+    def delete_inventory_transaction(self, transaction_id: int, actor: str = "") -> dict:
+        """
+        Deletes a specific inventory transaction and reverses its effect on the material stock.
+        """
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        with self.lock:
+            with self._conn() as conn:
+                # 1. Look up the transaction
+                trx_row = conn.execute("SELECT * FROM inventory_transactions WHERE id=?", (transaction_id,)).fetchone()
+                if not trx_row:
+                    raise ValueError(f"Transacción {transaction_id} no encontrada.")
+                
+                trx = dict(trx_row)
+                material_id = trx["material_id"]
+                transaction_type = trx["transaction_type"]
+                amount = float(trx["amount"])
+
+                # 2. Look up the material
+                mat_row = conn.execute("SELECT id, current_stock FROM materials WHERE id=?", (material_id,)).fetchone()
+                if not mat_row:
+                    raise ValueError(f"Material afectado {material_id} no encontrado.")
+                
+                current_stock = float(mat_row["current_stock"])
+
+                # 3. Calculate reversed stock
+                if transaction_type == "ENTRADA":
+                    new_stock = current_stock - amount
+                elif transaction_type == "SALIDA":
+                    new_stock = current_stock + amount
+                else:
+                    raise ValueError(f"Tipo de transacción desconocido: {transaction_type}")
+
+                # 4. Delete the transaction
+                conn.execute("DELETE FROM inventory_transactions WHERE id=?", (transaction_id,))
+
+                # 5. Reverse material stock
+                conn.execute(
+                    "UPDATE materials SET current_stock=?, updated_at=? WHERE id=?",
+                    (new_stock, now, material_id)
+                )
+
+                conn.commit()
+
+                return {
+                    "ok": True,
+                    "transaction_id": transaction_id,
+                    "material_id": material_id,
+                    "previous_stock": current_stock,
+                    "new_stock": new_stock
+                }
+
     def clear_inventory_transactions(self) -> bool:
         """
         Deletes all history from the inventory_transactions table.
