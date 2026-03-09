@@ -941,6 +941,55 @@
     </div>
   </div>
 
+  <!-- Daily Report Modal -->
+  <div id="dailyReportModal" class="ui-dialog-host is-hidden" aria-hidden="true">
+    <div class="ui-dialog" style="max-width: 1000px; width: 95%;">
+      <header class="ui-dialog__header">
+        <h2 id="dailyReportTitle">Reporte Diario de Operaciones</h2>
+        <button id="closeDailyReportBtn" class="ui-dialog__close">×</button>
+      </header>
+      <div class="ui-dialog__body" id="dailyReportContent">
+        <p id="dailyReportSubtitle" style="margin-bottom: 1rem; color: var(--text-soft);"></p>
+        <!-- Grid Statistics -->
+        <div class="fleet-grid" id="dailyReportStatsGrid" style="margin-bottom:20px;"></div>
+
+        <!-- Tables -->
+        <div class="fleet-grid" style="align-items: flex-start; gap: 1rem;">
+          <div class="panel" style="flex: 1; min-width: 300px;">
+            <h3>Consumo de Materiales</h3>
+            <table id="dailyReportConsumptionTable" class="table-consulta">
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th>Entradas</th>
+                  <th>Salidas</th>
+                  <th>Unidad</th>
+                </tr>
+              </thead>
+              <tbody id="dailyReportConsumptionBody"></tbody>
+            </table>
+          </div>
+          <div class="panel" style="flex: 1; min-width: 300px;">
+            <h3>Resumen de Producción</h3>
+            <table id="dailyReportProductionTable" class="table-consulta">
+              <thead>
+                <tr>
+                  <th>Concepto</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody id="dailyReportProductionBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <footer class="ui-dialog__actions">
+        <button id="printDailyReportBtn" class="btn btn--primary">Imprimir Reporte</button>
+        <button type="button" class="btn btn--muted" id="closeDailyReportFooterBtn">Cerrar</button>
+      </footer>
+    </div>
+  </div>
+
   <div id="uiToastHost" class="ui-toast-host" aria-live="polite" aria-atomic="false"></div>
   <div id="uiDialogHost" class="ui-dialog-host is-hidden" aria-hidden="true"></div>
 
