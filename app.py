@@ -385,8 +385,9 @@ def load_or_create_secret(base_dir: Path) -> str:
 from fleet_store import FleetStoreMixin
 from inventory_store import InventoryStoreMixin
 from qc_store import QCLabStoreMixin
+from user_store import UserStoreMixin
 
-class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin):
+class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreMixin):
     def __init__(self, base_dir: Path, csv_file: str | None = None, db_url: str | None = None):
         self.base_dir = base_dir.resolve()
         self.db_url = db_url
@@ -2844,6 +2845,11 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
     # ── QC Lab API ─────────────────────────────────────────────────────────
     from qc_lab_routes import register_qc_lab_routes
     register_qc_lab_routes(app, store, login_required)
+
+    # ── Users API ─────────────────────────────────────────────────────────
+    from user_routes import register_user_routes
+    users_bp = register_user_routes(store, require_roles)
+    app.register_blueprint(users_bp)
 
     return app
 

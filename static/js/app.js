@@ -90,9 +90,11 @@ const tabDosificador = document.getElementById("tabDosificador");
 const tabFlotilla = document.getElementById("tabFlotilla");
 const tabInventario = document.getElementById("tabInventario");
 const tabLaboratorio = document.getElementById("tabLaboratorio");
+const tabUsuarios = document.getElementById("tabUsuarios");
 const flotillaView = document.getElementById("flotillaView");
 const inventarioView = document.getElementById("inventarioView");
 const laboratorioView = document.getElementById("laboratorioView");
+const usuariosView = document.getElementById("usuariosView");
 const vehiclesBody = document.getElementById("vehiclesBody");
 const fuelBody = document.getElementById("fuelBody");
 const fuelVehicleSelect = document.getElementById("fuelVehicleSelect");
@@ -512,6 +514,7 @@ function applyRoleAccessUi() {
   if (tabFlotilla) tabFlotilla.style.display = canAccessView("flotilla") ? "" : "none";
   if (tabInventario) tabInventario.style.display = canAccessView("inventario") ? "" : "none";
   if (tabLaboratorio) tabLaboratorio.style.display = canAccessView("laboratorio") ? "" : "none";
+  if (tabUsuarios) tabUsuarios.style.display = state.auth.role === "administrador" ? "" : "none";
   if (auditBtn) auditBtn.style.display = state.auth.canEdit ? "" : "none";
   if (backupCreateBtn) backupCreateBtn.style.display = state.auth.canEdit ? "" : "none";
   if (backupRestoreBtn) backupRestoreBtn.style.display = state.auth.role === "administrador" ? "" : "none";
@@ -593,18 +596,21 @@ function switchView(view) {
   const isFleet = view === "flotilla";
   const isInv = view === "inventario";
   const isLab = view === "laboratorio";
+  const isUsers = view === "usuarios";
   editorView.classList.toggle("is-hidden", !isEditor);
   consultaView.classList.toggle("is-hidden", !isConsulta);
   dosificadorView.classList.toggle("is-hidden", !isDoser);
   if (flotillaView) flotillaView.classList.toggle("is-hidden", !isFleet);
   if (inventarioView) inventarioView.classList.toggle("is-hidden", !isInv);
   if (laboratorioView) laboratorioView.classList.toggle("is-hidden", !isLab);
+  if (usuariosView) usuariosView.classList.toggle("is-hidden", !isUsers);
   tabEditor.classList.toggle("view-tab--active", isEditor);
   tabConsulta.classList.toggle("view-tab--active", isConsulta);
   tabDosificador.classList.toggle("view-tab--active", isDoser);
   if (tabFlotilla) tabFlotilla.classList.toggle("view-tab--active", isFleet);
   if (tabInventario) tabInventario.classList.toggle("view-tab--active", isInv);
   if (tabLaboratorio) tabLaboratorio.classList.toggle("view-tab--active", isLab);
+  if (tabUsuarios) tabUsuarios.classList.toggle("view-tab--active", isUsers);
   if (isConsulta) setConsultaStep(state.consultaStep);
   if (isDoser) {
     renderDosificador();
@@ -613,6 +619,7 @@ function switchView(view) {
   if (isFleet) loadFleetData();
   if (isInv && typeof window.loadInventoryData === "function") window.loadInventoryData();
   if (isLab && typeof window.loadQcLabData === "function") window.loadQcLabData();
+  if (isUsers && typeof window.AppUsers !== "undefined" && typeof window.AppUsers.loadUsers === "function") window.AppUsers.loadUsers();
 }
 
 function compareValues(a, b) {
@@ -3685,6 +3692,10 @@ if (tabLaboratorio) {
     if (typeof window.initQcLab === "function") window.initQcLab();
     if (typeof window.loadQcLabData === "function") window.loadQcLabData();
   });
+}
+
+if (tabUsuarios) {
+  tabUsuarios.addEventListener("click", () => switchView("usuarios"));
 }
 
 applyRoleAccessUi();

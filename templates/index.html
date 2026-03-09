@@ -43,6 +43,7 @@
     <button id="tabInventario" class="view-tab">Inventario</button>
     <button id="tabLaboratorio" class="view-tab">Laboratorio</button>
     <button id="tabFlotilla" class="view-tab">Flotilla</button>
+    <button id="tabUsuarios" class="view-tab" style="display:none;">Gestión de Usuarios</button>
   </nav>
 
   <main class="layout">
@@ -766,6 +767,35 @@
         </div>
       </section>
 
+      <!-- User Management View -->
+      <section id="usuariosView" class="view-pane is-hidden">
+        <div class="panel panel--consulta">
+          <header class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="consulta-head" style="margin: 0;">
+              <h2>Gestión de Usuarios</h2>
+              <p>Módulo de administración del sistema ALMEX</p>
+            </div>
+            <button id="btnNewUser" class="btn btn--primary">Registrar Usuario</button>
+          </header>
+          <div class="table-container" style="margin-top: 1.5rem;">
+            <table class="table-consulta">
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  <th>Rol</th>
+                  <th style="text-align:center;">Estado</th>
+                  <th style="text-align:center;">Último Acceso</th>
+                  <th style="text-align:center;">Fecha de Creación</th>
+                  <th style="text-align:center;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="usersTbody">
+                <!-- User rows rendered by users.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
   </main>
   <!-- Evolution Chart Modal -->
   <div id="qcChartModal" class="ui-dialog-host is-hidden" aria-hidden="true">
@@ -832,6 +862,7 @@
   <script src="{{ url_for('static', filename='js/fleet.js', v=cache_bust) }}"></script>
   <script src="{{ url_for('static', filename='js/inventory.js', v=cache_bust) }}"></script>
   <script src="{{ url_for('static', filename='js/qc_lab.js', v=cache_bust) }}"></script>
+  <script src="{{ url_for('static', filename='js/users.js', v=cache_bust) }}"></script>
 </body>
 
 </html>
