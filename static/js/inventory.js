@@ -184,7 +184,11 @@
             <option value="">-- Sin Vincular --</option>
             <option value="Cemento" ${mat && mat.doser_alias === 'Cemento' ? 'selected' : ''}>Cemento (Dosificador)</option>
             <option value="Agua" ${mat && mat.doser_alias === 'Agua' ? 'selected' : ''}>Agua (Dosificador)</option>
-            <option value="Aditivo" ${mat && mat.doser_alias === 'Aditivo' ? 'selected' : ''}>Aditivo (Dosificador)</option>
+            <option value="Aditivo" ${mat && mat.doser_alias === 'Aditivo' ? 'selected' : ''}>Aditivo (Genérico)</option>
+            <option value="Reductor" ${mat && mat.doser_alias === 'Reductor' ? 'selected' : ''}>Reductor (Dosificador)</option>
+            <option value="Retardante" ${mat && mat.doser_alias === 'Retardante' ? 'selected' : ''}>Retardante (Dosificador)</option>
+            <option value="Imper" ${mat && mat.doser_alias === 'Imper' ? 'selected' : ''}>Imper (Dosificador)</option>
+            <option value="Fibra" ${mat && mat.doser_alias === 'Fibra' ? 'selected' : ''}>Fibra (Dosificador)</option>
             <option value="Fino 1" ${mat && mat.doser_alias === 'Fino 1' ? 'selected' : ''}>Fino 1 / Arena 1</option>
             <option value="Fino 2" ${mat && mat.doser_alias === 'Fino 2' ? 'selected' : ''}>Fino 2 / Arena 2</option>
             <option value="Grueso 1" ${mat && mat.doser_alias === 'Grueso 1' ? 'selected' : ''}>Grueso 1 / Grava 1</option>
