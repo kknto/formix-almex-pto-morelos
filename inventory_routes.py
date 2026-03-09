@@ -24,7 +24,11 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
     @inv_bp.route("/materials/<int:material_id>", methods=["DELETE"])
     @login_required
     def api_inv_materials_delete(material_id):
-        store.delete_material(material_id, actor=request.current_user["username"])
+        force = request.args.get("force") == "true"
+        if force and request.current_user.get("role") != "administrador":
+            return jsonify({"ok": False, "error": "Acceso denegado: Eliminación definitiva requiere rol de administrador"}), 403
+            
+        store.delete_material(material_id, actor=request.current_user["username"], force=force)
         return jsonify({"ok": True, "materials": store.list_materials()})
 
     @inv_bp.route("/transactions", methods=["GET"])

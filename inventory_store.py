@@ -73,14 +73,18 @@ class InventoryStoreMixin:
                 row = _row_to_dict(conn.execute("SELECT id FROM materials WHERE name=?", (name,)))
                 return {"id": row["id"] if row else 0, "saved": True}
 
-    def delete_material(self, material_id: int, actor: str = "") -> bool:
-        """Soft delete material"""
+    def delete_material(self, material_id: int, actor: str = "", force: bool = False) -> bool:
+        """Soft delete material, or hard delete if force=True"""
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._conn() as conn:
-            conn.execute(
-                "UPDATE materials SET name = name || '_del_' || id, status='inactivo', updated_at=? WHERE id=?", 
-                (now, material_id)
-            )
+            if force:
+                conn.execute("DELETE FROM inventory_transactions WHERE material_id=?", (material_id,))
+                conn.execute("DELETE FROM materials WHERE id=?", (material_id,))
+            else:
+                conn.execute(
+                    "UPDATE materials SET name = name || '_del_' || id, status='inactivo', updated_at=? WHERE id=?", 
+                    (now, material_id)
+                )
             conn.commit()
         return True
 

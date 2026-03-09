@@ -116,6 +116,9 @@
   function renderMaterialsTab() {
     if (!invMaterialsBody) return;
     invMaterialsBody.innerHTML = "";
+
+    const isAdmin = window.AppGlobals && window.AppGlobals.state && window.AppGlobals.state.auth && window.AppGlobals.state.auth.role === "administrador";
+
     invMaterials.forEach(mat => {
       const tr = document.createElement("tr");
       const isLow = mat.current_stock <= mat.min_stock;
@@ -127,10 +130,14 @@
         <td>
            <button class="btn btn--small btn--muted edit-mat-btn">Editar</button>
            <button class="btn btn--small btn--danger delete-mat-btn">Eliminar</button>
+           ${isAdmin ? `<button class="btn btn--small btn--danger hard-delete-mat-btn" style="background:var(--color-danger); border-color:var(--color-danger);" title="Eliminación Definitiva">Elim. Def. ⚠️</button>` : ''}
         </td>
       `;
       tr.querySelector(".edit-mat-btn").addEventListener("click", () => showMaterialFormDialog(mat));
       tr.querySelector(".delete-mat-btn").addEventListener("click", () => deleteMaterial(mat));
+      if (isAdmin) {
+        tr.querySelector(".hard-delete-mat-btn").addEventListener("click", () => hardDeleteMaterial(mat));
+      }
       invMaterialsBody.appendChild(tr);
     });
   }
@@ -425,7 +432,7 @@
   }
 
   async function deleteMaterial(mat) {
-    if (!confirm(`Â¿Seguro que deseas ELIMINAR '${mat.name}'? Ya no aparecerÃ¡ en el dosificador ni reportes.`)) return;
+    if (!confirm(`¿Seguro que deseas ocultar (soft-delete) '${mat.name}'? Ya no aparecerá en el dosificador ni reportes, pero su historial se conserva.`)) return;
     try {
       const res = await invFetch(`/api/inventory/materials/${mat.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(res.error || "Error al eliminar");
@@ -434,6 +441,22 @@
       renderDashboard();
       populateMaterialSelects();
       setInvStatus(`Material ${mat.name} eliminado.`, "ok");
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function hardDeleteMaterial(mat) {
+    if (!confirm(`⚠️ ADVERTENCIA: ¿Seguro que deseas ELIMINAR DEFINITIVAMENTE '${mat.name}'?\n\nEsta acción borrará el material físicamente y TODO su historial de movimientos del Kardex.\n\nEsta acción NO se puede deshacer.\n\n¿Deseas continuar?`)) return;
+    try {
+      const res = await invFetch(`/api/inventory/materials/${mat.id}?force=true`, { method: "DELETE" });
+      if (!res.ok) throw new Error(res.error || "Error al eliminar definitivamente");
+      invMaterials = res.materials;
+      renderMaterialsTab();
+      renderDashboard();
+      populateMaterialSelects();
+      await loadTransactions();
+      setInvStatus(`Material ${mat.name} eliminado de forma permanente.`, "ok");
     } catch (e) {
       alert(e.message);
     }
