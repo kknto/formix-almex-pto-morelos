@@ -598,9 +598,62 @@
             <button id="invReloadBtn" class="btn btn--muted">Recargar Inventario</button>
             <button id="invAddMaterialBtn" class="btn btn--secondary">Nuevo Material</button>
             <button id="invAddTransactionBtn" class="btn btn--primary">Registrar Movimiento</button>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+               <input type="date" id="invDailyReportDate" class="input--small">
+               <button id="invGenDailyReportBtn" class="btn btn--accent">Reporte Diario</button>
+            </div>
           </div>
           <div class="status" id="invStatusBar"></div>
         </section>
+
+        <!-- Daily Report View (Hidden by default) -->
+        <article id="dailyReportContainer" class="panel panel--consulta is-hidden" style="margin-bottom:12px; border-left: 4px solid var(--clr-accent);">
+           <div class="consulta-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                 <h2 id="dailyReportTitle">Reporte Diario de Operaciones</h2>
+                 <p id="dailyReportSubtitle">Resumen de producción y consumo</p>
+              </div>
+              <div class="controls">
+                 <button id="printDailyReportBtn" class="btn btn--muted btn--small">Imprimir</button>
+                 <button id="closeDailyReportBtn" class="btn btn--danger btn--small">Cerrar</button>
+              </div>
+           </div>
+           <div id="dailyReportContent" class="result-shell">
+              <!-- Grid Statistics -->
+              <div class="fleet-grid" id="dailyReportStatsGrid" style="margin-bottom:20px;"></div>
+              
+              <!-- Tables -->
+              <div class="fleet-grid" style="align-items: flex-start;">
+                 <div class="panel">
+                    <h3>Consumo de Materiales</h3>
+                    <table id="dailyReportConsumptionTable">
+                       <thead>
+                          <tr>
+                             <th>Material</th>
+                             <th>Entradas</th>
+                             <th>Salidas (Consumo)</th>
+                             <th>Unidad</th>
+                          </tr>
+                       </thead>
+                       <tbody id="dailyReportConsumptionBody"></tbody>
+                    </table>
+                 </div>
+                 <div class="panel">
+                    <h3>Eficiencia de Producción</h3>
+                    <div id="dailyReportEfficiencyChart" style="padding:10px;"></div>
+                    <table id="dailyReportProductionTable">
+                        <thead>
+                           <tr>
+                              <th>Concepto</th>
+                              <th>Valor</th>
+                           </tr>
+                        </thead>
+                        <tbody id="dailyReportProductionBody"></tbody>
+                    </table>
+                 </div>
+              </div>
+           </div>
+        </article>
 
         <!-- Dashboard Widgets -->
         <section class="fleet-grid" id="invDashboardGrid">

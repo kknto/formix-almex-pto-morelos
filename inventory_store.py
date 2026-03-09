@@ -165,3 +165,50 @@ class InventoryStoreMixin:
                 conn.execute("DELETE FROM inventory_transactions")
                 conn.commit()
                 return True
+
+    def get_daily_summary(self, date_str: str) -> dict:
+        """
+        Returns a summary of production and material consumption for a given date (YYYY-MM-DD).
+        """
+        with self._conn() as conn:
+            # 1. Production Summary (from remisiones)
+            # We filter by created_at starting with date_str
+            cur = conn.execute(
+                """SELECT 
+                    COUNT(*) as total_remisiones,
+                    SUM(dosificacion_m3) as total_m3,
+                    SUM(peso_teorico_total) as total_teorico_kg,
+                    SUM(peso_real_total) as total_real_kg
+                   FROM remisiones 
+                   WHERE created_at LIKE ?""",
+                (f"{date_str}%",)
+            )
+            prod = _row_to_dict(cur) or {
+                "total_remisiones": 0, "total_m3": 0, "total_teorico_kg": 0, "total_real_kg": 0
+            }
+
+            # 2. Material Consumption (from inventory_transactions)
+            cur = conn.execute(
+                """SELECT 
+                    m.name, m.unit, m.doser_alias,
+                    SUM(CASE WHEN t.transaction_type='SALIDA' THEN t.amount ELSE 0 END) as total_salida,
+                    SUM(CASE WHEN t.transaction_type='ENTRADA' THEN t.amount ELSE 0 END) as total_entrada
+                   FROM inventory_transactions t
+                   JOIN materials m ON m.id = t.material_id
+                   WHERE t.created_at LIKE ?
+                   GROUP BY m.id, m.name, m.unit, m.doser_alias
+                   ORDER BY m.name""",
+                (f"{date_str}%",)
+            )
+            consumption = _rows_to_dicts(cur)
+
+            return {
+                "date": date_str,
+                "production": {
+                    "total_remisiones": int(prod.get("total_remisiones") or 0),
+                    "total_m3": float(prod.get("total_m3") or 0),
+                    "total_teorico_kg": float(prod.get("total_teorico_kg") or 0),
+                    "total_real_kg": float(prod.get("total_real_kg") or 0),
+                },
+                "consumption": consumption
+            }

@@ -2,7 +2,7 @@
  * Inventory Management Module
  * Connects with the `/api/inventory` endpoints.
  */
-(function(globals) {
+(function (globals) {
   if (!globals) {
     console.error("AppGlobals no encontrado. Asegurate de cargar app.js antes que inventory.js");
     return;
@@ -20,14 +20,15 @@
   } = globals;
 
   // --- DOM Elements ---
-  const invReloadBtn = document.getElementById("invReloadBtn");
-  const invAddMaterialBtn = document.getElementById("invAddMaterialBtn");
-  const invAddTransactionBtn = document.getElementById("invAddTransactionBtn");
-  const invDashboardGrid = document.getElementById("invDashboardGrid");
-  const invMaterialsBody = document.getElementById("invMaterialsBody");
-  const invTrxFilter = document.getElementById("invTrxFilter");
-  const invTransactionsBody = document.getElementById("invTransactionsBody");
   const invStatusBar = document.getElementById("invStatusBar");
+  const invDailyReportDate = document.getElementById("invDailyReportDate");
+  const invGenDailyReportBtn = document.getElementById("invGenDailyReportBtn");
+  const dailyReportContainer = document.getElementById("dailyReportContainer");
+  const dailyReportStatsGrid = document.getElementById("dailyReportStatsGrid");
+  const dailyReportConsumptionBody = document.getElementById("dailyReportConsumptionBody");
+  const dailyReportProductionBody = document.getElementById("dailyReportProductionBody");
+  const closeDailyReportBtn = document.getElementById("closeDailyReportBtn");
+  const printDailyReportBtn = document.getElementById("printDailyReportBtn");
 
   // --- State ---
   let invMaterials = [];
@@ -37,7 +38,7 @@
   async function invFetch(url, opts = {}) {
     const csrfToken = state.auth.csrfToken || "";
     const headers = { "X-CSRF-Token": csrfToken, ...(opts.headers || {}) };
-    
+
     if (opts.method && opts.method !== "GET") {
       headers["Content-Type"] = headers["Content-Type"] || "application/json";
       if (opts.body) {
@@ -45,7 +46,7 @@
           const parsed = JSON.parse(opts.body);
           parsed._csrf_token = csrfToken;
           opts = { ...opts, body: JSON.stringify(parsed) };
-        } catch(e) { /* body is not JSON, leave as-is */ }
+        } catch (e) { /* body is not JSON, leave as-is */ }
       } else if (!opts.body) {
         opts = { ...opts, body: JSON.stringify({ _csrf_token: csrfToken }) };
       }
@@ -54,8 +55,8 @@
     return res.json();
   }
 
-  function setInvStatus(msg, tone="ok") {
-    if(!invStatusBar) return;
+  function setInvStatus(msg, tone = "ok") {
+    if (!invStatusBar) return;
     invStatusBar.textContent = msg;
     invStatusBar.className = `status ${tone === "warn" ? "status--warn" : tone === "err" ? "status--error" : ""}`;
   }
@@ -239,7 +240,7 @@
 
     const aliasSelect = document.getElementById("matAlias");
     const unitInput = document.getElementById("matUnit");
-    
+
     if (aliasSelect && unitInput) {
       aliasSelect.addEventListener("change", () => {
         const val = aliasSelect.value;
@@ -273,7 +274,7 @@
           body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error(res.error || "Error al guardar");
-        
+
         uiDialogHost.classList.add("is-hidden");
         invMaterials = res.materials;
         renderMaterialsTab();
@@ -288,7 +289,7 @@
 
   function showTransactionFormDialog() {
     if (!invMaterials.length) return alert("Primero debes dar de alta un material en el CatÃ¡logo.");
-    
+
     let optHtml = invMaterials.map(m => `<option value="${m.id}">${escapeHtml(m.name)} (Stock: ${formatNum(m.current_stock)} ${escapeHtml(m.unit)})</option>`).join("");
 
     const formHtml = `
@@ -362,13 +363,13 @@
           body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error(res.error || "Error al registrar movimiento");
-        
+
         uiDialogHost.classList.add("is-hidden");
         invMaterials = res.materials; // Backend sends updated materials payload
         renderMaterialsTab();
         renderDashboard();
         await loadTransactions();
-        
+
         setInvStatus("Movimiento registrado con Ã©xito.", "ok");
       } catch (e) {
         alert(e.message);
@@ -377,7 +378,7 @@
   }
 
   async function deleteMaterial(mat) {
-    if(!confirm(`Â¿Seguro que deseas ELIMINAR '${mat.name}'? Ya no aparecerÃ¡ en el dosificador ni reportes.`)) return;
+    if (!confirm(`Â¿Seguro que deseas ELIMINAR '${mat.name}'? Ya no aparecerÃ¡ en el dosificador ni reportes.`)) return;
     try {
       const res = await invFetch(`/api/inventory/materials/${mat.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(res.error || "Error al eliminar");
@@ -386,8 +387,8 @@
       renderDashboard();
       populateMaterialSelects();
       setInvStatus(`Material ${mat.name} eliminado.`, "ok");
-    } catch(e) {
-       alert(e.message);
+    } catch (e) {
+      alert(e.message);
     }
   }
 
@@ -404,7 +405,7 @@
   if (invAddMaterialBtn) invAddMaterialBtn.addEventListener("click", () => showMaterialFormDialog(null));
   if (invAddTransactionBtn) invAddTransactionBtn.addEventListener("click", showTransactionFormDialog);
   if (invTrxFilter) invTrxFilter.addEventListener("change", loadTransactions);
-  
+
   const clearKardexBtn = document.getElementById("clearKardexBtn");
   if (clearKardexBtn) {
     clearKardexBtn.addEventListener("click", async () => {
@@ -431,10 +432,120 @@
 
   // Expose loadInventoryData to window so app.js can call it sequentially 
   window.loadInventoryData = loadInventoryData;
-  
+
   // Load on boot to ensure state.doser.invMaterials is populated
   if (AppGlobals.canAccessView("dosificador") || AppGlobals.canAccessView("inventario")) {
     loadInventoryData();
+  }
+
+  // --- Daily Report Functions ---
+  async function generateDailyReport() {
+    const date = invDailyReportDate.value;
+    if (!date) {
+      uiToastHost && uiToastHost.show("Selecciona una fecha para el reporte.", "warn");
+      return;
+    }
+
+    setInvStatus(`Generando reporte para ${date}...`, "warn");
+    try {
+      const res = await invFetch(`/api/inventory/daily_summary?date=${encodeURIComponent(date)}`);
+      if (!res.ok) throw new Error(res.error || "Error al obtener resumen");
+
+      renderDailyReport(res.summary);
+      setInvStatus(`Reporte generado para ${date}.`, "ok");
+    } catch (err) {
+      setInvStatus(String(err), "err");
+    }
+  }
+
+  function renderDailyReport(summary) {
+    if (!dailyReportContainer) return;
+
+    const { production, consumption, date } = summary;
+
+    // Stats Grid
+    const efficiency = production.total_teorico_kg > 0
+      ? (production.total_real_kg / production.total_teorico_kg) * 100
+      : 100;
+    const efficiencyTone = Math.abs(100 - efficiency) > 5 ? "err" : "ok";
+
+    dailyReportStatsGrid.innerHTML = `
+      <div class="stat-card">
+        <label>Total Remisiones</label>
+        <div class="value">${production.total_remisiones}</div>
+      </div>
+      <div class="stat-card">
+        <label>Volumen Total</label>
+        <div class="value">${formatNum(production.total_m3)} m³</div>
+      </div>
+      <div class="stat-card stat-card--${efficiencyTone}">
+         <label>Eficiencia de Carga</label>
+         <div class="value">${formatNum(efficiency)}%</div>
+         <p style="font-size:0.8rem; margin-top:4px;">Real vs Teórico</p>
+      </div>
+    `;
+
+    // Consumption Table
+    dailyReportConsumptionBody.innerHTML = consumption.map(c => `
+      <tr>
+        <td><strong>${escapeHtml(c.name)}</strong></td>
+        <td>${formatNum(c.total_entrada)}</td>
+        <td style="color:var(--clr-error);">-${formatNum(c.total_salida)}</td>
+        <td>${escapeHtml(c.unit)}</td>
+      </tr>
+    `).join("") || "<tr><td colspan='4'>Sin movimientos registrados</td></tr>";
+
+    // Production Table
+    dailyReportProductionBody.innerHTML = `
+      <tr><td>Total Concreto Despachado</td><td><strong>${formatNum(production.total_m3)} m³</strong></td></tr>
+      <tr><td>Peso Teórico Total</td><td>${formatNum(production.total_teorico_kg)} kg</td></tr>
+      <tr><td>Peso Real Total</td><td>${formatNum(production.total_real_kg)} kg</td></tr>
+      <tr><td>Variación (Kg)</td><td>${formatNum(production.total_real_kg - production.total_teorico_kg)} kg</td></tr>
+    `;
+
+    document.getElementById("dailyReportTitle").textContent = `Reporte Diario: ${date}`;
+    dailyReportContainer.classList.remove("is-hidden");
+    dailyReportContainer.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function printDailyReport() {
+    const dailyReportContent = document.getElementById("dailyReportContent");
+    const content = dailyReportContent.innerHTML;
+    const date = invDailyReportDate.value;
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Reporte Diario Formix - ${date}</title>
+          <style>
+            body { font-family: sans-serif; padding: 20px; color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            th { background: #f5f5f5; }
+            .stat-card { display: inline-block; width: 30%; border: 1px solid #ddd; padding: 15px; margin-right: 2%; margin-bottom: 20px; }
+            .value { font-size: 1.5rem; font-weight: bold; }
+            h1, h2, h3 { color: #0056b3; }
+            .fleet-grid { display: block; }
+            .panel { margin-bottom: 30px; }
+          </style>
+        </head>
+        <body onload="window.print();window.close()">
+          <h1>FORMIX - Reporte Diario de Operaciones (${date})</h1>
+          <hr>
+          ${content}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  }
+
+  if (invGenDailyReportBtn) invGenDailyReportBtn.addEventListener("click", generateDailyReport);
+  if (closeDailyReportBtn) closeDailyReportBtn.addEventListener("click", () => dailyReportContainer.classList.add("is-hidden"));
+  if (printDailyReportBtn) printDailyReportBtn.addEventListener("click", printDailyReport);
+
+  if (invDailyReportDate) {
+    invDailyReportDate.value = new Date().toISOString().split('T')[0];
   }
 
 })(window.AppGlobals);

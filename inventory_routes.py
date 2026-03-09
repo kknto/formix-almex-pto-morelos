@@ -67,4 +67,16 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
+    @inv_bp.route("/daily_summary", methods=["GET"])
+    @login_required
+    def api_inv_daily_summary():
+        date_str = request.args.get("date")
+        if not date_str:
+            return jsonify({"ok": False, "error": "Fecha requerida (YYYY-MM-DD)"}), 400
+        try:
+            summary = store.get_daily_summary(date_str)
+            return jsonify({"ok": True, "summary": summary})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
     app.register_blueprint(inv_bp)
