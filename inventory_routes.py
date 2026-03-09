@@ -31,6 +31,18 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
         store.delete_material(material_id, actor=request.current_user["username"], force=force)
         return jsonify({"ok": True, "materials": store.list_materials()})
 
+    @inv_bp.route("/materials/purge-inactive", methods=["POST"])
+    @login_required
+    def api_inv_materials_purge():
+        if request.current_user.get("role") != "administrador":
+            return jsonify({"ok": False, "error": "Acceso denegado: Se requiere rol de administrador"}), 403
+            
+        try:
+            res = store.purge_all_inactive_materials()
+            return jsonify({"ok": True, "purged": res["count"], "materials": store.list_materials()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
     @inv_bp.route("/transactions", methods=["GET"])
     @login_required
     def api_inv_transactions_list():

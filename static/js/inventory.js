@@ -68,6 +68,11 @@
         AppGlobals.renderDosificador();
       }
       await loadTransactions();
+
+      const isAdmin = window.AppGlobals && window.AppGlobals.state && window.AppGlobals.state.auth && window.AppGlobals.state.auth.role === "administrador";
+      const purgeBtn = document.getElementById("adminPurgeInactiveBtn");
+      if (purgeBtn) purgeBtn.style.display = isAdmin ? "inline-block" : "none";
+
       setInvStatus(`Cargados ${invMaterials.length} materiales locales.`, "ok");
     } catch (err) {
       setInvStatus(String(err), "err");
@@ -475,6 +480,39 @@
   if (invAddMaterialBtn) invAddMaterialBtn.addEventListener("click", () => showMaterialFormDialog(null));
   if (invAddTransactionBtn) invAddTransactionBtn.addEventListener("click", showTransactionFormDialog);
   if (invTrxFilter) invTrxFilter.addEventListener("change", loadTransactions);
+
+  const adminPurgeInactiveBtn = document.getElementById("adminPurgeInactiveBtn");
+  if (adminPurgeInactiveBtn) {
+    adminPurgeInactiveBtn.addEventListener("click", async () => {
+      const confirmed = await window.AppGlobals.uiConfirm(
+        "¿Deseas ELIMINAR DEFINITIVAMENTE todos los materiales inactivos y su historial?\n\nEsta acción limpiará el sistema de materiales de prueba y 'fantasmas'. No afectará a tus materiales actuales activos.",
+        {
+          title: "Limpiar Materiales Inactivos",
+          confirmText: "Sí, Purgar Todo",
+          tone: "err"
+        }
+      );
+      if (!confirmed) return;
+
+      try {
+        setInvStatus("Purgando materiales...", "warn");
+        const res = await invFetch("/api/inventory/materials/purge-inactive", { method: "POST" });
+        if (!res.ok) throw new Error(res.error || "Error al purgar materiales");
+
+        invMaterials = res.materials;
+        renderMaterialsTab();
+        renderDashboard();
+        populateMaterialSelects();
+        await loadTransactions();
+
+        setInvStatus(`Limpieza completada: ${res.purged} materiales eliminados.`, "ok");
+        uiToastHost && uiToastHost.show(`Se eliminaron ${res.purged} materiales permanentemente.`, "ok");
+      } catch (err) {
+        alert(err.message);
+        setInvStatus(err.message, "err");
+      }
+    });
+  }
 
   const clearKardexBtn = document.getElementById("clearKardexBtn");
   if (clearKardexBtn) {

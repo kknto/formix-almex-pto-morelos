@@ -86,7 +86,25 @@ class InventoryStoreMixin:
                     (now, material_id)
                 )
             conn.commit()
-        return True
+    def purge_all_inactive_materials(self) -> dict:
+        """Physical delete of all materials marked as inactive and their transactions."""
+        with self._conn() as conn:
+            # 1. Get IDs of inactive materials
+            cur = conn.execute("SELECT id FROM materials WHERE status='inactivo'")
+            ids = [r["id"] for r in cur.fetchall()]
+            
+            if not ids:
+                return {"count": 0}
+
+            # 2. Delete transactions for those materials
+            placeholders = ",".join(["?"] * len(ids))
+            conn.execute(f"DELETE FROM inventory_transactions WHERE material_id IN ({placeholders})", ids)
+            
+            # 3. Delete the materials themselves
+            conn.execute(f"DELETE FROM materials WHERE id IN ({placeholders})", ids)
+            
+            conn.commit()
+            return {"count": len(ids)}
 
     # ── Inventory Transactions (The Kardex/Ledger) ───────────────
 
@@ -260,8 +278,7 @@ class InventoryStoreMixin:
 
             # 3. Current Inventory
             cur = conn.execute(
-                "SELECT name, current_stock, unit, min_stock FROM materials WHERE name NOT LIKE ? ORDER BY name",
-                ('%_DEL_%',)
+                "SELECT name, current_stock, unit, min_stock FROM materials WHERE status='activo' ORDER BY name"
             )
             current_inv = _rows_to_dicts(cur)
 
