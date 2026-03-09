@@ -20,15 +20,6 @@
   } = globals;
 
   // --- DOM Elements ---
-  const invStatusBar = document.getElementById("invStatusBar");
-  const invDailyReportDate = document.getElementById("invDailyReportDate");
-  const invGenDailyReportBtn = document.getElementById("invGenDailyReportBtn");
-  const dailyReportModal = document.getElementById("dailyReportModal");
-  const dailyReportStatsGrid = document.getElementById("dailyReportStatsGrid");
-  const dailyReportConsumptionBody = document.getElementById("dailyReportConsumptionBody");
-  const dailyReportProductionBody = document.getElementById("dailyReportProductionBody");
-  const closeDailyReportBtn = document.getElementById("closeDailyReportBtn");
-  const closeDailyReportFooterBtn = document.getElementById("closeDailyReportFooterBtn");
   const printDailyReportBtn = document.getElementById("printDailyReportBtn");
 
   // --- State ---
@@ -441,7 +432,8 @@
 
   // --- Daily Report Functions ---
   async function generateDailyReport() {
-    const date = invDailyReportDate.value;
+    const invDailyReportDate = document.getElementById("invDailyReportDate");
+    const date = invDailyReportDate ? invDailyReportDate.value : null;
     if (!date) {
       uiToastHost && uiToastHost.show("Selecciona una fecha para el reporte.", "warn");
       return;
@@ -460,7 +452,16 @@
   }
 
   function renderDailyReport(summary) {
-    if (!dailyReportModal) return;
+    const dailyReportModal = document.getElementById("dailyReportModal");
+    const dailyReportStatsGrid = document.getElementById("dailyReportStatsGrid");
+    const dailyReportConsumptionBody = document.getElementById("dailyReportConsumptionBody");
+    const dailyReportProductionBody = document.getElementById("dailyReportProductionBody");
+    const dailyReportSubtitle = document.getElementById("dailyReportSubtitle");
+
+    if (!dailyReportModal) {
+      console.error("No se encontró dailyReportModal");
+      return;
+    }
 
     const { production, consumption, date } = summary;
 
@@ -482,29 +483,30 @@
       <div class="stat-card stat-card--${efficiencyTone}">
          <label>Eficiencia de Carga</label>
          <div class="value">${formatNum(efficiency)}%</div>
-         <p style="font-size:0.8rem; margin-top:4px;">Real vs Teórico</p>
+         <p style="font-size:0.75rem; color:var(--text-soft); font-weight:600; margin:0;">Real vs Teórico</p>
       </div>
     `;
 
     // Consumption Table
     dailyReportConsumptionBody.innerHTML = consumption.map(c => `
       <tr>
-        <td><strong>${escapeHtml(c.name)}</strong></td>
-        <td>${formatNum(c.total_entrada)}</td>
-        <td style="color:var(--clr-error);">-${formatNum(c.total_salida)}</td>
-        <td>${escapeHtml(c.unit)}</td>
+        <td style="font-weight:600; color:var(--text-main);">${escapeHtml(c.name)}</td>
+        <td style="text-align:right;">${formatNum(c.total_entrada)}</td>
+        <td style="text-align:right; color:var(--danger); font-weight:600;">-${formatNum(c.total_salida)}</td>
+        <td style="text-align:center;"><span class="ui-dialog__chip">${escapeHtml(c.unit)}</span></td>
       </tr>
-    `).join("") || "<tr><td colspan='4'>Sin movimientos registrados</td></tr>";
+    `).join("") || "<tr><td colspan='4' style='text-align:center; padding:20px; color:var(--text-soft);'>Sin movimientos registrados</td></tr>";
 
     // Production Table
     dailyReportProductionBody.innerHTML = `
-      <tr><td>Total Concreto Despachado</td><td><strong>${formatNum(production.total_m3)} m³</strong></td></tr>
-      <tr><td>Peso Teórico Total</td><td>${formatNum(production.total_teorico_kg)} kg</td></tr>
-      <tr><td>Peso Real Total</td><td>${formatNum(production.total_real_kg)} kg</td></tr>
-      <tr><td>Variación (Kg)</td><td>${formatNum(production.total_real_kg - production.total_teorico_kg)} kg</td></tr>
+      <tr><td>Total Concreto Despachado</td><td style="text-align:right;"><strong>${formatNum(production.total_m3)} m³</strong></td></tr>
+      <tr><td>Peso Teórico Total</td><td style="text-align:right; font-family:monospace;">${formatNum(production.total_teorico_kg)} kg</td></tr>
+      <tr><td>Peso Real Total</td><td style="text-align:right; font-family:monospace;">${formatNum(production.total_real_kg)} kg</td></tr>
+      <tr style="background:var(--bg-0);"><td style="font-weight:600;">Variación neta (Kg)</td><td style="text-align:right; font-weight:700;">${formatNum(production.total_real_kg - production.total_teorico_kg)} kg</td></tr>
     `;
 
-    document.getElementById("dailyReportTitle").textContent = `Reporte Diario: ${date}`;
+    document.getElementById("dailyReportTitle").textContent = `Reporte Diario de Operaciones`;
+    if (dailyReportSubtitle) dailyReportSubtitle.textContent = `Resumen consolidado al ${date}`;
     dailyReportModal.classList.remove("is-hidden");
   }
 
@@ -541,8 +543,15 @@
   }
 
   if (invGenDailyReportBtn) invGenDailyReportBtn.addEventListener("click", generateDailyReport);
-  if (closeDailyReportBtn) closeDailyReportBtn.addEventListener("click", () => dailyReportModal.classList.add("is-hidden"));
-  if (closeDailyReportFooterBtn) closeDailyReportFooterBtn.addEventListener("click", () => dailyReportModal.classList.add("is-hidden"));
+
+  // Handlers para cerrar el modal del reporte
+  document.addEventListener("click", (e) => {
+    if (e.target.id === "closeDailyReportBtn" || e.target.id === "closeDailyReportFooterBtn") {
+      const modal = document.getElementById("dailyReportModal");
+      if (modal) modal.classList.add("is-hidden");
+    }
+  });
+
   if (printDailyReportBtn) printDailyReportBtn.addEventListener("click", printDailyReport);
 
   if (invDailyReportDate) {
