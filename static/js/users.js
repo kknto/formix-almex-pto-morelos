@@ -113,6 +113,7 @@
             <label style="color:var(--text-soft); font-size:0.85rem;">Rol</label>
             <select id="usrRole" class="ui-dialog__input" required>
               <option value="operador" ${isEdit && user.role === 'operador' ? 'selected' : ''}>Operador</option>
+              <option value="laboratorista" ${isEdit && user.role === 'laboratorista' ? 'selected' : ''}>Laboratorista</option>
               <option value="presupuestador" ${isEdit && user.role === 'presupuestador' ? 'selected' : ''}>Presupuestador</option>
               <option value="dosificador" ${isEdit && user.role === 'dosificador' ? 'selected' : ''}>Dosificador</option>
               <option value="jefe-de-planta" ${isEdit && user.role === 'jefe-de-planta' ? 'selected' : ''}>Jefe de Planta</option>

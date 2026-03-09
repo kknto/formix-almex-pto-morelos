@@ -50,6 +50,7 @@ ROLE_ALLOWED_VIEWS = {
     "jefe-de-planta": {"editor", "consulta", "dosificador", "flotilla", "inventario", "laboratorio"},
     "dosificador": {"dosificador", "flotilla", "inventario"},
     "presupuestador": {"consulta"},
+    "laboratorista": {"laboratorio"},
 }
 EDITOR_ROLES = {"administrador", "jefe-de-planta"}
 QC_HUMIDITY_ROLES = {"dosificador"}
@@ -59,6 +60,7 @@ DEFAULT_USERS = (
     {"username": "jefe_planta", "role": "jefe-de-planta", "password": "Planta#2026!"},
     {"username": "dosificador", "role": "dosificador", "password": "Dosi#2026!"},
     {"username": "presupuestador", "role": "presupuestador", "password": "Presu#2026!"},
+    {"username": "laboratorista", "role": "laboratorista", "password": "Lab#2026!"},
 )
 AUTH_MAX_FAILED = 5
 AUTH_LOCK_MINUTES = 15
