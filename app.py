@@ -1292,33 +1292,67 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 )
 
                 # Auto-deduct inventory
+                qc_data = self.load_qc(dataset_name=dataset_name)
+                qc_values = qc_data.get("values", {})
+
                 for rr in snap.get("realRows", []):
                     alias = str(rr.get("name", "")).strip()
                     mat_id_snap = rr.get("material_id")
-                    amount = float(rr.get("real", 0))
+                    peso_kg = float(rr.get("real", 0))
                     
-                    if amount > 0:
+                    if peso_kg > 0:
                         mat_row = None
                         if mat_id_snap:
                             mat_row = conn.execute(
-                                "SELECT id, current_stock FROM materials WHERE id=? AND status='activo'", 
+                                "SELECT id, current_stock, unit FROM materials WHERE id=? AND status='activo'", 
                                 (mat_id_snap,)
                             ).fetchone()
                         
                         if not mat_row and alias:
                             mat_row = conn.execute(
-                                "SELECT id, current_stock FROM materials WHERE doser_alias=? AND status='activo' LIMIT 1", 
+                                "SELECT id, current_stock, unit FROM materials WHERE doser_alias=? AND status='activo' LIMIT 1", 
                                 (alias,)
                             ).fetchone()
 
                         if mat_row:
                             mat_id = int(mat_row["id"])
                             current_stock = float(mat_row["current_stock"])
-                            new_stock = current_stock - amount
+                            unit = str(mat_row["unit"] or "kg").lower()
+                            
+                            # Conversion logic for aggregates if inventory is in m3
+                            final_deduction = peso_kg
+                            is_agg = alias in QC_AGGREGATES
+                            
+                            if is_agg and (unit == "m3" or unit == "m³"):
+                                # Internal conversion kg -> m3
+                                q = qc_values.get(alias, {})
+                                pvs = float(q.get("pvs", 0))
+                                pvc = float(q.get("pvc", 0))
+                                
+                                avg_pv = 0.0
+                                if pvs > 0 and pvc > 0:
+                                    avg_pv = (pvs + pvc) / 2
+                                elif pvs > 0:
+                                    avg_pv = pvs
+                                elif pvc > 0:
+                                    avg_pv = pvc
+                                
+                                if avg_pv > 0:
+                                    # Convert to kg/L (standard for calculations in app.js as well)
+                                    pv_kg_l = avg_pv / 1000.0 if avg_pv > 50 else avg_pv
+                                    # result = (kg / (kg/L)) / 1000 = L / 1000 = m3
+                                    final_deduction = (peso_kg / pv_kg_l) / 1000.0
+                                else:
+                                    # Fallback to density_agregado_fallback if no QC value
+                                    params_data = self.load_doser_params(dataset_name=dataset_name)
+                                    fallback = float(params_data.get("values", {}).get("densidad_agregado_fallback", 2.20))
+                                    final_deduction = (peso_kg / fallback) / 1000.0
+
+                            new_stock = current_stock - final_deduction
                             conn.execute(
                                 """INSERT INTO inventory_transactions (material_id, transaction_type, amount, reference, actor, created_at)
                                    VALUES (?, 'SALIDA', ?, ?, ?, ?)""",
-                                (mat_id, amount, f"Remision #{remision}", "Auto", ts)
+                                (mat_id, final_deduction, f"Remision #{remision}", "Auto", ts)
                             )
                             conn.execute(
                                 "UPDATE materials SET current_stock=?, updated_at=? WHERE id=?",

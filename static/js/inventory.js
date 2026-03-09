@@ -237,6 +237,23 @@
     uiDialogHost.appendChild(dialogDiv);
     uiDialogHost.classList.remove("is-hidden");
 
+    const aliasSelect = document.getElementById("matAlias");
+    const unitInput = document.getElementById("matUnit");
+    
+    if (aliasSelect && unitInput) {
+      aliasSelect.addEventListener("change", () => {
+        const val = aliasSelect.value;
+        const aggregates = ["Fino 1", "Fino 2", "Grueso 1", "Grueso 2"];
+        if (aggregates.includes(val)) {
+          unitInput.value = "m³";
+        } else if (val === "Cemento") {
+          unitInput.value = "kg";
+        } else if (val === "Agua" || val === "Aditivo") {
+          unitInput.value = "L";
+        }
+      });
+    }
+
     document.getElementById("cancelMatBtn").addEventListener("click", () => uiDialogHost.classList.add("is-hidden"));
 
     document.getElementById("saveMatBtn").addEventListener("click", async () => {
