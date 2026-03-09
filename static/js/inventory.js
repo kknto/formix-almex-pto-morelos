@@ -23,11 +23,12 @@
   const invStatusBar = document.getElementById("invStatusBar");
   const invDailyReportDate = document.getElementById("invDailyReportDate");
   const invGenDailyReportBtn = document.getElementById("invGenDailyReportBtn");
-  const dailyReportContainer = document.getElementById("dailyReportContainer");
+  const dailyReportModal = document.getElementById("dailyReportModal");
   const dailyReportStatsGrid = document.getElementById("dailyReportStatsGrid");
   const dailyReportConsumptionBody = document.getElementById("dailyReportConsumptionBody");
   const dailyReportProductionBody = document.getElementById("dailyReportProductionBody");
   const closeDailyReportBtn = document.getElementById("closeDailyReportBtn");
+  const closeDailyReportFooterBtn = document.getElementById("closeDailyReportFooterBtn");
   const printDailyReportBtn = document.getElementById("printDailyReportBtn");
 
   // --- State ---
@@ -504,8 +505,7 @@
     `;
 
     document.getElementById("dailyReportTitle").textContent = `Reporte Diario: ${date}`;
-    dailyReportContainer.classList.remove("is-hidden");
-    dailyReportContainer.scrollIntoView({ behavior: "smooth" });
+    dailyReportModal.classList.remove("is-hidden");
   }
 
   function printDailyReport() {
@@ -541,7 +541,8 @@
   }
 
   if (invGenDailyReportBtn) invGenDailyReportBtn.addEventListener("click", generateDailyReport);
-  if (closeDailyReportBtn) closeDailyReportBtn.addEventListener("click", () => dailyReportContainer.classList.add("is-hidden"));
+  if (closeDailyReportBtn) closeDailyReportBtn.addEventListener("click", () => dailyReportModal.classList.add("is-hidden"));
+  if (closeDailyReportFooterBtn) closeDailyReportFooterBtn.addEventListener("click", () => dailyReportModal.classList.add("is-hidden"));
   if (printDailyReportBtn) printDailyReportBtn.addEventListener("click", printDailyReport);
 
   if (invDailyReportDate) {

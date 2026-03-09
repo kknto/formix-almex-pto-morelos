@@ -498,10 +498,22 @@
 
       <!-- KPI Dashboard Cards -->
       <div class="fleet-kpi-cards">
-        <div class="kpi-card"><span class="kpi-icon">🚛</span><div class="kpi-data"><span id="kpiVehicles" class="kpi-value">0</span><span class="kpi-label">Vehículos Activos</span></div></div>
-        <div class="kpi-card"><span class="kpi-icon">⛽</span><div class="kpi-data"><span id="kpiLiters" class="kpi-value">0</span><span class="kpi-label">Litros (mes)</span></div></div>
-        <div class="kpi-card"><span class="kpi-icon">💰</span><div class="kpi-data"><span id="kpiCost" class="kpi-value">$0</span><span class="kpi-label">Gasto Diesel (mes)</span></div></div>
-        <div class="kpi-card"><span class="kpi-icon">📊</span><div class="kpi-data"><span id="kpiKml" class="kpi-value">0</span><span class="kpi-label">km/L Promedio (mes)</span></div></div>
+        <div class="kpi-card"><span class="kpi-icon">🚛</span>
+          <div class="kpi-data"><span id="kpiVehicles" class="kpi-value">0</span><span class="kpi-label">Vehículos
+              Activos</span></div>
+        </div>
+        <div class="kpi-card"><span class="kpi-icon">⛽</span>
+          <div class="kpi-data"><span id="kpiLiters" class="kpi-value">0</span><span class="kpi-label">Litros
+              (mes)</span></div>
+        </div>
+        <div class="kpi-card"><span class="kpi-icon">💰</span>
+          <div class="kpi-data"><span id="kpiCost" class="kpi-value">$0</span><span class="kpi-label">Gasto Diesel
+              (mes)</span></div>
+        </div>
+        <div class="kpi-card"><span class="kpi-icon">📊</span>
+          <div class="kpi-data"><span id="kpiKml" class="kpi-value">0</span><span class="kpi-label">km/L Promedio
+              (mes)</span></div>
+        </div>
       </div>
 
       <!-- Alerts Banner -->
@@ -517,9 +529,16 @@
           <div class="fleet-monitor-info">
             <span style="font-size: 2.5rem; margin-bottom: 12px; display: block;">🛰️</span>
             <h3>Mapa de Rastreo en Vivo</h3>
-            <p>Accede a la plataforma de monitoreo satelital para ver la ubicación de las unidades, rutas y estados en tiempo real.</p>
-            <a href="https://auto.zeekgps.com/zma/" target="_blank" class="btn btn--primary btn--large" style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; font-weight: 600;">
-              <svg style="width:20px; height:20px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <p>Accede a la plataforma de monitoreo satelital para ver la ubicación de las unidades, rutas y estados en
+              tiempo real.</p>
+            <a href="https://auto.zeekgps.com/zma/" target="_blank" class="btn btn--primary btn--large"
+              style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; font-weight: 600;">
+              <svg style="width:20px; height:20px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              </svg>
               Abrir Monitoreo GPS
             </a>
           </div>
@@ -529,326 +548,379 @@
       <section class="fleet-grid-vertical">
         <!-- Vehicle Registry -->
         <article class="panel panel--consulta" style="margin-bottom: 20px;">
-          <div class="consulta-head"><h2>Registro de Vehículos</h2><p>Flota activa</p></div>
+          <div class="consulta-head">
+            <h2>Registro de Vehículos</h2>
+            <p>Flota activa</p>
+          </div>
           <div class="query-actions">
             <button id="addVehicleBtn" class="btn btn--primary">Agregar Vehículo</button>
           </div>
-          <div class="result-shell" style="max-height:360px;"><table id="vehiclesTable"><thead><tr>
-            <th>Unidad</th><th>Teléfono</th><th>Año/Modelo</th><th># Serie</th><th>Placa</th><th>Chofer</th><th>Tanque</th><th>km/L Esp.</th><th>Acciones</th>
-          </tr></thead><tbody id="vehiclesBody"></tbody></table></div>
+          <div class="result-shell" style="max-height:360px;">
+            <table id="vehiclesTable">
+              <thead>
+                <tr>
+                  <th>Unidad</th>
+                  <th>Teléfono</th>
+                  <th>Año/Modelo</th>
+                  <th># Serie</th>
+                  <th>Placa</th>
+                  <th>Chofer</th>
+                  <th>Tanque</th>
+                  <th>km/L Esp.</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="vehiclesBody"></tbody>
+            </table>
+          </div>
         </article>
 
         <!-- Fuel Records -->
         <article class="panel panel--consulta">
-          <div class="consulta-head"><h2>Cargas de Diesel</h2><p>Historial de consumo</p></div>
+          <div class="consulta-head">
+            <h2>Cargas de Diesel</h2>
+            <p>Historial de consumo</p>
+          </div>
           <div class="query-actions">
-            <label>Vehículo <select id="fuelVehicleSelect"><option value="">Todos</option></select></label>
+            <label>Vehículo <select id="fuelVehicleSelect">
+                <option value="">Todos</option>
+              </select></label>
             <label>Desde <input id="fuelDateFrom" type="date"></label>
             <label>Hasta <input id="fuelDateTo" type="date"></label>
             <button id="addFuelBtn" class="btn btn--primary">Registrar Carga</button>
           </div>
-          <div class="result-shell" style="max-height:360px;"><table id="fuelTable"><thead><tr>
-            <th>Unidad</th><th>Fecha</th><th>Km</th><th>Litros</th><th>Costo</th><th>$/L</th><th>Km Rec.</th><th>km/L</th><th>$/km</th><th>Chofer</th><th>Acc.</th>
-          </tr></thead><tbody id="fuelBody"></tbody></table></div>
+          <div class="result-shell" style="max-height:360px;">
+            <table id="fuelTable">
+              <thead>
+                <tr>
+                  <th>Unidad</th>
+                  <th>Fecha</th>
+                  <th>Km</th>
+                  <th>Litros</th>
+                  <th>Costo</th>
+                  <th>$/L</th>
+                  <th>Km Rec.</th>
+                  <th>km/L</th>
+                  <th>$/km</th>
+                  <th>Chofer</th>
+                  <th>Acc.</th>
+                </tr>
+              </thead>
+              <tbody id="fuelBody"></tbody>
+            </table>
+          </div>
         </article>
       </section>
 
       <!-- Maintenance Records -->
       <section class="panel panel--consulta" style="margin-top:12px;">
-        <div class="consulta-head"><h2>Mantenimiento</h2><p>Historial de servicios y próximos mantenimientos</p></div>
+        <div class="consulta-head">
+          <h2>Mantenimiento</h2>
+          <p>Historial de servicios y próximos mantenimientos</p>
+        </div>
         <div class="query-actions">
-          <label>Vehículo <select id="maintVehicleSelect"><option value="">Todos</option></select></label>
+          <label>Vehículo <select id="maintVehicleSelect">
+              <option value="">Todos</option>
+            </select></label>
           <button id="addMaintBtn" class="btn btn--primary">Registrar Mantenimiento</button>
         </div>
-        <div class="result-shell" style="max-height:300px;"><table id="maintTable"><thead><tr>
-          <th>Unidad</th><th>Tipo</th><th>Descripción</th><th>Costo</th><th>Km</th><th>Próx. Km</th><th>Fecha</th><th>Proveedor</th><th>Acc.</th>
-        </tr></thead><tbody id="maintBody"></tbody></table></div>
+        <div class="result-shell" style="max-height:300px;">
+          <table id="maintTable">
+            <thead>
+              <tr>
+                <th>Unidad</th>
+                <th>Tipo</th>
+                <th>Descripción</th>
+                <th>Costo</th>
+                <th>Km</th>
+                <th>Próx. Km</th>
+                <th>Fecha</th>
+                <th>Proveedor</th>
+                <th>Acc.</th>
+              </tr>
+            </thead>
+            <tbody id="maintBody"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- Charts -->
       <section class="fleet-grid" style="margin-top:12px;">
         <article class="panel panel--consulta">
-          <div class="consulta-head"><h2>Tendencia km/L</h2><p>Rendimiento por vehículo</p></div>
+          <div class="consulta-head">
+            <h2>Tendencia km/L</h2>
+            <p>Rendimiento por vehículo</p>
+          </div>
           <div class="query-actions"><label>Vehículo <select id="trendVehicleSelect"></select></label></div>
           <div style="padding:8px;max-height:300px;"><canvas id="trendChart" height="220"></canvas></div>
         </article>
         <article class="panel panel--consulta">
-          <div class="consulta-head"><h2>Comparativa de Flota</h2><p>km/L promedio vs esperado</p></div>
+          <div class="consulta-head">
+            <h2>Comparativa de Flota</h2>
+            <p>km/L promedio vs esperado</p>
+          </div>
           <div style="padding:8px;max-height:300px;"><canvas id="compareChart" height="220"></canvas></div>
         </article>
       </section>
 
       <!-- Summary -->
       <section class="panel panel--consulta" style="margin-top:12px;">
-        <div class="consulta-head"><h2>Resumen de Flota</h2><p>Eficiencia y costos acumulados</p></div>
+        <div class="consulta-head">
+          <h2>Resumen de Flota</h2>
+          <p>Eficiencia y costos acumulados</p>
+        </div>
         <div class="query-actions">
           <button id="refreshSummaryBtn" class="btn btn--muted">Actualizar</button>
           <button id="exportFleetBtn" class="btn btn--primary">Exportar Reporte</button>
         </div>
-        <div class="result-shell" style="max-height:360px;"><table id="fleetSummaryTable"><thead><tr>
-          <th>Unidad</th><th>Chofer</th><th>Placa</th><th>Cargas</th><th>Litros</th><th>Costo $</th><th>Km</th><th>km/L</th><th>$/km</th><th>km/L Esp.</th><th>Eficiencia</th><th>Última Carga</th>
-        </tr></thead><tbody id="fleetSummaryBody"></tbody></table></div>
+        <div class="result-shell" style="max-height:360px;">
+          <table id="fleetSummaryTable">
+            <thead>
+              <tr>
+                <th>Unidad</th>
+                <th>Chofer</th>
+                <th>Placa</th>
+                <th>Cargas</th>
+                <th>Litros</th>
+                <th>Costo $</th>
+                <th>Km</th>
+                <th>km/L</th>
+                <th>$/km</th>
+                <th>km/L Esp.</th>
+                <th>Eficiencia</th>
+                <th>Última Carga</th>
+              </tr>
+            </thead>
+            <tbody id="fleetSummaryBody"></tbody>
+          </table>
+        </div>
       </section>
     </section>
 
-      <!-- Inventory View -->
-      <section id="inventarioView" class="view-pane is-hidden">
-        <section class="panel panel--controls">
-          <div class="controls">
-            <button id="invReloadBtn" class="btn btn--muted">Recargar Inventario</button>
-            <button id="invAddMaterialBtn" class="btn btn--secondary">Nuevo Material</button>
-            <button id="invAddTransactionBtn" class="btn btn--primary">Registrar Movimiento</button>
-            <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
-               <input type="date" id="invDailyReportDate" class="input--small">
-               <button id="invGenDailyReportBtn" class="btn btn--accent">Reporte Diario</button>
-            </div>
+    <!-- Inventory View -->
+    <section id="inventarioView" class="view-pane is-hidden">
+      <section class="panel panel--controls">
+        <div class="controls">
+          <button id="invReloadBtn" class="btn btn--muted">Recargar Inventario</button>
+          <button id="invAddMaterialBtn" class="btn btn--secondary">Nuevo Material</button>
+          <button id="invAddTransactionBtn" class="btn btn--primary">Registrar Movimiento</button>
+          <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+            <input type="date" id="invDailyReportDate" class="input--small">
+            <button id="invGenDailyReportBtn" class="btn btn--accent">Reporte Diario</button>
           </div>
-          <div class="status" id="invStatusBar"></div>
-        </section>
+        </div>
+        <div class="status" id="invStatusBar"></div>
+      </section>
 
-        <!-- Daily Report View (Hidden by default) -->
-        <article id="dailyReportContainer" class="panel panel--consulta is-hidden" style="margin-bottom:12px; border-left: 4px solid var(--clr-accent);">
-           <div class="consulta-head" style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                 <h2 id="dailyReportTitle">Reporte Diario de Operaciones</h2>
-                 <p id="dailyReportSubtitle">Resumen de producción y consumo</p>
-              </div>
-              <div class="controls">
-                 <button id="printDailyReportBtn" class="btn btn--muted btn--small">Imprimir</button>
-                 <button id="closeDailyReportBtn" class="btn btn--danger btn--small">Cerrar</button>
-              </div>
-           </div>
-           <div id="dailyReportContent" class="result-shell">
-              <!-- Grid Statistics -->
-              <div class="fleet-grid" id="dailyReportStatsGrid" style="margin-bottom:20px;"></div>
-              
-              <!-- Tables -->
-              <div class="fleet-grid" style="align-items: flex-start;">
-                 <div class="panel">
-                    <h3>Consumo de Materiales</h3>
-                    <table id="dailyReportConsumptionTable">
-                       <thead>
-                          <tr>
-                             <th>Material</th>
-                             <th>Entradas</th>
-                             <th>Salidas (Consumo)</th>
-                             <th>Unidad</th>
-                          </tr>
-                       </thead>
-                       <tbody id="dailyReportConsumptionBody"></tbody>
-                    </table>
-                 </div>
-                 <div class="panel">
-                    <h3>Eficiencia de Producción</h3>
-                    <div id="dailyReportEfficiencyChart" style="padding:10px;"></div>
-                    <table id="dailyReportProductionTable">
-                        <thead>
-                           <tr>
-                              <th>Concepto</th>
-                              <th>Valor</th>
-                           </tr>
-                        </thead>
-                        <tbody id="dailyReportProductionBody"></tbody>
-                    </table>
-                 </div>
-              </div>
-           </div>
+
+      <!-- Dashboard Widgets -->
+      <section class="fleet-grid" id="invDashboardGrid">
+        <!-- Populated dynamically by inventory.js -->
+      </section>
+
+      <!-- Catalog & Transactions -->
+      <section class="fleet-grid" style="margin-top:12px;">
+        <!-- Catalog List -->
+        <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Catálogo de Materiales</h2>
+            <p>Existencias actuales y configuración</p>
+          </div>
+          <div class="result-shell">
+            <table id="invMaterialsTable">
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th>Alias Dosificador</th>
+                  <th>Stock Actual</th>
+                  <th>Min. Requerido</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="invMaterialsBody"></tbody>
+            </table>
+          </div>
         </article>
 
-        <!-- Dashboard Widgets -->
-        <section class="fleet-grid" id="invDashboardGrid">
-          <!-- Populated dynamically by inventory.js -->
-        </section>
-
-        <!-- Catalog & Transactions -->
-        <section class="fleet-grid" style="margin-top:12px;">
-          <!-- Catalog List -->
-          <article class="panel panel--consulta">
-            <div class="consulta-head">
-              <h2>Catálogo de Materiales</h2>
-              <p>Existencias actuales y configuración</p>
-            </div>
-            <div class="result-shell">
-              <table id="invMaterialsTable">
-                <thead>
-                  <tr>
-                    <th>Material</th>
-                    <th>Alias Dosificador</th>
-                    <th>Stock Actual</th>
-                    <th>Min. Requerido</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody id="invMaterialsBody"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <!-- Transaction History -->
-          <article class="panel panel--consulta">
-            <div class="consulta-head">
-              <h2>Kardex de Movimientos</h2>
-              <p>Historial de Entradas y Salidas</p>
-            </div>
-            <div class="query-actions" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <label for="invTrxFilter">Filtrar por material:</label>
-                <select id="invTrxFilter">
-                  <option value="">Todos los materiales</option>
-                </select>
-              </div>
-              <button id="clearKardexBtn" class="btn btn--danger btn--small" style="display:none;">Limpiar Historial</button>
-            </div>
-            <div class="result-shell" style="max-height: 400px; overflow-y: auto;">
-              <table id="invTransactionsTable">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Material</th>
-                    <th>Tipo</th>
-                    <th>Cantidad</th>
-                    <th>Referencia</th>
-                    <th>Usuario</th>
-                  </tr>
-                </thead>
-                <tbody id="invTransactionsBody"></tbody>
-              </table>
-            </div>
-          </article>
-        </section>
-      </section>
-
-      <section id="laboratorioView" class="view-pane is-hidden">
-        <header class="panel-header">
-          <h2>Laboratorio (Control de Calidad)</h2>
-          <p>Registro de muestras de concreto y control de ensayes a compresión de cilindros.</p>
-        </header>
-        
-        <div id="qcDashboard" class="status-grid" style="margin-bottom: 16px;"></div>
-        
-        <div class="panel-list">
-          <article class="panel panel--editor">
-            <header class="panel-header">
-              <h3>Registrar Nueva Muestra</h3>
-            </header>
-            <div style="padding: 16px;">
-              <form id="addQcSampleForm" style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; align-items: start;">
-                
-                <div style="grid-column: span 8;">
-                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
-                    Código / Etiqueta Muestra (Automático si está vacío)
-                  </label>
-                  <input type="text" id="qcSampleCode" class="form-input" style="width: 100%;">
-                </div>
-
-                <div style="grid-column: span 4;">
-                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
-                    Búsqueda por Remisión (Opcional)
-                  </label>
-                  <div style="display: flex; gap: 4px;">
-                    <input type="text" id="qcRemisionNo" class="form-input" placeholder="Ej: 254" style="width: 100%;">
-                    <button type="button" id="lookupRemisionBtn" class="btn btn--muted" title="Buscar datos de remisión">
-                      <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                    </button>
-                  </div>
-                </div>
-                
-                <div style="grid-column: span 4;">
-                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
-                    Fecha de Colado
-                  </label>
-                  <input type="date" id="qcCastDate" class="form-input" style="width: 100%;" required>
-                </div>
-                
-                <div style="grid-column: span 4;">
-                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
-                    f'c de diseño esperado (kg/cm²)
-                  </label>
-                  <input type="number" id="qcFcExpected" class="form-input" min="50" max="600" style="width: 100%;" required>
-                </div>
-                
-                <div style="grid-column: span 4;">
-                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
-                    Revenimiento (cm)
-                  </label>
-                  <input type="number" id="qcSlump" class="form-input" step="0.5" min="0" max="30" style="width: 100%;">
-                </div>
-                
-                <div style="grid-column: span 12; display: flex; align-items: center; gap: 16px; margin-top: 8px;">
-                  <div>
-                    <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">Añadir Edad (días)</label>
-                    <div style="display: flex; gap: 8px;">
-                      <input type="number" id="cylinderAgeInput" class="form-input" style="width: 90px;" placeholder="Ej: 3">
-                      <button type="button" id="addCylinderAgeBtn" class="btn btn--muted" style="padding: 6px 12px;">+</button>
-                    </div>
-                  </div>
-                  <div style="flex: 1;">
-                    <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">Edades a ensayar</label>
-                    <div id="qcAgesList" style="display: flex; gap: 8px; flex-wrap: wrap; min-height: 36px; padding: 4px; border: 1px dashed var(--border-color); border-radius: 4px; align-items: center;"></div>
-                  </div>
-                </div>
-                
-                <div style="grid-column: span 12; display: flex; justify-content: flex-end; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 16px;">
-                  <button type="submit" class="btn btn--primary">Registrar Muestra y Cilindros</button>
-                </div>
-              </form>
-            </div>
-          </article>
-        </div>
-
-        <div class="panel panel--consulta" style="margin-top: 1rem;">
-          <header class="panel-header">
-            <h3>Pizarra de Cilindros Activos</h3>
-          </header>
-          <div class="table-container">
-            <table class="table-consulta">
-              <thead>
-                <tr>
-                  <th>Muestra</th>
-                  <th style="text-align:center;">Edad Obj.</th>
-                  <th style="text-align:center;">Fecha Prog.</th>
-                  <th style="text-align:center;">Estatus</th>
-                  <th style="text-align:center;">Resistencia</th>
-                  <th style="text-align:center;">% Logro</th>
-                  <th style="text-align:center;">Evidencia</th>
-                  <th style="text-align:center;">Acción</th>
-                </tr>
-              </thead>
-              <tbody id="pendingCylindersTbody"></tbody>
-            </table>
+        <!-- Transaction History -->
+        <article class="panel panel--consulta">
+          <div class="consulta-head">
+            <h2>Kardex de Movimientos</h2>
+            <p>Historial de Entradas y Salidas</p>
           </div>
-        </div>
-      </section>
-
-      <!-- User Management View -->
-      <section id="usuariosView" class="view-pane is-hidden">
-        <div class="panel panel--consulta">
-          <header class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
-            <div class="consulta-head" style="margin: 0;">
-              <h2>Gestión de Usuarios</h2>
-              <p>Módulo de administración del sistema ALMEX</p>
+          <div class="query-actions"
+            style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <label for="invTrxFilter">Filtrar por material:</label>
+              <select id="invTrxFilter">
+                <option value="">Todos los materiales</option>
+              </select>
             </div>
-            <button id="btnNewUser" class="btn btn--primary">Registrar Usuario</button>
-          </header>
-          <div class="table-container" style="margin-top: 1.5rem;">
-            <table class="table-consulta">
+            <button id="clearKardexBtn" class="btn btn--danger btn--small" style="display:none;">Limpiar
+              Historial</button>
+          </div>
+          <div class="result-shell" style="max-height: 400px; overflow-y: auto;">
+            <table id="invTransactionsTable">
               <thead>
                 <tr>
+                  <th>Fecha</th>
+                  <th>Material</th>
+                  <th>Tipo</th>
+                  <th>Cantidad</th>
+                  <th>Referencia</th>
                   <th>Usuario</th>
-                  <th>Rol</th>
-                  <th style="text-align:center;">Estado</th>
-                  <th style="text-align:center;">Último Acceso</th>
-                  <th style="text-align:center;">Fecha de Creación</th>
-                  <th style="text-align:center;">Acciones</th>
                 </tr>
               </thead>
-              <tbody id="usersTbody">
-                <!-- User rows rendered by users.js -->
-              </tbody>
+              <tbody id="invTransactionsBody"></tbody>
             </table>
           </div>
-        </div>
+        </article>
       </section>
+    </section>
+
+    <section id="laboratorioView" class="view-pane is-hidden">
+      <header class="panel-header">
+        <h2>Laboratorio (Control de Calidad)</h2>
+        <p>Registro de muestras de concreto y control de ensayes a compresión de cilindros.</p>
+      </header>
+
+      <div id="qcDashboard" class="status-grid" style="margin-bottom: 16px;"></div>
+
+      <div class="panel-list">
+        <article class="panel panel--editor">
+          <header class="panel-header">
+            <h3>Registrar Nueva Muestra</h3>
+          </header>
+          <div style="padding: 16px;">
+            <form id="addQcSampleForm"
+              style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; align-items: start;">
+
+              <div style="grid-column: span 8;">
+                <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
+                  Código / Etiqueta Muestra (Automático si está vacío)
+                </label>
+                <input type="text" id="qcSampleCode" class="form-input" style="width: 100%;">
+              </div>
+
+              <div style="grid-column: span 4;">
+                <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
+                  Búsqueda por Remisión (Opcional)
+                </label>
+                <div style="display: flex; gap: 4px;">
+                  <input type="text" id="qcRemisionNo" class="form-input" placeholder="Ej: 254" style="width: 100%;">
+                  <button type="button" id="lookupRemisionBtn" class="btn btn--muted" title="Buscar datos de remisión">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div style="grid-column: span 4;">
+                <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
+                  Fecha de Colado
+                </label>
+                <input type="date" id="qcCastDate" class="form-input" style="width: 100%;" required>
+              </div>
+
+              <div style="grid-column: span 4;">
+                <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
+                  f'c de diseño esperado (kg/cm²)
+                </label>
+                <input type="number" id="qcFcExpected" class="form-input" min="50" max="600" style="width: 100%;"
+                  required>
+              </div>
+
+              <div style="grid-column: span 4;">
+                <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">
+                  Revenimiento (cm)
+                </label>
+                <input type="number" id="qcSlump" class="form-input" step="0.5" min="0" max="30" style="width: 100%;">
+              </div>
+
+              <div style="grid-column: span 12; display: flex; align-items: center; gap: 16px; margin-top: 8px;">
+                <div>
+                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">Añadir
+                    Edad (días)</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="number" id="cylinderAgeInput" class="form-input" style="width: 90px;"
+                      placeholder="Ej: 3">
+                    <button type="button" id="addCylinderAgeBtn" class="btn btn--muted"
+                      style="padding: 6px 12px;">+</button>
+                  </div>
+                </div>
+                <div style="flex: 1;">
+                  <label style="display: block; margin-bottom: 4px; color: var(--text-soft); font-size: 0.85rem;">Edades
+                    a ensayar</label>
+                  <div id="qcAgesList"
+                    style="display: flex; gap: 8px; flex-wrap: wrap; min-height: 36px; padding: 4px; border: 1px dashed var(--border-color); border-radius: 4px; align-items: center;">
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style="grid-column: span 12; display: flex; justify-content: flex-end; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                <button type="submit" class="btn btn--primary">Registrar Muestra y Cilindros</button>
+              </div>
+            </form>
+          </div>
+        </article>
+      </div>
+
+      <div class="panel panel--consulta" style="margin-top: 1rem;">
+        <header class="panel-header">
+          <h3>Pizarra de Cilindros Activos</h3>
+        </header>
+        <div class="table-container">
+          <table class="table-consulta">
+            <thead>
+              <tr>
+                <th>Muestra</th>
+                <th style="text-align:center;">Edad Obj.</th>
+                <th style="text-align:center;">Fecha Prog.</th>
+                <th style="text-align:center;">Estatus</th>
+                <th style="text-align:center;">Resistencia</th>
+                <th style="text-align:center;">% Logro</th>
+                <th style="text-align:center;">Evidencia</th>
+                <th style="text-align:center;">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="pendingCylindersTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- User Management View -->
+    <section id="usuariosView" class="view-pane is-hidden">
+      <div class="panel panel--consulta">
+        <header class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="consulta-head" style="margin: 0;">
+            <h2>Gestión de Usuarios</h2>
+            <p>Módulo de administración del sistema ALMEX</p>
+          </div>
+          <button id="btnNewUser" class="btn btn--primary">Registrar Usuario</button>
+        </header>
+        <div class="table-container" style="margin-top: 1.5rem;">
+          <table class="table-consulta">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Rol</th>
+                <th style="text-align:center;">Estado</th>
+                <th style="text-align:center;">Último Acceso</th>
+                <th style="text-align:center;">Fecha de Creación</th>
+                <th style="text-align:center;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="usersTbody">
+              <!-- User rows rendered by users.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </main>
   <!-- Evolution Chart Modal -->
   <div id="qcChartModal" class="ui-dialog-host is-hidden" aria-hidden="true">
@@ -877,7 +949,12 @@
     <div class="ui-dialog" data-tone="info" role="dialog" aria-modal="true" aria-labelledby="testModalTitle">
       <header class="ui-dialog__head">
         <div class="ui-dialog__title-wrap">
-          <svg class="ui-tone-icon ui-tone-icon--dialog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <svg class="ui-tone-icon ui-tone-icon--dialog" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
           <h3 id="testModalTitle" class="ui-dialog__title">Registrar Ensaye</h3>
         </div>
         <span class="ui-dialog__chip">PRUEBA DE COMPRESIÓN</span>
@@ -885,19 +962,23 @@
       <div class="ui-dialog__body">
         <form id="testCylinderForm">
           <div class="form-group" style="margin-bottom: 1rem;">
-            <label for="testStrength" style="color:var(--text-soft); font-size:0.85rem;">Resistencia a la compresión obtenida (kg/cm²)</label>
+            <label for="testStrength" style="color:var(--text-soft); font-size:0.85rem;">Resistencia a la compresión
+              obtenida (kg/cm²)</label>
             <input type="number" id="testStrength" class="ui-dialog__input" step="0.1" required>
           </div>
-          
+
           <div class="form-group" style="margin-bottom: 1rem;">
-            <label for="testImageInput" style="color:var(--text-soft); font-size:0.85rem;">Evidencia Fotográfica (Opcional, Se comprimirá &lt; 1MB)</label>
+            <label for="testImageInput" style="color:var(--text-soft); font-size:0.85rem;">Evidencia Fotográfica
+              (Opcional, Se comprimirá &lt; 1MB)</label>
             <input type="file" id="testImageInput" accept="image/jpeg, image/png" class="ui-dialog__input">
-            <img id="compressPreviewImg" src="" alt="Vista previa" style="display:none; max-width:100%; margin-top:10px; border-radius:4px; max-height:200px; object-fit:contain;">
+            <img id="compressPreviewImg" src="" alt="Vista previa"
+              style="display:none; max-width:100%; margin-top:10px; border-radius:4px; max-height:200px; object-fit:contain;">
           </div>
-          
+
           <div class="form-group" style="margin-bottom: 1rem;">
             <label for="testNotes" style="color:var(--text-soft); font-size:0.85rem;">Notas / Observaciones</label>
-            <textarea id="testNotes" class="ui-dialog__input" rows="2" placeholder="Ej: Cabeceo irregular, falla tipo 2..."></textarea>
+            <textarea id="testNotes" class="ui-dialog__input" rows="2"
+              placeholder="Ej: Cabeceo irregular, falla tipo 2..."></textarea>
           </div>
         </form>
       </div>
