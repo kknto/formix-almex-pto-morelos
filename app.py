@@ -11,7 +11,7 @@ import unicodedata
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
-from threading import Lock
+from threading import Lock, RLock
 from uuid import uuid4
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
@@ -396,7 +396,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         self.db_path = self.base_dir / "mix_data.sqlite3"
         self.snapshot_dir = self.base_dir / "backups" / "db_snapshots"
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
-        self.lock = Lock()
+        self.lock = RLock()
         self.is_postgres = bool(db_url and POSTGRES_AVAILABLE)
         self.pg_pool = None
         if self.is_postgres:
