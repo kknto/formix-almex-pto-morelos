@@ -140,7 +140,7 @@
     invTransactionsBody.innerHTML = "";
 
     // Check if the current user is an admin
-    const isAdmin = window.AppGlobals && window.AppGlobals.session && window.AppGlobals.session.role === "administrador";
+    const isAdmin = window.AppGlobals && window.AppGlobals.state && window.AppGlobals.state.auth && window.AppGlobals.state.auth.role === "administrador";
     const colCount = isAdmin ? 7 : 6;
 
     if (!invTransactions.length) {
