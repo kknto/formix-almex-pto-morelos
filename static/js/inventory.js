@@ -387,6 +387,28 @@
   if (invAddMaterialBtn) invAddMaterialBtn.addEventListener("click", () => showMaterialFormDialog(null));
   if (invAddTransactionBtn) invAddTransactionBtn.addEventListener("click", showTransactionFormDialog);
   if (invTrxFilter) invTrxFilter.addEventListener("change", loadTransactions);
+  
+  const clearKardexBtn = document.getElementById("clearKardexBtn");
+  if (clearKardexBtn) {
+    clearKardexBtn.addEventListener("click", async () => {
+      const confirmed = await window.AppGlobals.uiDialog({
+        title: "Limpiar Kardex",
+        message: "¡Peligro! ¿Estás seguro de querer ELIMINAR todo el historial de movimientos? Esta acción es irreversible, pero no afectará el stock actual de los materiales.",
+        confirmText: "Sí, Limpiar",
+        tone: "err"
+      });
+      if (!confirmed) return;
+      try {
+        const res = await invFetch(`/api/inventory/transactions`, { method: "DELETE" });
+        if (!res.ok) throw new Error(res.error || "Error al limpiar Kardex");
+        invTransactions = res.transactions || [];
+        renderTransactions();
+        setInvStatus("Kardex de movimientos limpiado.", "ok");
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  }
 
   // Expose loadInventoryData to window so app.js can call it sequentially 
   window.loadInventoryData = loadInventoryData;

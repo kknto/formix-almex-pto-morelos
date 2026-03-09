@@ -2839,7 +2839,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
 
     # ── Inventory API ──────────────────────────────────────────────────────
     from inventory_routes import register_inventory_routes
-    register_inventory_routes(app, store, login_required)
+    register_inventory_routes(app, store, login_required, require_roles)
 
     # ── QC Lab API ─────────────────────────────────────────────────────────
     from qc_lab_routes import register_qc_lab_routes

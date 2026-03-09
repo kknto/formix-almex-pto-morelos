@@ -154,3 +154,14 @@ class InventoryStoreMixin:
                     "previous_stock": current_stock,
                     "new_stock": new_stock
                 }
+
+    def clear_inventory_transactions(self) -> bool:
+        """
+        Deletes all history from the inventory_transactions table.
+        Does NOT resetting the current_stock balance on the materials.
+        """
+        with self.lock:
+            with self._conn() as conn:
+                conn.execute("DELETE FROM inventory_transactions")
+                conn.commit()
+                return True

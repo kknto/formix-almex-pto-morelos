@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-def register_inventory_routes(app, store, login_required):
+def register_inventory_routes(app, store, login_required, require_roles=None):
     """
     Registers all inventory-related API routes to the given Flask app via a Blueprint.
     """
@@ -52,6 +52,18 @@ def register_inventory_routes(app, store, login_required):
                 actor=request.current_user["username"]
             )
             return jsonify({"ok": True, **result, "materials": store.list_materials()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @inv_bp.route("/transactions", methods=["DELETE"])
+    @login_required
+    def api_inv_transactions_clear():
+        if request.current_user.get("role") != "administrador":
+            return jsonify({"ok": False, "error": "Acceso denegado: se requiere rol de administrador"}), 403
+            
+        try:
+            store.clear_inventory_transactions()
+            return jsonify({"ok": True, "transactions": store.list_inventory_transactions()})
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 

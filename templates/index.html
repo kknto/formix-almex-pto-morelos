@@ -636,11 +636,14 @@
               <h2>Kardex de Movimientos</h2>
               <p>Historial de Entradas y Salidas</p>
             </div>
-            <div class="query-actions" style="margin-top:8px;">
-              <label for="invTrxFilter">Filtrar por material:</label>
-              <select id="invTrxFilter">
-                <option value="">Todos los materiales</option>
-              </select>
+            <div class="query-actions" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <label for="invTrxFilter">Filtrar por material:</label>
+                <select id="invTrxFilter">
+                  <option value="">Todos los materiales</option>
+                </select>
+              </div>
+              <button id="clearKardexBtn" class="btn btn--danger btn--small" style="display:none;">Limpiar Historial</button>
             </div>
             <div class="result-shell" style="max-height: 400px; overflow-y: auto;">
               <table id="invTransactionsTable">

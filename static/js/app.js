@@ -515,6 +515,8 @@ function applyRoleAccessUi() {
   if (auditBtn) auditBtn.style.display = state.auth.canEdit ? "" : "none";
   if (backupCreateBtn) backupCreateBtn.style.display = state.auth.canEdit ? "" : "none";
   if (backupRestoreBtn) backupRestoreBtn.style.display = state.auth.role === "administrador" ? "" : "none";
+  const clearKardexBtn = document.getElementById("clearKardexBtn");
+  if (clearKardexBtn) clearKardexBtn.style.display = state.auth.role === "administrador" ? "" : "none";
   if (saveQcHumidityBtn) {
     saveQcHumidityBtn.style.display = state.auth.canEditQcHumidity ? "" : "none";
   }
