@@ -421,11 +421,27 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             def __enter__(self): return self
             def __exit__(self, exc_type, exc_val, exc_tb): 
                 try:
-                    if exc_type: self.conn.rollback()
-                    else: self.conn.commit()
+                    if exc_type: 
+                        try:
+                            self.conn.rollback()
+                        except Exception:
+                            pass
+                    else: 
+                        try:
+                            self.conn.commit()
+                        except Exception:
+                            pass
                 finally:
-                    if pool: pool.putconn(self.conn)
-                    else: self.conn.close()
+                    if pool: 
+                        try:
+                            pool.putconn(self.conn)
+                        except Exception:
+                            pass
+                    else: 
+                        try:
+                            self.conn.close()
+                        except Exception:
+                            pass
             def execute(self, sql, params=()):
                 cur = self.conn.cursor(cursor_factory=RealDictCursor)
                 # Traducir placeholders ? -> %s
