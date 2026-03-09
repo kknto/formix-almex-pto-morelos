@@ -254,6 +254,12 @@ class InventoryStoreMixin:
             )
             consumption = _rows_to_dicts(cur)
 
+            # 3. Current Inventory
+            cur = conn.execute(
+                "SELECT name, current_stock, unit, min_stock FROM materials ORDER BY name"
+            )
+            current_inv = _rows_to_dicts(cur)
+
             return {
                 "date": date_str,
                 "production": {
@@ -262,5 +268,6 @@ class InventoryStoreMixin:
                     "total_teorico_kg": float(prod.get("total_teorico_kg") or 0),
                     "total_real_kg": float(prod.get("total_real_kg") or 0),
                 },
-                "consumption": consumption
+                "consumption": consumption,
+                "current_inventory": current_inv
             }

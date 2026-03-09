@@ -1946,6 +1946,11 @@ td.cell.cell-readonly {
     margin-bottom: 30px !important;
   }
 
+  #dailyReportStockGrid {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 10px !important;
+  }
+
   .stat-card {
     border: 1px solid #eee !important;
     padding: 10px !important;

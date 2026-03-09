@@ -518,7 +518,7 @@
       return;
     }
 
-    const { production, consumption, date } = summary;
+    const { production, consumption, current_inventory, date } = summary;
 
     // Stats Grid
     const efficiency = production.total_teorico_kg > 0
@@ -559,6 +559,21 @@
       <tr><td>Peso Real Total</td><td style="text-align:right; font-family:monospace;">${formatNum(production.total_real_kg)} kg</td></tr>
       <tr style="background:var(--bg-0);"><td style="font-weight:600;">Variación neta (Kg)</td><td style="text-align:right; font-weight:700;">${formatNum(production.total_real_kg - production.total_teorico_kg)} kg</td></tr>
     `;
+
+    // Stock Cards (Restante)
+    const dailyReportStockGrid = document.getElementById("dailyReportStockGrid");
+    if (dailyReportStockGrid && current_inventory) {
+      dailyReportStockGrid.innerHTML = current_inventory.map(m => {
+        const isLow = m.current_stock <= m.min_stock;
+        const toneClass = isLow ? "err" : "ok";
+        return `
+          <div class="stat-card stat-card--${toneClass}">
+            <label style="font-size:0.7rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(m.name)}">${escapeHtml(m.name)}</label>
+            <div class="value" style="font-size:1.1rem; margin-top:4px;">${formatNum(m.current_stock)} <span style="font-size:0.8rem; font-weight:normal;">${escapeHtml(m.unit)}</span></div>
+          </div>
+        `;
+      }).join("");
+    }
 
     document.getElementById("dailyReportTitle").textContent = `Reporte Diario de Operaciones`;
     if (dailyReportSubtitle) dailyReportSubtitle.textContent = `Resumen consolidado al ${date}`;
