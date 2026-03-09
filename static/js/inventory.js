@@ -243,10 +243,10 @@
         const aggregates = ["Fino 1", "Fino 2", "Grueso 1", "Grueso 2"];
         if (aggregates.includes(val)) {
           unitInput.value = "m³";
-        } else if (val === "Cemento") {
+        } else if (["Cemento", "Imper", "Fibra"].includes(val)) {
           unitInput.value = "kg";
-        } else if (val === "Agua" || val === "Aditivo") {
-          unitInput.value = "L";
+        } else if (["Agua", "Aditivo", "Reductor", "Retardante"].includes(val)) {
+          unitInput.value = "Lts";
         }
       });
     }
