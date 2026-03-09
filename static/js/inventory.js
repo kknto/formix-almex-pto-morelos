@@ -391,12 +391,14 @@
   const clearKardexBtn = document.getElementById("clearKardexBtn");
   if (clearKardexBtn) {
     clearKardexBtn.addEventListener("click", async () => {
-      const confirmed = await window.AppGlobals.uiDialog({
-        title: "Limpiar Kardex",
-        message: "¡Peligro! ¿Estás seguro de querer ELIMINAR todo el historial de movimientos? Esta acción es irreversible, pero no afectará el stock actual de los materiales.",
-        confirmText: "Sí, Limpiar",
-        tone: "err"
-      });
+      const confirmed = await window.AppGlobals.uiConfirm(
+        "¡Peligro! ¿Estás seguro de querer ELIMINAR todo el historial de movimientos? Esta acción es irreversible, pero no afectará el stock actual de los materiales.",
+        {
+          title: "Limpiar Kardex",
+          confirmText: "Sí, Limpiar",
+          tone: "err"
+        }
+      );
       if (!confirmed) return;
       try {
         const res = await invFetch(`/api/inventory/transactions`, { method: "DELETE" });

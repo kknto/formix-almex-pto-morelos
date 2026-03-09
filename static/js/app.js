@@ -3708,6 +3708,7 @@ window.AppGlobals = {
   tabInventario,
   uiDialogHost,
   uiToastHost,
-  renderDosificador
+  renderDosificador,
+  uiConfirm
 };
 
