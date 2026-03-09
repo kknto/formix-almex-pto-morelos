@@ -400,15 +400,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         self.is_postgres = bool(db_url and POSTGRES_AVAILABLE)
         self.pg_pool = None
         if self.is_postgres:
-            self.pg_pool = ThreadedConnectionPool(
-                1, 20, 
-                self.db_url,
-                keepalives=1,
-                keepalives_idle=30,
-                keepalives_interval=10,
-                keepalives_count=5,
-                connect_timeout=10
-            )
+            # Revert keepalives since setsockopt might fail in Render sandboxed containers
+            self.pg_pool = ThreadedConnectionPool(1, 20, self.db_url)
         self._init_db()
         self._bootstrap(csv_file)
 
