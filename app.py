@@ -1002,10 +1002,18 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         with self.lock:
             with self._conn() as conn:
                 ds = self._resolve_dataset(conn, dataset_name)
+                # First try to load the profile specifically for this dataset
                 row = conn.execute(
                     "SELECT values_json,version,updated_at FROM qc_profiles WHERE dataset_id=?",
                     (ds["id"],),
                 ).fetchone()
+                
+                # If no profile exists for this dataset, find the most recently updated profile in the database
+                if not row:
+                    row = conn.execute(
+                        "SELECT values_json,version,updated_at FROM qc_profiles ORDER BY updated_at DESC LIMIT 1"
+                    ).fetchone()
+                
                 if not row:
                     return {
                         "file": ds["name"],
