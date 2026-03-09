@@ -1133,27 +1133,36 @@ td.cell.cell-readonly {
 }
 
 #doserRealTable th:nth-child(1) {
-  width: 22%;
+  width: 18%;
 }
 
 #doserRealTable th:nth-child(2) {
-  width: 24%;
+  width: 32%;
 }
 
 #doserRealTable th:nth-child(3) {
-  width: 14%;
+  width: 13%;
 }
 
 #doserRealTable th:nth-child(4) {
-  width: 14%;
+  width: 13%;
 }
 
 #doserRealTable th:nth-child(5) {
-  width: 14%;
+  width: 13%;
 }
 
 #doserRealTable th:nth-child(6) {
-  width: 12%;
+  width: 11%;
+}
+
+.doser-mat-select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  text-overflow: ellipsis;
+  padding: 4px;
+  font-size: 0.8rem;
 }
 
 #doserQueryTable th:nth-child(1) {
