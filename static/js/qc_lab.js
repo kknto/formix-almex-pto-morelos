@@ -296,10 +296,6 @@ function setupListeners() {
         addCylinderAgeBtn.addEventListener("click", () => {
             const val = parseInt(cylinderAgeInput.value);
             if(!isNaN(val) && val > 0) {
-                if (sampleAges.includes(val)) {
-                    if(typeof setStatus === 'function') setStatus("Esa edad ya esta en la lista.", 'warn');
-                    return;
-                }
                 sampleAges.push(val);
                 // Sort ascending
                 sampleAges.sort((a,b) => a - b);
