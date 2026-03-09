@@ -1876,6 +1876,8 @@ td.cell.cell-readonly {
     visibility: hidden;
     background: none !important;
     box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   /* Show only the report content */
@@ -1919,9 +1921,14 @@ td.cell.cell-readonly {
   }
 
   /* Constraint SVG sizes strictly during print */
-  svg {
+  svg,
+  .stat-card svg,
+  .report-table-title svg {
+    width: 20px !important;
+    height: 20px !important;
     max-width: 20px !important;
     max-height: 20px !important;
+    display: inline-block !important;
   }
 
   .daily-report-stats {

@@ -511,35 +511,7 @@
   }
 
   function printDailyReport() {
-    const dailyReportContent = document.getElementById("dailyReportContent");
-    const content = dailyReportContent.innerHTML;
-    const date = invDailyReportDate.value;
-
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Reporte Diario Formix - ${date}</title>
-          <style>
-            body { font-family: sans-serif; padding: 20px; color: #333; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-            th { background: #f5f5f5; }
-            .stat-card { display: inline-block; width: 30%; border: 1px solid #ddd; padding: 15px; margin-right: 2%; margin-bottom: 20px; }
-            .value { font-size: 1.5rem; font-weight: bold; }
-            h1, h2, h3 { color: #0056b3; }
-            .fleet-grid { display: block; }
-            .panel { margin-bottom: 30px; }
-          </style>
-        </head>
-        <body onload="window.print();window.close()">
-          <h1>FORMIX - Reporte Diario de Operaciones (${date})</h1>
-          <hr>
-          ${content}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    window.print();
   }
 
   if (invGenDailyReportBtn) invGenDailyReportBtn.addEventListener("click", generateDailyReport);
