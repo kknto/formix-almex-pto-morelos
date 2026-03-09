@@ -400,7 +400,15 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         self.is_postgres = bool(db_url and POSTGRES_AVAILABLE)
         self.pg_pool = None
         if self.is_postgres:
-            self.pg_pool = ThreadedConnectionPool(1, 20, self.db_url)
+            self.pg_pool = ThreadedConnectionPool(
+                1, 20, 
+                self.db_url,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=5,
+                connect_timeout=10
+            )
         self._init_db()
         self._bootstrap(csv_file)
 
@@ -434,7 +442,11 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 finally:
                     if pool: 
                         try:
-                            pool.putconn(self.conn)
+                            # Discard broken connection instead of returning it to the pool
+                            if getattr(self.conn, "closed", 0) != 0:
+                                pool.putconn(self.conn, close=True)
+                            else:
+                                pool.putconn(self.conn)
                         except Exception:
                             pass
                     else: 
