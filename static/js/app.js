@@ -409,11 +409,10 @@ function uiDialog(options = {}) {
         </header>
         <div class="ui-dialog__body">
           <p class="ui-dialog__message">${escapeHtml(message)}</p>
-          ${
-            mode === "prompt"
-              ? `<input class="ui-dialog__input" type="text" value="${escapeHtml(defaultValue)}" autocomplete="off">`
-              : ""
-          }
+          ${mode === "prompt"
+        ? `<input class="ui-dialog__input" type="text" value="${escapeHtml(defaultValue)}" autocomplete="off">`
+        : ""
+      }
         </div>
         <footer class="ui-dialog__actions">
           <button type="button" class="btn btn--muted btn--small ui-dialog-cancel">${escapeHtml(cancelText)}</button>
@@ -1045,7 +1044,7 @@ function classifyComponent(headerText, counters) {
 }
 
 function componentUnit(component) {
-  if (["Agua", "Reductor", "Retardante", "Imper"].includes(component)) return "Lts";
+  if (["Agua", "Reductor", "Retardante"].includes(component)) return "Lts";
   return "kg";
 }
 
@@ -1112,26 +1111,34 @@ function extractRecipe(row) {
 
 function normalizeConsultaRecipeItems(recipeItems) {
   return recipeItems.map((item) => {
-    if (item.name !== "Reductor" && item.name !== "Retardante") return item;
+    if (!["Reductor", "Retardante", "Fibra", "Imper"].includes(item.name)) return item;
+
+    // Si son Reductor o Retardante, asumimos que el CSV viene en gramos/cc y lo pasamos a litros
+    // Si son Imper o Fibra, asumimos que el CSV viene en gramos y lo pasamos a kilos
+    const isLiquid = ["Reductor", "Retardante"].includes(item.name);
     const qty = item.qty / 1000;
+
     return {
       ...item,
       qty,
-      unit: "cc/kg-cto",
-      volume: qty / 1000,
+      unit: isLiquid ? "cc/kg-cto" : "kg",
+      volume: isLiquid ? qty / 1000 : 0,
     };
   });
 }
 
 function normalizeDoserRecipeItems(recipeItems) {
   return recipeItems.map((item) => {
-    if (item.name !== "Reductor" && item.name !== "Retardante") return item;
+    if (!["Reductor", "Retardante", "Fibra", "Imper"].includes(item.name)) return item;
+
+    const isLiquid = ["Reductor", "Retardante"].includes(item.name);
     const qty = item.qty / 1000;
+
     return {
       ...item,
       qty,
-      unit: "Lts/m3",
-      volume: qty / 1000,
+      unit: isLiquid ? "Lts/m3" : "kg",
+      volume: isLiquid ? qty / 1000 : 0,
     };
   });
 }
@@ -1158,11 +1165,9 @@ function renderRecipeAndCosts(row) {
   const modDate = getRowModDate(row);
   const qcDate = state.qcUpdatedAt || "-";
 
-  recipeMeta.textContent = `Formula: ${formula || "-"} | f'c: ${fc || "-"} | Edad: ${edad || "-"} | Tipo: ${
-    tipo || "-"
-  } | TMA: ${tma || "-"} | Rev: ${rev || "-"} | Comp: ${comp || "-"} | Fecha Modif: ${
-    modDate || "-"
-  } | QC: ${qcDate}`;
+  recipeMeta.textContent = `Formula: ${formula || "-"} | f'c: ${fc || "-"} | Edad: ${edad || "-"} | Tipo: ${tipo || "-"
+    } | TMA: ${tma || "-"} | Rev: ${rev || "-"} | Comp: ${comp || "-"} | Fecha Modif: ${modDate || "-"
+    } | QC: ${qcDate}`;
 
   const recipeItems = normalizeConsultaRecipeItems(extractRecipe(row));
   recipeBody.innerHTML = "";
@@ -1307,8 +1312,8 @@ function renderCostTable(recipeItems) {
     const m3Text = isAgg ? formatVol(m3) : "-";
     const haulCell = isAgg
       ? `<div class="money-field"><span class="money-field__symbol">$</span><input class="haul-input" type="number" min="0" step="0.01" value="${haulCost.toFixed(
-          2
-        )}" title="Costo de transporte por m³ del agregado (del banco a la planta)" aria-label="Acarreo por m³"></div>`
+        2
+      )}" title="Costo de transporte por m³ del agregado (del banco a la planta)" aria-label="Acarreo por m³"></div>`
       : "-";
     tr.innerHTML = `
       <td>${escapeHtml(item.name)}</td>
@@ -1616,11 +1621,15 @@ function buildDoserReportSnapshot() {
   const recipeItems = normalizeDoserRecipeItems(extractRecipe(selectedRow));
   const detailed = computeDoserDetailedLoads(recipeItems, dose, state.doser.params);
   const recipe = detailed.rows.map((row) => {
-    const isAditivo = row.name === "Reductor" || row.name === "Retardante";
+    // Definimos la unidad de exhibicion para la receta por m3
+    let displayUnit = row.unit;
+    if (["Reductor", "Retardante"].includes(row.name)) displayUnit = "Lts/m3";
+    else if (["Fibra", "Imper"].includes(row.name)) displayUnit = "kg/m3";
+
     return {
       name: row.name,
       qty: row.designA,
-      unit: isAditivo ? "Lts/m3" : row.unit,
+      unit: displayUnit,
     };
   });
   const recipeWeight = recipe.reduce((acc, item) => acc + (item.qty * componentWeightFactor(item)), 0);
@@ -1645,7 +1654,7 @@ function buildDoserReportSnapshot() {
     return {
       name: item.name,
       material_id: state.doser.selectedMaterials[item.name] || null,
-      material_name: state.doser.selectedMaterials[item.name] 
+      material_name: state.doser.selectedMaterials[item.name]
         ? ((state.doser.invMaterials || []).find(m => String(m.id) === String(state.doser.selectedMaterials[item.name]))?.name || "-- Sin descontar --")
         : "-- Sin descontar --",
       unit: item.unit,
@@ -2600,25 +2609,25 @@ function renderDosificador() {
     return;
   }
 
-  doserSelectedMeta.textContent = `Formula: ${valueByKey(selectedRow, "formula") || "-"} | f'c: ${
-    valueByKey(selectedRow, "fc") || "-"
-  } | Edad: ${valueByKey(selectedRow, "edad") || "-"} | Tipo: ${valueByKey(selectedRow, "tipo") || "-"} | T.M.A.: ${
-    valueByKey(selectedRow, "tma") || "-"
-  } | Rev: ${valueByKey(selectedRow, "rev") || "-"} | Comp: ${valueByKey(selectedRow, "comp") || "-"}`;
+  doserSelectedMeta.textContent = `Formula: ${valueByKey(selectedRow, "formula") || "-"} | f'c: ${valueByKey(selectedRow, "fc") || "-"
+    } | Edad: ${valueByKey(selectedRow, "edad") || "-"} | Tipo: ${valueByKey(selectedRow, "tipo") || "-"} | T.M.A.: ${valueByKey(selectedRow, "tma") || "-"
+    } | Rev: ${valueByKey(selectedRow, "rev") || "-"} | Comp: ${valueByKey(selectedRow, "comp") || "-"}`;
 
   const recipeItems = normalizeDoserRecipeItems(extractRecipe(selectedRow));
   const detailed = computeDoserDetailedLoads(recipeItems, dose, state.doser.params);
 
   let recipeTotal = 0;
   detailed.rows.forEach((item) => {
-    const isAditivo = item.name === "Reductor" || item.name === "Retardante";
+    let displayUnit = item.unit;
+    if (["Reductor", "Retardante"].includes(item.name)) displayUnit = "Lts/m3";
+    else if (["Fibra", "Imper"].includes(item.name)) displayUnit = "kg/m3";
+
     const qty = item.designA;
-    const unit = isAditivo ? "Lts/m3" : item.unit;
-    recipeTotal += qty * componentWeightFactor({ unit });
+    recipeTotal += qty * componentWeightFactor({ unit: item.unit });
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(item.name)}</td>
-      <td>${escapeHtml(formatNum(qty))} <span class="recipe-inline-unit">${escapeHtml(unit)}</span></td>
+      <td>${escapeHtml(formatNum(qty))} <span class="recipe-inline-unit">${escapeHtml(displayUnit)}</span></td>
     `;
     doserRecipeBody.appendChild(tr);
   });
@@ -2659,7 +2668,7 @@ function renderDosificador() {
     // Material Selection for Deduction
     const alias = item.name;
     const options = (state.doser.invMaterials || []).filter(m => m.doser_alias === alias);
-    
+
     // Auto-select if only one option or preserve selection
     if (options.length === 1 && !state.doser.selectedMaterials[alias]) {
       state.doser.selectedMaterials[alias] = options[0].id;
@@ -3026,11 +3035,11 @@ async function loadData() {
     state.files = payload.files || [];
     state.fileInfos = Array.isArray(payload.file_infos)
       ? payload.file_infos
-          .map((info) => ({
-            name: (info?.name || "").toString(),
-            family: (info?.family || "").toString().trim(),
-          }))
-          .filter((info) => info.name)
+        .map((info) => ({
+          name: (info?.name || "").toString(),
+          family: (info?.family || "").toString().trim(),
+        }))
+        .filter((info) => info.name)
       : state.files.map((name) => ({ name: (name || "").toString(), family: "" }));
     state.datasetFamily = (payload.family || "").toString().trim();
     state.version = Number.isFinite(Number(payload.version)) ? Number(payload.version) : null;
@@ -3218,8 +3227,8 @@ async function uploadNewCsv(file) {
       mode === "merge"
         ? `Merge listo: insertadas ${payload.inserted || 0}, actualizadas ${payload.updated || 0}.`
         : mode === "replace"
-        ? `Dataset reemplazado: ${payload.file}.`
-        : `Dataset cargado: ${payload.file}.`;
+          ? `Dataset reemplazado: ${payload.file}.`
+          : `Dataset cargado: ${payload.file}.`;
     setStatus(`${summary} ${describeValidation(preview)}`, "ok");
     await loadData();
   } catch (error) {
@@ -3327,9 +3336,9 @@ async function openAuditDialog() {
       const detailKeys = Object.keys(item.details || {});
       const detailText = detailKeys.length
         ? detailKeys
-            .slice(0, 3)
-            .map((k) => `${k}:${item.details[k]}`)
-            .join(", ")
+          .slice(0, 3)
+          .map((k) => `${k}:${item.details[k]}`)
+          .join(", ")
         : "-";
       return `${item.id} | ${item.created_at} | ${item.username || "-"} | ${item.action} | ${detailText}`;
     });
