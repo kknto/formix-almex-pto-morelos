@@ -15,7 +15,9 @@
       <div class="auth-brand">
         <img class="auth-logo" src="{{ url_for('static', filename='img/logo_almex.png', v=cache_bust) }}" alt="ALMEX">
         <div>
-          <h1 style="display: flex; align-items: center;">ALMEX <span style="font-size: 0.5em; color: var(--brand); font-weight: 600; letter-spacing: 0.5px; border: 1px solid var(--brand); border-radius: 4px; padding: 2px 6px; margin-left: 8px; vertical-align: middle; background: rgba(0, 93, 166, 0.05); white-space: nowrap;">PLANTA CANCÚN</span></h1>
+          <h1 style="display: flex; align-items: center;">ALMEX <span
+              style="font-size: 0.5em; color: var(--brand); font-weight: 600; letter-spacing: 0.5px; border: 1px solid var(--brand); border-radius: 4px; padding: 2px 6px; margin-left: 8px; vertical-align: middle; background: rgba(0, 93, 166, 0.05); white-space: nowrap;">PLANTA
+              CANCÚN</span></h1>
           <p>Acceso al sistema de diseños y dosificación</p>
         </div>
       </div>
@@ -32,6 +34,17 @@
         </label>
         <button type="submit" class="btn btn--primary">Ingresar</button>
       </form>
+
+      <div class="auth-footer-branding">
+        <span
+          style="font-size: 0.75rem; color: var(--text-soft); text-transform: uppercase; letter-spacing: 1px;">Powered
+          by</span>
+        <div class="labsico-badge">
+          <img src="{{ url_for('static', filename='img/Labsico-Logo.jpg', v=cache_bust) }}" alt="LABSICO"
+            class="labsico-logo">
+          <span>ForMIX by LABSICO</span>
+        </div>
+      </div>
 
     </section>
   </main>
