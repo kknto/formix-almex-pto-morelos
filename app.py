@@ -1417,36 +1417,39 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     "file": ds["name"],
                 }
 
-    def list_remisiones(self, dataset_name: str | None = None, query: str = "", limit: int = 80) -> dict:
+    def list_remisiones(
+        self,
+        dataset_name: str | None = None,
+        query: str = "",
+        limit: int = 80,
+        date_filter: str | None = None,
+    ) -> dict:
         max_limit = max(1, min(int(limit or 80), 500))
         q = (query or "").strip().upper()
         with self.lock:
             with self._conn() as conn:
                 ds = self._resolve_dataset(conn, dataset_name)
+                
+                sql = """
+                    SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
+                           peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
+                    FROM remisiones
+                    WHERE dataset_id=?
+                """
+                params = [ds["id"]]
+
                 if q:
-                    rows = conn.execute(
-                        """
-                        SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
-                               peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
-                        FROM remisiones
-                        WHERE dataset_id=? AND (remision_no LIKE ? OR formula LIKE ?)
-                        ORDER BY id DESC
-                        LIMIT ?
-                        """,
-                        (ds["id"], f"%{q}%", f"%{q}%", max_limit),
-                    ).fetchall()
-                else:
-                    rows = conn.execute(
-                        """
-                        SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
-                               peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
-                        FROM remisiones
-                        WHERE dataset_id=?
-                        ORDER BY id DESC
-                        LIMIT ?
-                        """,
-                        (ds["id"], max_limit),
-                    ).fetchall()
+                    sql += " AND (remision_no LIKE ? OR formula LIKE ?)"
+                    params.extend([f"%{q}%", f"%{q}%"])
+                
+                if date_filter:
+                    sql += " AND created_at LIKE ?"
+                    params.append(f"{date_filter}%")
+
+                sql += " ORDER BY id DESC LIMIT ?"
+                params.append(max_limit)
+
+                rows = conn.execute(sql, params).fetchall()
                 return {
                     "file": ds["name"],
                     "items": [

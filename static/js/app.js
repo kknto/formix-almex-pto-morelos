@@ -2501,6 +2501,7 @@ async function loadRemisiones() {
 }
 
 window.openEditRemisionModal = function (item) {
+  if (!item || !item.id) return;
   const modal = document.getElementById("editRemisionModal");
   if (!modal) return;
   document.getElementById("editRemisionId").value = item.id;
