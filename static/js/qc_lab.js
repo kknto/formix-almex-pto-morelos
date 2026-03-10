@@ -84,7 +84,7 @@ function renderQcDashboard() {
     let overdue = 0;
     let totalPending = 0;
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = (window.AppGlobals && window.AppGlobals.getTodayCancun) ? window.AppGlobals.getTodayCancun() : new Date().toISOString().split("T")[0];
 
     stateQcCylinders.forEach(cyl => {
         if (cyl.status === "pendiente") {
@@ -381,7 +381,7 @@ function setupListeners() {
             const formData = new FormData();
             formData.append("strength_kgcm2", document.getElementById("testStrength").value);
             formData.append("notes", document.getElementById("testNotes").value);
-            formData.append("break_date", new Date().toISOString().split("T")[0]);
+            formData.append("break_date", (window.AppGlobals && window.AppGlobals.getTodayCancun) ? window.AppGlobals.getTodayCancun() : new Date().toISOString().split("T")[0]);
             formData.append("status", "ensayado");
 
             if (currentCompressedFile) {

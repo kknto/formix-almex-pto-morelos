@@ -658,7 +658,7 @@
   if (printDailyReportBtn) printDailyReportBtn.addEventListener("click", printDailyReport);
 
   if (invDailyReportDate) {
-    invDailyReportDate.value = new Date().toISOString().split('T')[0];
+    invDailyReportDate.value = globals.getTodayCancun ? globals.getTodayCancun() : new Date().toISOString().split('T')[0];
   }
 
 })(window.AppGlobals);

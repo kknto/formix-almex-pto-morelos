@@ -2626,8 +2626,14 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
         file_name = request.args.get("file")
         query = request.args.get("q", "")
         limit = request.args.get("limit", "80")
+        date_filter = request.args.get("date")
         try:
-            out = store.list_remisiones(dataset_name=file_name, query=query, limit=int(limit))
+            out = store.list_remisiones(
+                dataset_name=file_name, 
+                query=query, 
+                limit=int(limit),
+                date_filter=date_filter
+            )
             return jsonify({"ok": True, **out})
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
@@ -2675,6 +2681,22 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": True, **out})
         except FileNotFoundError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 404
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.put("/api/remisiones/<int:remision_id>")
+    @require_roles("admin")
+    def api_remisiones_update(remision_id: int):
+        file_name = request.args.get("file")
+        payload = request.get_json(silent=True) or {}
+        try:
+            out = store.update_remision(
+                remision_id=remision_id,
+                data=payload,
+                dataset_name=file_name,
+                actor=request.current_user["username"],
+            )
+            return jsonify(out)
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -2850,6 +2872,18 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": True, "version": new_ver})
         except ConcurrencyError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 409
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.get("/api/remisiones")
+    @require_roles(*DOSIFICADOR_ROLES)
+    def api_remisiones_list():
+        file_name = request.args.get("file")
+        limit = int(request.args.get("limit", 50))
+        date_filter = request.args.get("date")  # YYYY-MM-DD
+        try:
+            out = store.get_remisiones(dataset_name=file_name, limit=limit, date_filter=date_filter)
+            return jsonify({"ok": True, **out})
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 

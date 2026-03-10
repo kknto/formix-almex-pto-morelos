@@ -23,6 +23,10 @@
         </div>
       </div>
     </div>
+    <div id="topClock" class="topbar__clock">
+      <div id="clockTime" title="Hora Oficial Cancun (UTC-5)">00:00:00</div>
+      <div id="clockDate">Cargando fecha...</div>
+    </div>
     <div class="topbar__session">
       <div class="topbar__right" id="saveState">Sin cambios</div>
       <div class="user-chip">
@@ -371,7 +375,12 @@
             <input id="dRemisionNo" type="text" maxlength="40" placeholder="Ej. R-000123">
           </label>
           <button id="dSaveRemisionBtn" class="btn btn--primary">Guardar Remision</button>
-          <button id="dRefreshRemisionBtn" class="btn btn--muted">Actualizar listado</button>
+          <div style="display:inline-flex; align-items:center; gap:8px; margin-left: auto;">
+            <label for="dRemisionFilterDate" style="font-size:0.85rem; color:var(--text-soft);">Filtrar por
+              fecha:</label>
+            <input id="dRemisionFilterDate" type="date" class="form-input" style="padding: 4px 8px;">
+            <button id="dRefreshRemisionBtn" class="btn btn--muted">Actualizar</button>
+          </div>
         </div>
         <div id="dRemisionMeta" class="meta"></div>
         <div class="result-shell">
@@ -1100,6 +1109,40 @@
       </footer>
     </div>
   </div>
+  <!-- Modal Edición Remisión (Admin) -->
+  <div id="editRemisionModal" class="ui-dialog-backdrop is-hidden" aria-hidden="true">
+    <div class="ui-dialog" style="max-width: 500px;">
+      <header class="ui-dialog__header">
+        <h3 id="editRemisionTitle">Editar Remisión</h3>
+      </header>
+      <div class="ui-dialog__body">
+        <form id="editRemisionForm" class="fleet-form">
+          <input type="hidden" id="editRemisionId">
+          <div class="form-group">
+            <label for="erNo">No. Remisión</label>
+            <input type="text" id="erNo" class="ui-dialog__input" required>
+          </div>
+          <div class="form-group">
+            <label for="erFormula">Fórmula / Diseño</label>
+            <input type="text" id="erFormula" class="ui-dialog__input" required>
+          </div>
+          <div class="form-group">
+            <label for="erM3">Volumen (m³)</label>
+            <input type="number" id="erM3" class="ui-dialog__input" step="0.1" required>
+          </div>
+          <div class="form-group">
+            <label for="erWeight">Peso Real Total (kg)</label>
+            <input type="number" id="erWeight" class="ui-dialog__input" step="1" required>
+          </div>
+        </form>
+      </div>
+      <footer class="ui-dialog__actions">
+        <button type="button" class="btn btn--muted" onclick="window.closeEditRemisionModal()">Cancelar</button>
+        <button type="submit" form="editRemisionForm" class="btn btn--primary">Guardar Cambios</button>
+      </footer>
+    </div>
+  </div>
+
   <script>
     window.APP_BOOT = {{ auth_boot | tojson }};
   </script>

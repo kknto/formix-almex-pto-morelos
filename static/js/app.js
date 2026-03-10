@@ -69,6 +69,72 @@ const QC_FIELDS = ["pvs", "pvc", "densidad", "absorcion", "humedad"];
 const BRAND_LOGO_URL = `${window.location.origin}/static/img/logo_almex.png`;
 const MUTATING_HTTP_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+// --- CANCUN TIME HELPERS ---
+function getCancunDate() {
+  // Retorna un objeto Date ajustado a America/Cancun
+  const now = new Date();
+  // Intl.DateTimeFormat es la forma mas robusta de obtener la hora en una zona especifica sin librerias
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Cancun',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now);
+  const p = parts.reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  // Construir un Date local que "represente" la hora de Cancun
+  return new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`);
+}
+
+function getTodayCancun() {
+  const d = getCancunDate();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getFullTodayCancun() {
+  const d = getCancunDate();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hrs = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hrs}:${min}`;
+}
+
+function updateCancunClock() {
+  const timeEl = document.getElementById("clockTime");
+  const dateEl = document.getElementById("clockDate");
+  if (!timeEl || !dateEl) return;
+
+  const d = getCancunDate();
+
+  // Formatear hora: HH:mm:ss
+  const hrs = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const sec = String(d.getSeconds()).padStart(2, '0');
+  timeEl.textContent = `${hrs}:${min}:${sec}`;
+
+  // Formatear fecha: Lunes, 09 de Marzo de 2026
+  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Cancun' };
+  dateEl.textContent = new Intl.DateTimeFormat('es-MX', options).format(new Date());
+}
+
+// Iniciar reloj
+setInterval(updateCancunClock, 1000);
+window.addEventListener('DOMContentLoaded', updateCancunClock);
+
+// Expose to AppGlobals
+window.AppGlobals = window.AppGlobals || {};
+window.AppGlobals.getTodayCancun = getTodayCancun;
+window.AppGlobals.getFullTodayCancun = getFullTodayCancun;
+// ---------------------------
+
 const tableHead = document.querySelector("#csvTable thead");
 const tableBody = document.querySelector("#csvTable tbody");
 const metaInfo = document.getElementById("metaInfo");
@@ -133,6 +199,7 @@ const doseM3Input = document.getElementById("doseM3");
 const remisionNoInput = document.getElementById("dRemisionNo");
 const saveRemisionBtn = document.getElementById("dSaveRemisionBtn");
 const refreshRemisionBtn = document.getElementById("dRefreshRemisionBtn");
+const remisionFilterDate = document.getElementById("dRemisionFilterDate");
 const remisionMeta = document.getElementById("dRemisionMeta");
 const doserRemisionBody = document.getElementById("doserRemisionBody");
 const tolCementoInput = document.getElementById("tolCemento");
@@ -2392,7 +2459,8 @@ function renderRemisionList() {
       <td>${escapeHtml(item.created_at || "-")}</td>
       <td>${escapeHtml(item.created_by || "-")}</td>
       <td class="remision-actions">
-        <button type="button" class="btn btn--secondary btn--small remision-report-btn">Ver reporte</button>
+        <button type="button" class="btn btn--secondary btn--small remision-report-btn">Reporte</button>
+        ${state.auth.role === 'admin' ? '<button type="button" class="btn btn--muted btn--small remision-edit-btn">Editar</button>' : ''}
         <button type="button" class="btn btn--danger btn--small remision-delete-btn">Eliminar</button>
       </td>
     `;
@@ -2404,6 +2472,10 @@ function renderRemisionList() {
     if (deleteBtn) {
       deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no));
     }
+    const editBtn = tr.querySelector(".remision-edit-btn");
+    if (editBtn) {
+      editBtn.addEventListener("click", () => openEditRemisionModal(item));
+    }
     doserRemisionBody.appendChild(tr);
   });
   if (remisionMeta) remisionMeta.textContent = `Remisiones: ${items.length}`;
@@ -2411,8 +2483,11 @@ function renderRemisionList() {
 
 async function loadRemisiones() {
   if (!canAccessView("dosificador")) return;
+  const filterDate = (remisionFilterDate && remisionFilterDate.value) ? remisionFilterDate.value : "";
   try {
-    const response = await apiFetch(`/api/remisiones?file=${encodeURIComponent(state.file || "")}&limit=80`);
+    if (remisionMeta) remisionMeta.textContent = "Cargando remisiones...";
+    const url = `/api/remisiones?file=${encodeURIComponent(state.file || "")}&limit=100${filterDate ? `&date=${filterDate}` : ""}`;
+    const response = await apiFetch(url);
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo cargar remisiones.");
@@ -2420,10 +2495,66 @@ async function loadRemisiones() {
     state.doser.remisiones = Array.isArray(payload.items) ? payload.items : [];
   } catch (error) {
     state.doser.remisiones = [];
-    if (remisionMeta) remisionMeta.textContent = `Error remisiones: ${String(error)}`;
+    console.error("loadRemisiones error:", error);
   }
   renderRemisionList();
 }
+
+window.openEditRemisionModal = function (item) {
+  const modal = document.getElementById("editRemisionModal");
+  if (!modal) return;
+  document.getElementById("editRemisionId").value = item.id;
+  document.getElementById("erNo").value = item.remision_no || "";
+  document.getElementById("erFormula").value = item.formula || "";
+  document.getElementById("erM3").value = item.dosificacion_m3 || 0;
+  document.getElementById("erWeight").value = item.peso_real_total || 0;
+
+  modal.classList.remove("is-hidden");
+  modal.setAttribute("aria-hidden", "false");
+};
+
+window.closeEditRemisionModal = function () {
+  const modal = document.getElementById("editRemisionModal");
+  if (modal) {
+    modal.classList.add("is-hidden");
+    modal.setAttribute("aria-hidden", "true");
+  }
+};
+
+// Listener para el formulario de edición
+document.addEventListener("DOMContentLoaded", () => {
+  const editForm = document.getElementById("editRemisionForm");
+  if (editForm) {
+    editForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("editRemisionId").value;
+      const payload = {
+        remision_no: document.getElementById("erNo").value,
+        formula: document.getElementById("erFormula").value,
+        dosificacion_m3: parseFloat(document.getElementById("erM3").value),
+        peso_real_total: parseFloat(document.getElementById("erWeight").value)
+      };
+
+      try {
+        const res = await apiFetch(`/api/remisiones/${id}?file=${encodeURIComponent(state.file || "")}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setStatus("Remisión actualizada correctamente.", "ok");
+          closeEditRemisionModal();
+          loadRemisiones();
+        } else {
+          throw new Error(data.error || "Error al actualizar");
+        }
+      } catch (err) {
+        setStatus(`Error: ${err.message}`, "error");
+      }
+    });
+  }
+});
 
 async function deleteRemision(remisionId, remisionNo) {
   try {
@@ -3590,10 +3721,15 @@ tabConsulta.addEventListener("click", () => {
   switchView("consulta");
   runQuery();
 });
-tabDosificador.addEventListener("click", () => {
-  switchView("dosificador");
-  runDoserSearch();
-});
+if (tabDosificador) {
+  tabDosificador.addEventListener("click", () => {
+    if (remisionFilterDate && !remisionFilterDate.value) {
+      remisionFilterDate.value = getTodayCancun();
+    }
+    switchView("dosificador");
+    loadRemisiones();
+  });
+}
 if (consultaPrevBtn) {
   consultaPrevBtn.addEventListener("click", () => setConsultaStep(state.consultaStep - 1));
 }
@@ -3639,7 +3775,16 @@ document.getElementById("dSearchBtn").addEventListener("click", runDoserSearch);
 if (doserExportReportBtn) doserExportReportBtn.addEventListener("click", exportDoserReport);
 if (saveDoserParamsBtn) saveDoserParamsBtn.addEventListener("click", saveDoserParams);
 if (saveRemisionBtn) saveRemisionBtn.addEventListener("click", saveRemision);
-if (refreshRemisionBtn) refreshRemisionBtn.addEventListener("click", loadRemisiones);
+if (refreshRemisionBtn) {
+  refreshRemisionBtn.addEventListener("click", () => {
+    loadRemisiones();
+  });
+}
+if (remisionFilterDate) {
+  remisionFilterDate.addEventListener("change", () => {
+    loadRemisiones();
+  });
+}
 if (remisionNoInput) {
   remisionNoInput.addEventListener("input", () => {
     remisionNoInput.value = remisionNoInput.value.toUpperCase();
