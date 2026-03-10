@@ -306,6 +306,8 @@ window.editQcSample = function (sampleId) {
 
     // UI Changes
     document.getElementById("qcSubmitBtn").innerText = "Actualizar Muestra";
+    const title = document.getElementById("qcFormTitle");
+    if (title) title.innerText = "Editar Muestra";
     document.getElementById("qcCancelEditBtn").classList.remove("is-hidden");
 
     // Smooth scroll to form
@@ -318,6 +320,8 @@ window.cancelQcEdit = function () {
     const form = document.getElementById("addQcSampleForm");
     if (form) form.reset();
     document.getElementById("qcSubmitBtn").innerText = "Registrar Muestra y Cilindros";
+    const title = document.getElementById("qcFormTitle");
+    if (title) title.innerText = "Registrar Nueva Muestra";
     document.getElementById("qcCancelEditBtn").classList.add("is-hidden");
 }
 
