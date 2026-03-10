@@ -969,8 +969,18 @@
           <h2 id="dailyReportTitle" class="ui-dialog__title">Reporte Diario de Operaciones</h2>
         </div>
         <span class="ui-dialog__chip">REPORTE</span>
+        <button id="printDailyReportBtn" class="btn btn--primary btn--small"
+          style="display:flex; align-items:center; gap:6px; margin-left: auto; padding: 4px 10px; font-size: 0.8rem;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+            <rect x="6" y="14" width="12" height="8"></rect>
+          </svg>
+          Imprimir
+        </button>
         <button id="closeDailyReportBtn" class="ui-dialog__close"
-          style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-soft); line-height:1;">×</button>
+          style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-soft); line-height:1; margin-left: 8px;">×</button>
       </header>
 
       <div class="ui-dialog__body" id="dailyReportContent" style="background: var(--bg-1); padding: 20px;">
@@ -1048,15 +1058,6 @@
       </div>
 
       <footer class="ui-dialog__actions" style="background: #fff; padding: 16px 20px;">
-        <button id="printDailyReportBtn" class="btn btn--primary" style="display:flex; align-items:center; gap:8px;">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 6 2 18 2 18 9"></polyline>
-            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-            <rect x="6" y="14" width="12" height="8"></rect>
-          </svg>
-          Imprimir Reporte
-        </button>
         <button type="button" class="btn btn--muted" id="closeDailyReportFooterBtn">Cerrar</button>
       </footer>
     </div>
