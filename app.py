@@ -27,7 +27,16 @@ try:
 except ImportError:
     POSTGRES_AVAILABLE = False
 
+from dotenv import load_dotenv
+import pytz
+
 load_dotenv()
+
+CANCUN_TZ = pytz.timezone('America/Cancun')
+
+def get_now() -> datetime:
+    """Retorna datetime.now() en la zona horaria de Cancun."""
+    return datetime.now(CANCUN_TZ)
 
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -100,7 +109,7 @@ class ConcurrencyError(Exception):
 
 
 def now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return get_now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def norm_header(text: str) -> str:
@@ -1580,7 +1589,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         failed = int(row["failed_count"]) + 1 if row else 1
         lock_until = None
         if failed >= AUTH_MAX_FAILED:
-            lock_until = (datetime.now() + timedelta(minutes=AUTH_LOCK_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
+            lock_until = (get_now() + timedelta(minutes=AUTH_LOCK_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
             failed = 0
         conn.execute(
             """
@@ -1607,10 +1616,11 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 ).fetchone()
                 if lock_row:
                     locked_until = parse_dt(lock_row["locked_until"])
-                    if locked_until and locked_until > datetime.now():
-                        mins = max(1, int((locked_until - datetime.now()).total_seconds() // 60))
-                        raise PermissionError(f"Cuenta temporalmente bloqueada. Intenta en {mins} min.")
-                    if locked_until and locked_until <= datetime.now():
+                    if locked_until and locked_until > get_now():
+                        mins = max(1, int((locked_until - get_now()).total_seconds() // 60))
+                        msg = f"Cuenta bloqueada temporalmente. Intente en {mins} minutos."
+                        return _api_unauthorized(msg, 403)
+                    if locked_until and locked_until <= get_now():
                         self._clear_auth_lock(conn, uname)
 
                 row = self._user_row(conn, uname)
@@ -1784,7 +1794,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         if self.is_postgres:
             return None
         safe_reason = re.sub(r"[^a-zA-Z0-9_-]+", "_", (reason or "op")).strip("_") or "op"
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        stamp = get_now().strftime("%Y%m%d_%H%M%S")
         target = self.snapshot_dir / f"{stamp}_{safe_reason}.sqlite3"
         with sqlite3.connect(self.db_path, timeout=30.0) as src, sqlite3.connect(target, timeout=30.0) as out:
             src.backup(out)
@@ -1914,7 +1924,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             raise ValueError("No file selected.")
         fname = secure_filename(uploaded.filename or "")
         if not fname:
-            fname = f"uploaded_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            fname = f"uploaded_{get_now().strftime('%Y%m%d_%H%M%S')}.csv"
         if not fname.lower().endswith(".csv"):
             raise ValueError("Only .csv files are allowed.")
         raw = uploaded.stream.read(MAX_UPLOAD_BYTES + 1)
@@ -1929,7 +1939,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         h = content_hash(headers, rows)
         token = uuid4().hex
         created = now_str()
-        expires = (datetime.now() + timedelta(minutes=STAGING_TTL_MIN)).strftime("%Y-%m-%d %H:%M:%S")
+        expires = (get_now() + timedelta(minutes=STAGING_TTL_MIN)).strftime("%Y-%m-%d %H:%M:%S")
 
         with self.lock:
             with self._conn() as conn:
@@ -2321,7 +2331,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
         if request.path.startswith("/api/"):
             return _api_unauthorized(msg, 403)
         if request.endpoint == "login_submit":
-            return render_template("login.html", error=msg, cache_bust=int(datetime.now().timestamp())), 403
+            return render_template("login.html", error=msg, cache_bust=int(get_now().timestamp())), 403
         if request.endpoint == "change_password_submit":
             user = current_auth()
             if user:
@@ -2330,7 +2340,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
                     error=msg,
                     username=user["username"],
                     role=user["role"],
-                    cache_bust=int(datetime.now().timestamp()),
+                    cache_bust=int(get_now().timestamp()),
                 ), 403
         return msg, 403
 
@@ -2385,7 +2395,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             if user.get("must_change_password"):
                 return redirect(url_for("change_password"))
             return redirect(url_for("index"))
-        return render_template("login.html", error="", cache_bust=int(datetime.now().timestamp()))
+        return render_template("login.html", error="", cache_bust=int(get_now().timestamp()))
 
     @app.post("/login")
     def login_submit():
@@ -2401,9 +2411,9 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
                 return redirect(url_for("change_password"))
             return redirect(url_for("index"))
         except PermissionError as exc:
-            return render_template("login.html", error=str(exc), cache_bust=int(datetime.now().timestamp())), 429
+            return render_template("login.html", error=str(exc), cache_bust=int(get_now().timestamp())), 429
         except Exception as exc:
-            return render_template("login.html", error=str(exc), cache_bust=int(datetime.now().timestamp())), 401
+            return render_template("login.html", error=str(exc), cache_bust=int(get_now().timestamp())), 401
 
     @app.get("/change-password")
     @login_required
@@ -2416,7 +2426,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             error="",
             username=user["username"],
             role=user["role"],
-            cache_bust=int(datetime.now().timestamp()),
+            cache_bust=int(get_now().timestamp()),
         )
 
     @app.post("/change-password")
@@ -2434,7 +2444,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
                 error="La confirmacion de contrasena no coincide.",
                 username=user["username"],
                 role=user["role"],
-                cache_bust=int(datetime.now().timestamp()),
+                cache_bust=int(get_now().timestamp()),
             ), 400
         try:
             store.auth_change_password(user["username"], current_password, new_password)
@@ -2451,7 +2461,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             error=msg,
             username=user["username"],
             role=user["role"],
-            cache_bust=int(datetime.now().timestamp()),
+            cache_bust=int(get_now().timestamp()),
         ), code
 
     @app.post("/logout")
@@ -2472,7 +2482,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             "can_edit_qc_humidity": user["role"] in QC_HUMIDITY_ROLES,
             "csrf_token": ensure_csrf_token(),
         }
-        return render_template("index.html", cache_bust=int(datetime.now().timestamp()), auth_boot=auth_boot)
+        return render_template("index.html", cache_bust=int(get_now().timestamp()), auth_boot=auth_boot)
 
     @app.get("/api/session")
     @login_required

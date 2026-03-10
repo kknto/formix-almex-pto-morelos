@@ -11,3 +11,5 @@ services:
         value: 1
       - key: APP_SECRET_KEY
         value: Formix#2026!SecretKey
+      - key: TZ
+        value: America/Cancun

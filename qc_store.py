@@ -39,7 +39,8 @@ class QCLabStoreMixin:
         with self.lock:
             with self._conn() as conn:
                 sample_id = payload.get("id")
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                now_dt = self.get_now()
+                now = now_dt.strftime("%Y-%m-%d %H:%M:%S")
                 
                 if not sample_id:
                     code = payload.get("sample_code")
@@ -134,7 +135,7 @@ class QCLabStoreMixin:
     def test_qc_cylinder(self, cylinder_id: int, payload: dict, image_path: str = "") -> dict:
         with self.lock:
             with self._conn() as conn:
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
                 status = payload.get("status", "ensayado")
                 strength = float(payload.get("strength_kgcm2", 0))
                 notes = payload.get("notes", "")

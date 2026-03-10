@@ -40,7 +40,7 @@ class InventoryStoreMixin:
             return _rows_to_dicts(cur)
 
     def save_material(self, data: dict, actor: str = "") -> dict:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         name = (data.get("name") or "").strip()
         if not name:
             raise ValueError("El nombre del material es requerido.")
@@ -75,7 +75,7 @@ class InventoryStoreMixin:
 
     def delete_material(self, material_id: int, actor: str = "", force: bool = False) -> bool:
         """Soft delete material, or hard delete if force=True"""
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         with self._conn() as conn:
             if force:
                 conn.execute("DELETE FROM inventory_transactions WHERE material_id=?", (material_id,))
@@ -140,7 +140,7 @@ class InventoryStoreMixin:
         if amount <= 0:
             raise ValueError("La cantidad debe ser mayor a 0.")
 
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
 
         with self.lock:  # Use the app's db lock
             with self._conn() as conn:
@@ -181,7 +181,7 @@ class InventoryStoreMixin:
         """
         Deletes a specific inventory transaction and reverses its effect on the material stock.
         """
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
 
         with self.lock:
             with self._conn() as conn:

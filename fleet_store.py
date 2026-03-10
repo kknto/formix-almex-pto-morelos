@@ -57,7 +57,7 @@ class FleetStoreMixin:
             return _rows_to_dicts(cur)
 
     def save_vehicle(self, data: dict, actor: str = "") -> dict:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         unit = (data.get("unit_number") or "").strip()
         if not unit:
             raise ValueError("Numero de unidad es requerido.")
@@ -92,7 +92,7 @@ class FleetStoreMixin:
                 return {"id": row["id"] if row else 0, "saved": True}
 
     def delete_vehicle(self, vehicle_id: int, actor: str = "") -> bool:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         with self._conn() as conn:
             conn.execute(
                 "UPDATE vehicles SET status='inactivo', unit_number=unit_number || '_del_' || id, updated_at=? WHERE id=?", 
@@ -125,7 +125,7 @@ class FleetStoreMixin:
             return _rows_to_dicts(cur)
 
     def save_fuel_record(self, data: dict, actor: str = "") -> dict:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         vid = int(data.get("vehicle_id", 0))
         if not vid:
             raise ValueError("Vehiculo es requerido.")
@@ -166,7 +166,7 @@ class FleetStoreMixin:
                     "cost_per_km": round(cost_per_km, 2)}
 
     def edit_fuel_record(self, record_id: int, data: dict) -> dict:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         liters = max(float(data.get("liters", 1)), 0.01)
         cost = float(data.get("total_cost", 0))
         with self._conn() as conn:
@@ -226,7 +226,7 @@ class FleetStoreMixin:
             return _rows_to_dicts(cur)
 
     def save_maintenance(self, data: dict, actor: str = "") -> dict:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         vid = int(data.get("vehicle_id", 0))
         if not vid:
             raise ValueError("Vehiculo es requerido.")
@@ -287,7 +287,7 @@ class FleetStoreMixin:
     # ── KPIs & Trends ────────────────────────────────────────────
 
     def fleet_kpi_stats(self) -> dict:
-        now = datetime.now()
+        now = self.get_now()
         month_start = now.strftime("%Y-%m-01")
         with self._conn() as conn:
             total_row = _row_to_dict(conn.execute(
