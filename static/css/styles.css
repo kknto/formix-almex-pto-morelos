@@ -640,6 +640,21 @@ td.cell.cell-readonly {
   margin-bottom: 4px;
 }
 
+.family-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.family-col li:hover .family-link {
+  text-decoration: underline;
+}
+
+.family-col li .meta {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
 .query-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr));

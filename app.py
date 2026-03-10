@@ -974,7 +974,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     tma_idx = -1
                     fam_idx = -1
                     for i, h in enumerate(headers):
-                        h_norm = str(h).lower().strip()
+                        h_norm = norm_header(h)
                         if any(a in h_norm for a in CANONICAL_HEADER_ALIASES["tma"]):
                             tma_idx = i
                         if any(a in h_norm for a in CANONICAL_HEADER_ALIASES["family"]):

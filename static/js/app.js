@@ -1053,7 +1053,7 @@ function renderFamiliesBoard() {
                 });
                 const res = await resp.json();
                 if (res.ok) {
-                  await fetchData();
+                  await loadData();
                   // Filtrar por la familia seleccionada automáticamente
                   const qFamily = document.getElementById("qFamily");
                   if (qFamily) {
