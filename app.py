@@ -2229,6 +2229,51 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 if not rev:
                     raise FileNotFoundError("Revision not found for selected dataset.")
                 self._save_revision(conn, ds, f"before restore revision {revision_id}")
+                headers = json.loads(rev["headers_json"])
+                rows = json.loads(rev["rows_json"])
+                rh = rev["content_hash"] or content_hash(headers, rows)
+                new_ver = ds["version"] + 1
+                conn.execute(
+                    """
+                    UPDATE datasets
+                    SET headers_json=?, rows_json=?, content_hash=?, row_count=?, updated_at=?, version=?
+                    WHERE id=?
+                    """,
+                    (
+                        json.dumps(headers, ensure_ascii=False),
+                        json.dumps(rows, ensure_ascii=False),
+                        rh,
+                        int(rev["row_count"] or len(rows)),
+                        now_str(),
+                        new_ver,
+                        ds["id"],
+                    ),
+                )
+                self._audit(
+                    conn,
+                    action="dataset.revision.restore",
+                    username=actor,
+                    entity="dataset",
+                    entity_id=str(ds["id"]),
+                    dataset_id=ds["id"],
+                    details={"file": ds["name"], "revision_id": revision_id, "version": new_ver},
+                )
+                return new_ver
+
+    def update_remision(self, remision_id: int, data: dict, dataset_name: str | None = None, actor: str = "") -> dict:
+        rid = int(remision_id)
+        if rid <= 0:
+            raise ValueError("ID de remision invalido.")
+        with self.lock:
+            ts = now_str()
+            with self._conn() as conn:
+                ds = self._resolve_dataset(conn, dataset_name)
+                exists = conn.execute(
+                    "SELECT snapshot_json FROM remisiones WHERE id=? AND dataset_id=?", (rid, ds["id"])
+                ).fetchone()
+                if not exists:
+                    raise FileNotFoundError("Remision no encontrada.")
+
                 formula = str(data.get("formula", "")).strip()
                 m3 = float(data.get("dosificacion_m3", 0))
                 peso_real = float(data.get("peso_real_total", 0))
@@ -2259,6 +2304,24 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     conn.execute("UPDATE remisiones SET snapshot_json=? WHERE id=?", (json.dumps(snap, ensure_ascii=False), rid))
                 except:
                     pass
+
+                self._audit(
+                    conn,
+                    action="remision.update",
+                    username=actor,
+                    entity="remision",
+                    entity_id=str(rid),
+                    dataset_id=ds["id"],
+                    details={
+                        "file": ds["name"],
+                        "remision_no": remision_no,
+                        "formula": formula,
+                        "m3": m3,
+                        "peso_real": peso_real,
+                        "created_at": created_at
+                    },
+                )
+                return {"id": rid, "ok": True}
                 self._audit(
                     conn,
                     action="dataset.revision.restore",
