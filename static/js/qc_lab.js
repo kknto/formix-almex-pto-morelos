@@ -149,6 +149,7 @@ function renderQcCylinders() {
                 fc: cyl.fc,
                 tma: cyl.tma,
                 tipo: cyl.tipo,
+                slump: cyl.rev || cyl.slump_cm,
                 cylinders: []
             });
         }
@@ -170,12 +171,13 @@ function renderQcCylinders() {
 
         const svgIcon = `<svg style="width:16px; height:16px; margin-right:6px; color:var(--brand); vertical-align:middle; transition: transform 0.2s;" fill="none" class="qc-expand-icon" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>`;
 
-        const designInfo = (sample.formula || sample.fc || sample.tma) ?
+        const designInfo = (sample.formula || sample.fc || sample.tma || sample.slump) ?
             `<div style="font-size:0.8rem; color:var(--text-soft); font-weight:400; margin-top:4px; padding:2px 4px; display:inline-block;">
                 ${sample.formula ? `<b>${sample.formula}</b>` : ''} 
                 ${sample.fc ? ` | f'c ${sample.fc}` : ''}
                 ${sample.tma ? ` | TMA ${sample.tma}` : ''}
                 ${sample.tipo ? ` | ${sample.tipo}` : ''}
+                ${sample.slump ? ` | Rev: ${sample.slump}` : ''}
             </div>` : '';
 
         const userRole = (window.APP_BOOT && window.APP_BOOT.role) ? window.APP_BOOT.role.toLowerCase() : "";
