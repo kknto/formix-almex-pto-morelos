@@ -560,7 +560,6 @@
 
   // --- Daily Report Functions ---
   async function generateDailyReport() {
-    console.log("generateDailyReport clicked");
     const invDailyReportDate = document.getElementById("invDailyReportDate");
     const date = invDailyReportDate ? invDailyReportDate.value : null;
     if (!date) {
@@ -579,7 +578,6 @@
       setInvStatus(String(err), "err");
     }
   }
-
 
   function openDailyReportInNewTab(summary) {
     const { production, consumption, remisiones, current_inventory, date } = summary;
@@ -624,9 +622,9 @@
   <meta charset="utf-8">
   <title>Reporte Diario - ${date}</title>
   <style>
-    @page { size: letter portrait; margin: 10mm; }
+    @page { size: letter landscape; margin: 10mm; }
     body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 0; color: #1a2c3f; font-size: 12px; line-height: 1.4; background: #f8fafc; }
-    .page { background: #fff; max-width: 800px; margin: 0 auto; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.05); min-height: 100vh; }
+    .page { background: #fff; max-width: 1000px; margin: 0 auto; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.05); min-height: 100vh; }
     .header { border-bottom: 3px solid #005da6; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
     .header-brand { display: flex; align-items: center; gap: 12px; }
     .logo { width: 50px; height: 50px; object-fit: contain; }
@@ -742,15 +740,11 @@
     win.document.close();
   }
 
-  console.log("invGenDailyReportBtn found:", !!invGenDailyReportBtn);
   if (invGenDailyReportBtn) {
     invGenDailyReportBtn.addEventListener("click", () => {
-      console.log("invGenDailyReportBtn event listener fired");
       generateDailyReport();
     });
   }
-
-
 
   if (invDailyReportDate) {
     invDailyReportDate.value = globals.getTodayCancun ? globals.getTodayCancun() : new Date().toISOString().split('T')[0];
