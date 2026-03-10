@@ -61,6 +61,7 @@ const state = {
     realLoads: {},
     selectedMaterials: {},
     invMaterials: [],
+    familiesSummary: [],
   },
 };
 const MOD_DATE_HEADER = "FECHA_MODIF";
@@ -677,7 +678,10 @@ function switchView(view) {
   if (tabInventario) tabInventario.classList.toggle("view-tab--active", isInv);
   if (tabLaboratorio) tabLaboratorio.classList.toggle("view-tab--active", isLab);
   if (tabUsuarios) tabUsuarios.classList.toggle("view-tab--active", isUsers);
-  if (isConsulta) setConsultaStep(state.consultaStep);
+  if (isConsulta) {
+    setConsultaStep(state.consultaStep);
+    fetchFamiliesSummary().then(() => renderFamiliesBoard());
+  }
   if (isDoser) {
     renderDosificador();
     loadRemisiones();
@@ -993,43 +997,88 @@ function fillSelect(selectEl, values, keepValue = "") {
   });
 }
 
+async function fetchFamiliesSummary() {
+  try {
+    const resp = await apiFetch("/api/families/summary");
+    const res = await resp.json();
+    if (res.ok) {
+      state.doser.familiesSummary = res.summary || [];
+    }
+  } catch (err) {
+    console.error("Error fetching families summary:", err);
+  }
+}
+
 function renderFamiliesBoard() {
-  familiasBoard.innerHTML = "";
-  updatedStamp.textContent = state.updatedAt ? `Archivo actualizado: ${state.updatedAt}` : "";
-  const tmaIdx = state.index.tma;
-  const groups = new Map();
+  const board = document.getElementById("familiasBoard");
+  if (!board) return;
+  board.innerHTML = "";
 
-  state.rows.forEach((row) => {
-    const tma = typeof tmaIdx === "number" ? ((row[tmaIdx] ?? "").toString().trim() || "Sin TMA") : "Sin TMA";
-    if (!groups.has(tma)) groups.set(tma, new Map());
-    const fam = deriveFamily(row);
-    const group = groups.get(tma);
-    group.set(fam, (group.get(fam) || 0) + 1);
-  });
-
-  if (groups.size === 0) {
-    familiasBoard.textContent = "Sin datos para familias.";
+  const summary = state.doser.familiesSummary || [];
+  if (summary.length === 0) {
+    board.textContent = "Cargando familias globalmente...";
+    fetchFamiliesSummary().then(() => renderFamiliesBoard());
     return;
   }
 
+  const groups = new Map();
+  summary.forEach(item => {
+    if (!groups.has(item.tma)) groups.set(item.tma, []);
+    groups.get(item.tma).push(item);
+  });
+
   [...groups.entries()]
     .sort((a, b) => compareValues(a[0], b[0]))
-    .forEach(([tma, famMap]) => {
+    .forEach(([tma, families]) => {
       const card = document.createElement("div");
       card.className = "family-col";
       const h3 = document.createElement("h3");
       h3.textContent = `T.M.A. ${tma}`;
       const ul = document.createElement("ul");
-      [...famMap.entries()]
-        .sort((a, b) => compareValues(a[0], b[0]))
-        .forEach(([family, count]) => {
+
+      families.sort((a, b) => compareValues(a.family, b.family))
+        .forEach(item => {
           const li = document.createElement("li");
-          li.textContent = `${family} (${count})`;
+          li.style.cursor = "pointer";
+          li.title = `Archivo: ${item.file}`;
+          li.innerHTML = `<span class="family-link">${item.family}</span> <span class="meta">(${item.count})</span>`;
+
+          li.addEventListener("click", async () => {
+            if (state.file !== item.file) {
+              setStatus(`Cambiando a archivo ${item.file}...`, "info");
+              try {
+                const resp = await apiFetch("/api/select", {
+                  method: "POST",
+                  body: JSON.stringify({ file: item.file })
+                });
+                const res = await resp.json();
+                if (res.ok) {
+                  await fetchData();
+                  // Filtrar por la familia seleccionada automáticamente
+                  const qFamily = document.getElementById("qFamily");
+                  if (qFamily) {
+                    qFamily.value = item.family;
+                    runQuery();
+                  }
+                }
+              } catch (err) {
+                setStatus("Error al cambiar de archivo: " + err.message, "err");
+              }
+            } else {
+              // Ya estamos en el archivo, solo filtrar
+              const qFamily = document.getElementById("qFamily");
+              if (qFamily) {
+                qFamily.value = item.family;
+                runQuery();
+              }
+            }
+          });
           ul.appendChild(li);
         });
+
       card.appendChild(h3);
       card.appendChild(ul);
-      familiasBoard.appendChild(card);
+      board.appendChild(card);
     });
 }
 

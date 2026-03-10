@@ -957,6 +957,52 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             ).fetchall()
             return [{"name": r["name"], "family": (r["family_code"] or "").strip()} for r in rows]
 
+    def get_all_families_summary(self) -> list[dict]:
+        """Extrae combinaciones únicas de Familia y T.M.A. de todos los archivos CSV activos."""
+        summary = {}
+        with self._conn() as conn:
+            datasets = conn.execute(
+                "SELECT id, name, family_code, headers_json, rows_json FROM datasets WHERE deleted_at IS NULL"
+            ).fetchall()
+            
+            for ds in datasets:
+                try:
+                    headers = json.loads(ds["headers_json"])
+                    rows = json.loads(ds["rows_json"])
+                    
+                    # Identificar indices TMA y Familia
+                    tma_idx = -1
+                    fam_idx = -1
+                    for i, h in enumerate(headers):
+                        h_norm = str(h).lower().strip()
+                        if any(a in h_norm for a in CANONICAL_HEADER_ALIASES["tma"]):
+                            tma_idx = i
+                        if any(a in h_norm for a in CANONICAL_HEADER_ALIASES["family"]):
+                            fam_idx = i
+                    
+                    for row in rows:
+                        tma = str(row[tma_idx]).strip() if tma_idx >= 0 and tma_idx < len(row) else "Sin TMA"
+                        # Priorizar familia del dataset si existe, sino intentar extraer de la fila
+                        row_fam = str(row[fam_idx]).strip() if fam_idx >= 0 and fam_idx < len(row) else ""
+                        family = (ds["family_code"] or row_fam or "Sin Familia").strip()
+                        
+                        key = (tma, family)
+                        if key not in summary:
+                            summary[key] = {
+                                "tma": tma,
+                                "family": family,
+                                "file": ds["name"],
+                                "count": 0
+                            }
+                        summary[key]["count"] += 1
+                except Exception:
+                    continue
+        
+        # Convertir a lista y ordenar por TMA y Familia
+        result = list(summary.values())
+        result.sort(key=lambda x: (x["tma"], x["family"]))
+        return result
+
     def list_files(self) -> list[str]:
         infos = self.list_file_infos()
         return [item["name"] for item in infos]
@@ -2607,6 +2653,14 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
                 "row_count": ds["row_count"],
             }
         )
+
+    @app.get("/api/families/summary")
+    @require_roles(*ROLE_ALLOWED_VIEWS.keys())
+    def api_families_summary():
+        try:
+            return jsonify({"ok": True, "summary": store.get_all_families_summary()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.get("/api/qc")
     @require_roles(*ROLE_ALLOWED_VIEWS.keys())
