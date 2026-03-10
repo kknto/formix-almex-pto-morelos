@@ -5,14 +5,14 @@ let currentTestCylinderId = null;
 async function lookupRemision() {
     const remNo = document.getElementById("qcRemisionNo").value.trim();
     if (!remNo) {
-        if(typeof setStatus === 'function') setStatus("Ingresa un nº de remisión para buscar.", 'warn');
+        if (typeof setStatus === 'function') setStatus("Ingresa un nº de remisión para buscar.", 'warn');
         return;
     }
 
     try {
         const response = await apiFetch("/api/qclab/lookup_remision/" + encodeURIComponent(remNo));
         const res = await response.json();
-        
+
         if (res.ok && res.remision) {
             const rem = res.remision;
             // Auto-fill fc if available
@@ -25,12 +25,20 @@ async function lookupRemision() {
                     document.getElementById("qcSlump").value = slumpNum;
                 }
             }
-            if (rem.fc || rem.rev) {
-                if(typeof setStatus === 'function') setStatus(`Datos cargados de remisión ${remNo}.`, 'ok');
+            if (rem.created_at) {
+                // created_at usually is "YYYY-MM-DD HH:MM:SS"
+                const datePart = rem.created_at.split(" ")[0];
+                const castDateInput = document.getElementById("qcCastDate");
+                if (castDateInput) {
+                    castDateInput.value = datePart;
+                }
+            }
+            if (rem.fc || rem.rev || rem.created_at) {
+                if (typeof setStatus === 'function') setStatus(`Datos cargados de remisión ${remNo}.`, 'ok');
             }
             // We could auto-fill more if we had more fields in the form
         } else {
-            if(typeof setStatus === 'function') setStatus("Remisión no encontrada.", 'warn');
+            if (typeof setStatus === 'function') setStatus("Remisión no encontrada.", 'warn');
         }
     } catch (err) {
         console.error("Error lookup remision:", err);
@@ -72,14 +80,14 @@ async function loadLaboratoryData() {
         renderQcCylinders();
         renderQcDashboard();
     } catch (err) {
-        if(typeof setStatus === 'function') setStatus("Error cargando laboratorio: " + err.message, 'err'); else console.error("Error cargando laboratorio: " + err.message);
+        if (typeof setStatus === 'function') setStatus("Error cargando laboratorio: " + err.message, 'err'); else console.error("Error cargando laboratorio: " + err.message);
     }
 }
 
 function renderQcDashboard() {
     const qcDashboardContainer = document.getElementById("qcDashboard");
-    if(!qcDashboardContainer) return;
-    
+    if (!qcDashboardContainer) return;
+
     let pendingToday = 0;
     let overdue = 0;
     let totalPending = 0;
@@ -154,7 +162,7 @@ function renderQcCylinders() {
         trHeader.className = "qc-sample-header";
         trHeader.style.cursor = "pointer";
         trHeader.style.background = "#eff5fb"; // Slight highlight to distinguish groups
-        
+
         // Count how many are pending vs tested
         const total = sample.cylinders.length;
         const pending = sample.cylinders.filter(c => c.status === "pendiente").length;
@@ -162,7 +170,7 @@ function renderQcCylinders() {
 
         const svgIcon = `<svg style="width:16px; height:16px; margin-right:6px; color:var(--brand); vertical-align:middle; transition: transform 0.2s;" fill="none" class="qc-expand-icon" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>`;
 
-        const designInfo = (sample.formula || sample.fc || sample.tma) ? 
+        const designInfo = (sample.formula || sample.fc || sample.tma) ?
             `<div style="font-size:0.8rem; color:var(--text-soft); font-weight:400; margin-top:4px; padding:2px 4px; display:inline-block;">
                 ${sample.formula ? `<b>${sample.formula}</b>` : ''} 
                 ${sample.fc ? ` | f'c ${sample.fc}` : ''}
@@ -172,7 +180,10 @@ function renderQcCylinders() {
 
         trHeader.innerHTML = `
             <td colspan="4" style="font-weight:600; color:var(--text-color); border-bottom: 2px solid var(--line);">
-                <div style="font-size: 1.05rem;">${svgIcon}${sample.sample_code}</div>
+                <div style="font-size: 1.05rem; display: flex; align-items: center; justify-content: space-between;">
+                    <span>${svgIcon}${sample.sample_code}</span>
+                    ${sample.remision_id ? `<span style="font-size: 0.8rem; background: var(--bg-0); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); font-weight: normal; color: var(--text-soft);">Remisión: <b>${sample.remision_id}</b></span>` : '<span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;"><i>Sin remisión</i></span>'}
+                </div>
                 ${designInfo}
             </td>
             <td colspan="3" style="text-align:center; color:var(--text-soft); border-bottom: 2px solid var(--line); vertical-align: middle;">
@@ -193,10 +204,10 @@ function renderQcCylinders() {
             tr.className = `qc-sample-child row-sample-${sample.sample_id}`;
             tr.style.display = "none"; // Initially hidden
             tr.style.background = "#ffffff";
-            
+
             const isPending = cyl.status === "pendiente";
             const badgeClass = isPending ? "qc-status-pendiente" : "qc-status-ensayado";
-            
+
             // Performance Calculation
             let perfHtml = '<span style="color:var(--text-muted); opacity:0.5">-</span>';
             if (!isPending && cyl.fc_expected > 0) {
@@ -241,7 +252,7 @@ function renderQcCylinders() {
                 childRows.forEach(row => row.style.display = "none");
             }
         });
-        
+
         // Auto-expand if there are pending cylinders? Or keep it collapsed. 
         // Let's keep it expanded by default for better visibility, since they 
         // probably want to see the dates to test.
@@ -251,7 +262,7 @@ function renderQcCylinders() {
 
 function renderAgesBadges() {
     const qcAgesList = document.getElementById("qcAgesList");
-    if(!qcAgesList) {
+    if (!qcAgesList) {
         console.warn("QC: Element 'qcAgesList' not found in DOM");
         return;
     }
@@ -267,38 +278,38 @@ function renderAgesBadges() {
     });
 }
 
-window.removeQcAge = function(index) {
+window.removeQcAge = function (index) {
     sampleAges.splice(index, 1);
     renderAgesBadges();
 }
 
-window.deleteQcSample = async function(sampleId) {
-    if(!confirm("¿Seguro que deseas eliminar toda la muestra y todos sus cilindros asociados? Esta acción no se puede deshacer.")) return;
+window.deleteQcSample = async function (sampleId) {
+    if (!confirm("¿Seguro que deseas eliminar toda la muestra y todos sus cilindros asociados? Esta acción no se puede deshacer.")) return;
     try {
         const response = await apiFetch("/api/qclab/samples/" + sampleId, { method: "DELETE" });
         const data = await response.json();
         if (data.ok) {
-            if(typeof setStatus === 'function') setStatus("Muestra eliminada correctamente.", 'ok');
+            if (typeof setStatus === 'function') setStatus("Muestra eliminada correctamente.", 'ok');
             loadLaboratoryData();
         } else {
             throw new Error(data.error || "Error al eliminar");
         }
-    } catch(err) {
-        if(typeof setStatus === 'function') setStatus("Error al eliminar: " + err.message, 'err');
+    } catch (err) {
+        if (typeof setStatus === 'function') setStatus("Error al eliminar: " + err.message, 'err');
     }
 }
 
 function setupListeners() {
     const addCylinderAgeBtn = document.getElementById("addCylinderAgeBtn");
     const cylinderAgeInput = document.getElementById("cylinderAgeInput");
-    
-    if(addCylinderAgeBtn && cylinderAgeInput) {
+
+    if (addCylinderAgeBtn && cylinderAgeInput) {
         addCylinderAgeBtn.addEventListener("click", () => {
             const val = parseInt(cylinderAgeInput.value);
-            if(!isNaN(val) && val > 0) {
+            if (!isNaN(val) && val > 0) {
                 sampleAges.push(val);
                 // Sort ascending
-                sampleAges.sort((a,b) => a - b);
+                sampleAges.sort((a, b) => a - b);
                 renderAgesBadges();
                 cylinderAgeInput.value = "";
             }
@@ -306,18 +317,18 @@ function setupListeners() {
     }
 
     const qcAddSampleForm = document.getElementById("addQcSampleForm");
-    if(qcAddSampleForm) {
-        qcAddSampleForm.addEventListener("submit", async(e) => {
+    if (qcAddSampleForm) {
+        qcAddSampleForm.addEventListener("submit", async (e) => {
             e.preventDefault();
-            
+
             if (sampleAges.length === 0) {
-                if(typeof setStatus === 'function') setStatus("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).", 'err');
+                if (typeof setStatus === 'function') setStatus("Agrega al menos una edad de cilindro (Ej: 3, 7, 28).", 'err');
                 return;
             }
 
             const payload = {
                 sample_code: document.getElementById("qcSampleCode").value,
-                remision_id: document.getElementById("qcRemisionNo").value,
+                remision_id: String(document.getElementById("qcRemisionNo").value || "").trim(),
                 cast_date: document.getElementById("qcCastDate").value,
                 fc_expected: document.getElementById("qcFcExpected").value,
                 slump_cm: document.getElementById("qcSlump").value,
@@ -333,14 +344,14 @@ function setupListeners() {
                 const data = await response.json();
                 if (!data.ok) throw new Error(data.error || "Error del servidor al guardar muestra");
 
-                if(typeof setStatus === 'function') setStatus("Muestra guardada correctamente.", 'ok');
+                if (typeof setStatus === 'function') setStatus("Muestra guardada correctamente.", 'ok');
                 qcAddSampleForm.reset();
                 // Reset to defaults
                 sampleAges = [3, 7, 14, 28];
                 renderAgesBadges();
                 loadLaboratoryData();
-            } catch(err) {
-                if(typeof setStatus === 'function') setStatus("Error al guardar muestra: " + err.message, 'err');
+            } catch (err) {
+                if (typeof setStatus === 'function') setStatus("Error al guardar muestra: " + err.message, 'err');
             }
         });
     }
@@ -359,24 +370,24 @@ function setupListeners() {
             try {
                 // Compress down to 1200px max width/height, 80% quality
                 currentCompressedFile = await compressImage(file, 1200, 1200, 0.8);
-                
+
                 // Preview
                 if (compressPreviewImg) {
                     compressPreviewImg.src = URL.createObjectURL(currentCompressedFile);
                     compressPreviewImg.style.display = "block";
                 }
             } catch (error) {
-                if(typeof setStatus === 'function') setStatus("Error procesando imagen: " + error.message, 'err');
+                if (typeof setStatus === 'function') setStatus("Error procesando imagen: " + error.message, 'err');
             }
         });
     }
 
     const testCylinderForm = document.getElementById("testCylinderForm");
-    if(testCylinderForm) {
-        testCylinderForm.addEventListener("submit", async(e) => {
+    if (testCylinderForm) {
+        testCylinderForm.addEventListener("submit", async (e) => {
             e.preventDefault();
-            
-            if(!currentTestCylinderId) return;
+
+            if (!currentTestCylinderId) return;
 
             const formData = new FormData();
             formData.append("strength_kgcm2", document.getElementById("testStrength").value);
@@ -396,12 +407,12 @@ function setupListeners() {
 
                 const data = await response.json();
                 if (!data.ok) throw new Error(data.error);
-                
-                if(typeof setStatus === 'function') setStatus("Ruptura registrada correctamente.", 'ok');
+
+                if (typeof setStatus === 'function') setStatus("Ruptura registrada correctamente.", 'ok');
                 closeTestModal();
                 loadLaboratoryData();
-            } catch(err) {
-                if(typeof setStatus === 'function') setStatus("Error al registrar ensaye: " + err.message, 'err');
+            } catch (err) {
+                if (typeof setStatus === 'function') setStatus("Error al registrar ensaye: " + err.message, 'err');
             }
         });
     }
@@ -411,22 +422,22 @@ function setupListeners() {
     }
 }
 
-window.openTestModal = function(cylinderId, sampleCode) {
+window.openTestModal = function (cylinderId, sampleCode) {
     const testCylinderModal = document.getElementById("testCylinderModal");
     const testCylinderForm = document.getElementById("testCylinderForm");
     const compressPreviewImg = document.getElementById("compressPreviewImg");
-    
+
     currentTestCylinderId = cylinderId;
     document.getElementById("testModalTitle").innerText = `Ensaye Cilindro: ${sampleCode}`;
     if (testCylinderForm) testCylinderForm.reset();
-    if(compressPreviewImg) compressPreviewImg.style.display = "none";
+    if (compressPreviewImg) compressPreviewImg.style.display = "none";
     if (testCylinderModal) {
         testCylinderModal.classList.remove("is-hidden");
         testCylinderModal.classList.add("is-active");
     }
 }
 
-window.closeTestModal = function() {
+window.closeTestModal = function () {
     const testCylinderModal = document.getElementById("testCylinderModal");
     if (testCylinderModal) {
         testCylinderModal.classList.add("is-hidden");
@@ -435,7 +446,7 @@ window.closeTestModal = function() {
     currentTestCylinderId = null;
 }
 
-window.openChartModal = async function(sampleId, sampleCode) {
+window.openChartModal = async function (sampleId, sampleCode) {
     const modal = document.getElementById("qcChartModal");
     if (!modal) return;
 
@@ -446,7 +457,7 @@ window.openChartModal = async function(sampleId, sampleCode) {
     renderEvolutionChart(sampleId);
 }
 
-window.closeChartModal = function() {
+window.closeChartModal = function () {
     const modal = document.getElementById("qcChartModal");
     if (modal) {
         modal.classList.add("is-hidden");
@@ -481,7 +492,7 @@ async function renderEvolutionChart(sampleId) {
             .sort((a, b) => a.x - b.x);
 
         const ctx = document.getElementById('qcEvolutionChart').getContext('2d');
-        
+
         if (activeChart) activeChart.destroy();
 
         activeChart = new Chart(ctx, {
