@@ -623,8 +623,8 @@
   <title>Reporte Diario - ${date}</title>
   <style>
     @page { size: letter landscape; margin: 10mm; }
-    body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 0; color: #1a2c3f; font-size: 12px; line-height: 1.4; background: #f8fafc; }
-    .page { background: #fff; max-width: 1000px; margin: 0 auto; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.05); min-height: 100vh; }
+    body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 0; color: #1a2c3f; font-size: 11px; line-height: 1.3; background: #f8fafc; }
+    .page { background: #fff; max-width: 980px; margin: 0 auto; padding: 15px; box-shadow: 0 0 10px rgba(0,0,0,0.05); min-height: 100vh; }
     .header { border-bottom: 3px solid #005da6; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
     .header-brand { display: flex; align-items: center; gap: 12px; }
     .logo { width: 50px; height: 50px; object-fit: contain; }
@@ -636,13 +636,13 @@
     .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 25px; }
     .stat-box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #fff; text-align: center; }
     .stat-box label { display: block; font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px; font-weight: 700; }
-    .stat-box .val { font-size: 18px; font-weight: 800; color: #0f172a; }
+    .stat-box .val { font-size: 16px; font-weight: 800; color: #0f172a; }
     
     .section { margin-bottom: 25px; break-inside: avoid; }
     .section h2 { font-size: 14px; color: #005da6; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
     
     table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-    th, td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; font-size: 11px; }
+    th, td { border: 1px solid #e2e8f0; padding: 4px 8px; text-align: left; font-size: 10px; }
     th { background: #f8fafc; color: #475569; font-weight: 700; }
     td.num { text-align: right; }
     
