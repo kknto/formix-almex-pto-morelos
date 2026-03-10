@@ -16,10 +16,22 @@
     switchView,
     tabInventario,
     uiDialogHost,
-    uiToastHost
+    uiToastHost,
+    BRAND_LOGO_URL,
+    getFullTodayCancun
   } = globals;
 
   // --- DOM Elements ---
+  const invStatusBar = document.getElementById("invStatusBar");
+  const invMaterialsBody = document.getElementById("maintBody");
+  const invTransactionsBody = document.getElementById("invTransactionsBody");
+  const invDashboardGrid = document.getElementById("invDashboardGrid");
+  const invReloadBtn = document.getElementById("invReloadBtn");
+  const invAddMaterialBtn = document.getElementById("invAddMaterialBtn");
+  const invAddTransactionBtn = document.getElementById("invAddTransactionBtn");
+  const invTrxFilter = document.getElementById("invTrxFilter");
+  const invGenDailyReportBtn = document.getElementById("invGenDailyReportBtn");
+  const invDailyReportDate = document.getElementById("invDailyReportDate");
   const printDailyReportBtn = document.getElementById("printDailyReportBtn");
 
   // --- State ---
@@ -548,6 +560,7 @@
 
   // --- Daily Report Functions ---
   async function generateDailyReport() {
+    console.log("generateDailyReport clicked");
     const invDailyReportDate = document.getElementById("invDailyReportDate");
     const date = invDailyReportDate ? invDailyReportDate.value : null;
     if (!date) {
@@ -570,8 +583,8 @@
 
   function openDailyReportInNewTab(summary) {
     const { production, consumption, remisiones, current_inventory, date } = summary;
-    const reportDate = globals.getFullTodayCancun ? globals.getFullTodayCancun() : new Date().toLocaleString();
-    const logoUrl = globals.BRAND_LOGO_URL || "";
+    const reportDate = getFullTodayCancun ? getFullTodayCancun() : new Date().toLocaleString();
+    const logoUrl = BRAND_LOGO_URL || "";
 
     const efficiency = production.total_teorico_kg > 0
       ? (production.total_real_kg / production.total_teorico_kg) * 100
@@ -725,7 +738,16 @@
     }
     win.document.open();
     win.document.write(html);
+
     win.document.close();
+  }
+
+  console.log("invGenDailyReportBtn found:", !!invGenDailyReportBtn);
+  if (invGenDailyReportBtn) {
+    invGenDailyReportBtn.addEventListener("click", () => {
+      console.log("invGenDailyReportBtn event listener fired");
+      generateDailyReport();
+    });
   }
 
 

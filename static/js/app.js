@@ -3882,6 +3882,8 @@ window.AppGlobals = {
   uiDialogHost,
   uiToastHost,
   renderDosificador,
-  uiConfirm
+  uiConfirm,
+  BRAND_LOGO_URL,
+  getFullTodayCancun
 };
 
