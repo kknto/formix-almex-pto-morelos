@@ -2688,7 +2688,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.put("/api/remisiones/<int:remision_id>")
-    @require_roles("admin")
+    @require_roles("administrador")
     def api_remisiones_update(remision_id: int):
         file_name = request.args.get("file")
         payload = request.get_json(silent=True) or {}

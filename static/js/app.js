@@ -2460,7 +2460,7 @@ function renderRemisionList() {
       <td>${escapeHtml(item.created_by || "-")}</td>
       <td class="remision-actions">
         <button type="button" class="btn btn--secondary btn--small remision-report-btn">Reporte</button>
-        ${state.auth.role === 'admin' ? '<button type="button" class="btn btn--muted btn--small remision-edit-btn">Editar</button>' : ''}
+        ${state.auth.role === 'administrador' ? '<button type="button" class="btn btn--muted btn--small remision-edit-btn">Editar</button>' : ''}
         <button type="button" class="btn btn--danger btn--small remision-delete-btn">Eliminar</button>
       </td>
     `;
