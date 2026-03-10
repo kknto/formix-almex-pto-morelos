@@ -178,6 +178,9 @@ function renderQcCylinders() {
                 ${sample.tipo ? ` | ${sample.tipo}` : ''}
             </div>` : '';
 
+        const userRole = (window.APP_BOOT && window.APP_BOOT.role) ? window.APP_BOOT.role.toLowerCase() : "";
+        const canEditDelete = (userRole === "administrador" || userRole === "laboratorista");
+
         trHeader.innerHTML = `
             <td colspan="4" style="font-weight:600; color:var(--text-color); border-bottom: 2px solid var(--line);">
                 <div style="font-size: 1.05rem; display: flex; align-items: center; justify-content: space-between;">
@@ -191,9 +194,9 @@ function renderQcCylinders() {
                 <span class="qc-status-badge qc-status-pendiente">${pending} Pendientes</span>
             </td>
             <td style="text-align:center; display:flex; justify-content:center; gap:8px; border-bottom: 2px solid var(--line); border-left: none;">
-                <button class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.editQcSample(${sample.sample_id})" title="Editar Datos de Muestra" style="padding: 6px 10px; color: var(--brand);"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                ${canEditDelete ? `<button class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.editQcSample(${sample.sample_id})" title="Editar Datos de Muestra" style="padding: 6px 10px; color: var(--brand);"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>` : ''}
                 <button class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.openChartModal(${sample.sample_id}, '${sample.sample_code}')" title="Ver Gráfica de Evolución" style="padding: 6px 10px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg></button>
-                <button type="button" class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.deleteQcSample(${sample.sample_id})" title="Eliminar Muestra Completa" style="color:var(--color-danger); border-color:transparent; padding:6px 10px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                ${canEditDelete ? `<button type="button" class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.deleteQcSample(${sample.sample_id})" title="Eliminar Muestra Completa" style="color:var(--color-danger); border-color:transparent; padding:6px 10px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>` : ''}
             </td>
         `;
         pendingCylindersTableBody.appendChild(trHeader);
@@ -282,6 +285,35 @@ function renderAgesBadges() {
 window.removeQcAge = function (index) {
     sampleAges.splice(index, 1);
     renderAgesBadges();
+}
+
+window.editQcSample = function (sampleId) {
+    const sample = stateQcCylinders.find(c => c.sample_id === sampleId);
+    if (!sample) return;
+
+    // Fill form
+    document.getElementById("qcSampleId").value = sample.sample_id;
+    document.getElementById("qcSampleCode").value = sample.sample_code || "";
+    document.getElementById("qcRemisionNo").value = sample.remision_id || "";
+    document.getElementById("qcCastDate").value = sample.cast_date || "";
+    document.getElementById("qcFcExpected").value = sample.fc_expected || "";
+    document.getElementById("qcSlump").value = sample.slump_cm || "";
+
+    // UI Changes
+    document.getElementById("qcSubmitBtn").innerText = "Actualizar Muestra";
+    document.getElementById("qcCancelEditBtn").classList.remove("is-hidden");
+
+    // Smooth scroll to form
+    const form = document.getElementById("addQcSampleForm");
+    if (form) form.scrollIntoView({ behavior: 'smooth' });
+}
+
+window.cancelQcEdit = function () {
+    document.getElementById("qcSampleId").value = "";
+    const form = document.getElementById("addQcSampleForm");
+    if (form) form.reset();
+    document.getElementById("qcSubmitBtn").innerText = "Registrar Muestra y Cilindros";
+    document.getElementById("qcCancelEditBtn").classList.add("is-hidden");
 }
 
 window.deleteQcSample = async function (sampleId) {
