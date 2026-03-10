@@ -276,7 +276,6 @@ class InventoryStoreMixin:
             )
             consumption = _rows_to_dicts(cur)
 
-            # 3. Individual Remissions Detail
             cur = conn.execute(
                 """SELECT id, remision_no, formula, dosificacion_m3, created_at
                    FROM remisiones 
@@ -285,6 +284,14 @@ class InventoryStoreMixin:
                 (f"{date_str}%",)
             )
             remisiones_list = _rows_to_dicts(cur)
+
+            # --- DEBUG LOGS ---
+            print(f"[DEBUG REPORT] Date: {date_str}")
+            print(f"[DEBUG REPORT] Remisiones found in DB: {len(remisiones_list)}")
+            print(f"[DEBUG REPORT] Consumption lines found: {len(consumption)}")
+            for c in consumption:
+                print(f"[DEBUG REPORT] Mat: {c['name']} (Alias: {c['doser_alias']}) Out: {c['total_salida']} In: {c['total_entrada']}")
+            # ------------------
 
             # 4. Current Inventory
             cur = conn.execute(
