@@ -2875,18 +2875,6 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
-    @app.get("/api/remisiones")
-    @require_roles(*DOSIFICADOR_ROLES)
-    def api_remisiones_list():
-        file_name = request.args.get("file")
-        limit = int(request.args.get("limit", 50))
-        date_filter = request.args.get("date")  # YYYY-MM-DD
-        try:
-            out = store.get_remisiones(dataset_name=file_name, limit=limit, date_filter=date_filter)
-            return jsonify({"ok": True, **out})
-        except Exception as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
-
     @app.get("/api/audit")
     @require_roles(*EDITOR_ROLES)
     def api_audit():
