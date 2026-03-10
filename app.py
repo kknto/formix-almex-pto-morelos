@@ -2229,26 +2229,36 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 if not rev:
                     raise FileNotFoundError("Revision not found for selected dataset.")
                 self._save_revision(conn, ds, f"before restore revision {revision_id}")
-                headers = json.loads(rev["headers_json"])
-                rows = json.loads(rev["rows_json"])
-                rh = rev["content_hash"] or content_hash(headers, rows)
-                new_ver = ds["version"] + 1
-                conn.execute(
-                    """
-                    UPDATE datasets
-                    SET headers_json=?, rows_json=?, content_hash=?, row_count=?, updated_at=?, version=?
-                    WHERE id=?
-                    """,
-                    (
-                        json.dumps(headers, ensure_ascii=False),
-                        json.dumps(rows, ensure_ascii=False),
-                        rh,
-                        int(rev["row_count"] or len(rows)),
-                        now_str(),
-                        new_ver,
-                        ds["id"],
-                    ),
-                )
+                formula = str(data.get("formula", "")).strip()
+                m3 = float(data.get("dosificacion_m3", 0))
+                peso_real = float(data.get("peso_real_total", 0))
+                remision_no = str(data.get("remision_no", "")).strip()
+                created_at = data.get("created_at")
+
+                # Actualizar campos denormalizados
+                sql = "UPDATE remisiones SET formula=?, dosificacion_m3=?, peso_real_total=?, remision_no=?, updated_at=?"
+                params = [formula, m3, peso_real, remision_no, ts]
+                if created_at:
+                    sql += ", created_at=?"
+                    params.append(created_at)
+                
+                sql += " WHERE id=? AND dataset_id=?"
+                params.extend([rid, ds["id"]])
+                
+                conn.execute(sql, params)
+
+                # Tambien actualizamos el snapshot_json para que el reporte refleje los cambios
+                try:
+                    snap = json.loads(exists["snapshot_json"] or "{}")
+                    snap["formula"] = formula
+                    snap["dose"] = m3
+                    snap["realWeight"] = peso_real
+                    snap["remisionNo"] = remision_no
+                    if created_at:
+                        snap["timestamp"] = created_at
+                    conn.execute("UPDATE remisiones SET snapshot_json=? WHERE id=?", (json.dumps(snap, ensure_ascii=False), rid))
+                except:
+                    pass
                 self._audit(
                     conn,
                     action="dataset.revision.restore",
