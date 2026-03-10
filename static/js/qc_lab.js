@@ -288,6 +288,11 @@ window.removeQcAge = function (index) {
 }
 
 window.editQcSample = function (sampleId) {
+    const userRole = (window.APP_BOOT && window.APP_BOOT.role) ? window.APP_BOOT.role.toLowerCase() : "";
+    if (userRole !== "administrador" && userRole !== "laboratorista") {
+        if (typeof setStatus === 'function') setStatus("No tienes permisos para editar muestras.", 'err');
+        return;
+    }
     const sample = stateQcCylinders.find(c => c.sample_id === sampleId);
     if (!sample) return;
 
@@ -317,6 +322,11 @@ window.cancelQcEdit = function () {
 }
 
 window.deleteQcSample = async function (sampleId) {
+    const userRole = (window.APP_BOOT && window.APP_BOOT.role) ? window.APP_BOOT.role.toLowerCase() : "";
+    if (userRole !== "administrador" && userRole !== "laboratorista") {
+        if (typeof setStatus === 'function') setStatus("No tienes permisos para eliminar muestras.", 'err');
+        return;
+    }
     if (!confirm("¿Seguro que deseas eliminar toda la muestra y todos sus cilindros asociados? Esta acción no se puede deshacer.")) return;
     try {
         const response = await apiFetch("/api/qclab/samples/" + sampleId, { method: "DELETE" });
