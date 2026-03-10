@@ -1021,27 +1021,28 @@ function renderFamiliesBoard() {
     return;
   }
 
+  // Agrupar por FAMILIA ahora
   const groups = new Map();
   summary.forEach(item => {
-    if (!groups.has(item.tma)) groups.set(item.tma, []);
-    groups.get(item.tma).push(item);
+    if (!groups.has(item.family)) groups.set(item.family, []);
+    groups.get(item.family).push(item);
   });
 
   [...groups.entries()]
     .sort((a, b) => compareValues(a[0], b[0]))
-    .forEach(([tma, families]) => {
+    .forEach(([family, tmaItems]) => {
       const card = document.createElement("div");
       card.className = "family-col";
       const h3 = document.createElement("h3");
-      h3.textContent = `T.M.A. ${tma}`;
+      h3.textContent = `Familia ${family}`;
       const ul = document.createElement("ul");
 
-      families.sort((a, b) => compareValues(a.family, b.family))
+      tmaItems.sort((a, b) => compareValues(a.tma, b.tma))
         .forEach(item => {
           const li = document.createElement("li");
           li.style.cursor = "pointer";
           li.title = `Archivo: ${item.file}`;
-          li.innerHTML = `<span class="family-link">${item.family}</span> <span class="meta">(${item.count})</span>`;
+          li.innerHTML = `<span class="family-link">T.M.A. ${item.tma}</span> <span class="meta">(${item.count})</span>`;
 
           li.addEventListener("click", async () => {
             if (state.file !== item.file) {
@@ -1054,12 +1055,12 @@ function renderFamiliesBoard() {
                 const res = await resp.json();
                 if (res.ok) {
                   await loadData();
-                  // Filtrar por la familia seleccionada automáticamente
+                  // Filtrar por la familia y TMA seleccionados automáticamente
                   const qFamily = document.getElementById("qFamily");
-                  if (qFamily) {
-                    qFamily.value = item.family;
-                    runQuery();
-                  }
+                  const qTma = document.getElementById("qTma");
+                  if (qFamily) qFamily.value = item.family;
+                  if (qTma) qTma.value = item.tma;
+                  runQuery();
                 }
               } catch (err) {
                 setStatus("Error al cambiar de archivo: " + err.message, "err");
@@ -1067,10 +1068,10 @@ function renderFamiliesBoard() {
             } else {
               // Ya estamos en el archivo, solo filtrar
               const qFamily = document.getElementById("qFamily");
-              if (qFamily) {
-                qFamily.value = item.family;
-                runQuery();
-              }
+              const qTma = document.getElementById("qTma");
+              if (qFamily) qFamily.value = item.family;
+              if (qTma) qTma.value = item.tma;
+              runQuery();
             }
           });
           ul.appendChild(li);
