@@ -922,6 +922,9 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             return int(row["id"])
         return int(cur.lastrowid)
 
+    def get_now(self) -> datetime:
+        return get_now()
+
     def _bootstrap(self, csv_file: str | None):
         with self.lock:
             with self._conn() as conn:
