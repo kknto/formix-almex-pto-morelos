@@ -2842,7 +2842,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.post("/api/select")
-    @require_roles(*EDITOR_ROLES)
+    @require_roles(*ROLE_ALLOWED_VIEWS.keys())
     def api_select():
         payload = request.get_json(silent=True) or {}
         file_name = payload.get("file", "")

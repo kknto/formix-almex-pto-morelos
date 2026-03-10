@@ -617,42 +617,65 @@ td.cell.cell-readonly {
 
 .family-col {
   border: 1px solid #dae5f0;
-  border-radius: 10px;
-  background: #f9fbfe;
-  padding: 8px;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+  transition: all 0.22s ease;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+}
+
+.family-col:hover {
+  border-color: var(--primary-soft);
+  background: #fdfefe;
+  box-shadow: 0 8px 16px rgba(29, 61, 95, 0.1);
+  transform: translateY(-2px);
 }
 
 .family-col h3 {
-  margin: 0 0 8px;
-  font-size: 0.9rem;
-  color: #274764;
+  margin: 0 0 10px;
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: #1a3650;
+  text-align: center;
+  border-bottom: 1px solid #edf2f7;
+  padding-bottom: 8px;
 }
 
 .family-col ul {
   margin: 0;
-  padding-left: 16px;
-  max-height: 160px;
-  overflow: auto;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .family-col li {
-  font-size: 0.84rem;
-  margin-bottom: 4px;
+  font-size: 0.82rem;
+  color: var(--text-soft);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px;
 }
 
 .family-link {
-  color: var(--primary);
+  color: var(--text-main);
   text-decoration: none;
   font-weight: 500;
 }
 
-.family-col li:hover .family-link {
-  text-decoration: underline;
+.family-col:hover .family-link {
+  color: var(--primary);
 }
 
 .family-col li .meta {
-  color: var(--text-soft);
-  font-size: 0.75rem;
+  color: #a0aec0;
+  font-size: 0.72rem;
+  font-weight: 400;
 }
 
 .query-form {
@@ -2038,5 +2061,6 @@ td.cell.cell-readonly {
     background: #f9f9f9 !important;
     color: #000 !important;
     -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

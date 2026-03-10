@@ -1033,6 +1033,9 @@ function renderFamiliesBoard() {
     .forEach(([family, tmaItems]) => {
       const card = document.createElement("div");
       card.className = "family-col";
+      // Seleccionar el archivo del primer item para esta familia
+      const targetFile = tmaItems[0]?.file;
+
       const h3 = document.createElement("h3");
       h3.textContent = `Familia ${family}`;
       const ul = document.createElement("ul");
@@ -1040,42 +1043,40 @@ function renderFamiliesBoard() {
       tmaItems.sort((a, b) => compareValues(a.tma, b.tma))
         .forEach(item => {
           const li = document.createElement("li");
-          li.style.cursor = "pointer";
-          li.title = `Archivo: ${item.file}`;
           li.innerHTML = `<span class="family-link">T.M.A. ${item.tma}</span> <span class="meta">(${item.count})</span>`;
-
-          li.addEventListener("click", async () => {
-            if (state.file !== item.file) {
-              setStatus(`Cambiando a archivo ${item.file}...`, "info");
-              try {
-                const resp = await apiFetch("/api/select", {
-                  method: "POST",
-                  body: JSON.stringify({ file: item.file })
-                });
-                const res = await resp.json();
-                if (res.ok) {
-                  await loadData();
-                  // Filtrar por la familia y TMA seleccionados automáticamente
-                  const qFamily = document.getElementById("qFamily");
-                  const qTma = document.getElementById("qTma");
-                  if (qFamily) qFamily.value = item.family;
-                  if (qTma) qTma.value = item.tma;
-                  runQuery();
-                }
-              } catch (err) {
-                setStatus("Error al cambiar de archivo: " + err.message, "err");
-              }
-            } else {
-              // Ya estamos en el archivo, solo filtrar
-              const qFamily = document.getElementById("qFamily");
-              const qTma = document.getElementById("qTma");
-              if (qFamily) qFamily.value = item.family;
-              if (qTma) qTma.value = item.tma;
-              runQuery();
-            }
-          });
           ul.appendChild(li);
         });
+
+      card.addEventListener("click", async () => {
+        if (!targetFile) return;
+        if (state.file !== targetFile) {
+          setStatus(`Cargando familia ${family}...`, "info");
+          try {
+            const resp = await apiFetch("/api/select", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ file: targetFile })
+            });
+            const res = await resp.json();
+            if (res.ok) {
+              await loadData();
+              const qFamily = document.getElementById("qFamily");
+              const qTma = document.getElementById("qTma");
+              if (qFamily) qFamily.value = family;
+              if (qTma) qTma.value = ""; // No filtrar por TMA
+              runQuery();
+            }
+          } catch (err) {
+            setStatus("Error al cargar familia: " + err.message, "err");
+          }
+        } else {
+          const qFamily = document.getElementById("qFamily");
+          const qTma = document.getElementById("qTma");
+          if (qFamily) qFamily.value = family;
+          if (qTma) qTma.value = ""; // No filtrar por TMA
+          runQuery();
+        }
+      });
 
       card.appendChild(h3);
       card.appendChild(ul);
