@@ -285,14 +285,6 @@ class InventoryStoreMixin:
             )
             remisiones_list = _rows_to_dicts(cur)
 
-            # --- DEBUG LOGS ---
-            print(f"[DEBUG REPORT] Date: {date_str}")
-            print(f"[DEBUG REPORT] Remisiones found in DB: {len(remisiones_list)}")
-            print(f"[DEBUG REPORT] Consumption lines found: {len(consumption)}")
-            for c in consumption:
-                print(f"[DEBUG REPORT] Mat: {c['name']} (Alias: {c['doser_alias']}) Out: {c['total_salida']} In: {c['total_entrada']}")
-            # ------------------
-
             # 4. Current Inventory
             cur = conn.execute(
                 "SELECT name, current_stock, unit, min_stock FROM materials WHERE status='activo' ORDER BY name"

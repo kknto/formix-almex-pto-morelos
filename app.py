@@ -2295,6 +2295,14 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 
                 conn.execute(sql, params)
 
+                # --- SINCRONIZACION DE INVENTARIO ---
+                # Si se cambió la fecha de la remisión, movemos las transacciones de inventario asociadas
+                if created_at:
+                    conn.execute(
+                        "UPDATE inventory_transactions SET created_at=? WHERE reference=?",
+                        (created_at, f"Remision #{remision_no}")
+                    )
+
                 # Tambien actualizamos el snapshot_json para que el reporte refleje los cambios
                 try:
                     snap = json.loads(exists["snapshot_json"] or "{}")
