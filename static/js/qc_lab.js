@@ -191,7 +191,8 @@ function renderQcCylinders() {
                 <span class="qc-status-badge qc-status-pendiente">${pending} Pendientes</span>
             </td>
             <td style="text-align:center; display:flex; justify-content:center; gap:8px; border-bottom: 2px solid var(--line); border-left: none;">
-                <button class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.openChartModal(${sample.sample_id}, '${sample.sample_code}')" title="Ver Gráfica de Evolución" style="padding: 6px 10px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg> Gráfica</button>
+                <button class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.editQcSample(${sample.sample_id})" title="Editar Datos de Muestra" style="padding: 6px 10px; color: var(--brand);"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                <button class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.openChartModal(${sample.sample_id}, '${sample.sample_code}')" title="Ver Gráfica de Evolución" style="padding: 6px 10px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg></button>
                 <button type="button" class="btn btn--muted btn--small" onclick="event.stopPropagation(); window.deleteQcSample(${sample.sample_id})" title="Eliminar Muestra Completa" style="color:var(--color-danger); border-color:transparent; padding:6px 10px;"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
             </td>
         `;
@@ -327,6 +328,7 @@ function setupListeners() {
             }
 
             const payload = {
+                id: document.getElementById("qcSampleId").value || null,
                 sample_code: document.getElementById("qcSampleCode").value,
                 remision_id: String(document.getElementById("qcRemisionNo").value || "").trim(),
                 cast_date: document.getElementById("qcCastDate").value,
@@ -345,7 +347,7 @@ function setupListeners() {
                 if (!data.ok) throw new Error(data.error || "Error del servidor al guardar muestra");
 
                 if (typeof setStatus === 'function') setStatus("Muestra guardada correctamente.", 'ok');
-                qcAddSampleForm.reset();
+                window.cancelQcEdit();
                 // Reset to defaults
                 sampleAges = [3, 7, 14, 28];
                 renderAgesBadges();

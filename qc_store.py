@@ -87,11 +87,12 @@ class QCLabStoreMixin:
                     conn.execute(
                         """
                         UPDATE qc_samples SET 
-                            cast_date = ?, remision_id = ?, fc_expected = ?, 
-                            slump_cm = ?, temperature_c = ?
+                            sample_code = ?, cast_date = ?, remision_id = ?, 
+                            fc_expected = ?, slump_cm = ?, temperature_c = ?
                         WHERE id = ?
                         """,
                         (
+                            payload.get("sample_code", ""),
                             payload.get("cast_date", ""),
                             payload.get("remision_id", ""),
                             float(payload.get("fc_expected", 250)),

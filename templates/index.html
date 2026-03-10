@@ -873,8 +873,10 @@
               </div>
 
               <div
-                style="grid-column: span 12; display: flex; justify-content: flex-end; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 16px;">
-                <button type="submit" class="btn btn--primary">Registrar Muestra y Cilindros</button>
+                style="grid-column: span 12; display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                <button type="button" id="qcCancelEditBtn" class="btn btn--muted is-hidden"
+                  onclick="window.cancelQcEdit()">Cancelar Edición</button>
+                <button type="submit" id="qcSubmitBtn" class="btn btn--primary">Registrar Muestra y Cilindros</button>
               </div>
             </form>
           </div>
