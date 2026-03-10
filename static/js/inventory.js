@@ -579,7 +579,7 @@
       return;
     }
 
-    const { production, consumption, current_inventory, date } = summary;
+    const { production, consumption, remisiones, current_inventory, date } = summary;
 
     // Stats Grid
     const efficiency = production.total_teorico_kg > 0
@@ -620,6 +620,19 @@
       <tr><td>Peso Real Total</td><td style="text-align:right; font-family:monospace;">${formatNum(production.total_real_kg)} kg</td></tr>
       <tr style="background:var(--bg-0);"><td style="font-weight:600;">Variación neta (Kg)</td><td style="text-align:right; font-weight:700;">${formatNum(production.total_real_kg - production.total_teorico_kg)} kg</td></tr>
     `;
+
+    // Remisiones Table
+    const dailyReportRemisionesBody = document.getElementById("dailyReportRemisionesBody");
+    if (dailyReportRemisionesBody) {
+      dailyReportRemisionesBody.innerHTML = remisiones.map(r => `
+        <tr>
+          <td><strong>${escapeHtml(r.remision_no)}</strong></td>
+          <td>${escapeHtml(r.formula)}</td>
+          <td style="text-align:right;">${formatNum(r.dosificacion_m3)} m³</td>
+          <td style="text-align:center; font-size:0.8rem; color:var(--text-soft);">${r.created_at.split(' ')[1] || ''}</td>
+        </tr>
+      `).join("") || "<tr><td colspan='4' style='text-align:center; padding:20px; color:var(--text-soft);'>No hubo remisiones este día</td></tr>";
+    }
 
     // Stock Cards (Restante)
     const dailyReportStockGrid = document.getElementById("dailyReportStockGrid");

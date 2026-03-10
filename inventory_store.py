@@ -276,7 +276,17 @@ class InventoryStoreMixin:
             )
             consumption = _rows_to_dicts(cur)
 
-            # 3. Current Inventory
+            # 3. Individual Remissions Detail
+            cur = conn.execute(
+                """SELECT id, remision_no, formula, dosificacion_m3, created_at
+                   FROM remisiones 
+                   WHERE created_at LIKE ?
+                   ORDER BY created_at ASC""",
+                (f"{date_str}%",)
+            )
+            remisiones_list = _rows_to_dicts(cur)
+
+            # 4. Current Inventory
             cur = conn.execute(
                 "SELECT name, current_stock, unit, min_stock FROM materials WHERE status='activo' ORDER BY name"
             )
@@ -291,5 +301,6 @@ class InventoryStoreMixin:
                     "total_real_kg": float(prod.get("total_real_kg") or 0),
                 },
                 "consumption": consumption,
+                "remisiones": remisiones_list,
                 "current_inventory": current_inv
             }

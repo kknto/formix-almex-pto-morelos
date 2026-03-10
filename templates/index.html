@@ -995,9 +995,33 @@
         <!-- Grid Statistics -->
         <div class="daily-report-stats" id="dailyReportStatsGrid"></div>
 
-        <!-- Content Sections -->
-        <div class="consulta-grid--pair"
-          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 16px;">
+        <!-- Content Sections (Vertical Layout) -->
+        <div class="daily-report-body-list" style="display: flex; flex-direction: column; gap: 24px;">
+
+          <!-- Detalle de Remisiones (Nueva Sección) -->
+          <div class="panel panel--consulta" style="min-height: auto;">
+            <div class="report-table-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </svg>
+              <h3>Detalle de Remisiones del Día</h3>
+            </div>
+            <div class="result-shell" style="max-height: none; border: none; background: #fff;">
+              <table id="dailyReportRemisionesTable" class="table-consulta">
+                <thead>
+                  <tr>
+                    <th>No. Remisión</th>
+                    <th>Diseño / f'c</th>
+                    <th style="text-align:right;">Volumen (m³)</th>
+                    <th style="text-align:center;">Hora</th>
+                  </tr>
+                </thead>
+                <tbody id="dailyReportRemisionesBody"></tbody>
+              </table>
+            </div>
+          </div>
+
           <div class="panel panel--consulta" style="min-height: auto;">
             <div class="report-table-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
