@@ -560,115 +560,175 @@
       const res = await invFetch(`/api/inventory/daily_summary?date=${encodeURIComponent(date)}`);
       if (!res.ok) throw new Error(res.error || "Error al obtener resumen");
 
-      renderDailyReport(res.summary);
+      openDailyReportInNewTab(res.summary);
       setInvStatus(`Reporte generado para ${date}.`, "ok");
     } catch (err) {
       setInvStatus(String(err), "err");
     }
   }
 
-  function renderDailyReport(summary) {
-    const dailyReportModal = document.getElementById("dailyReportModal");
-    const dailyReportStatsGrid = document.getElementById("dailyReportStatsGrid");
-    const dailyReportConsumptionBody = document.getElementById("dailyReportConsumptionBody");
-    const dailyReportProductionBody = document.getElementById("dailyReportProductionBody");
-    const dailyReportSubtitle = document.getElementById("dailyReportSubtitle");
 
-    if (!dailyReportModal) {
-      console.error("No se encontró dailyReportModal");
-      return;
-    }
-
+  function openDailyReportInNewTab(summary) {
     const { production, consumption, remisiones, current_inventory, date } = summary;
+    const reportDate = globals.getFullTodayCancun ? globals.getFullTodayCancun() : new Date().toLocaleString();
+    const logoUrl = globals.BRAND_LOGO_URL || "";
 
-    // Stats Grid
     const efficiency = production.total_teorico_kg > 0
       ? (production.total_real_kg / production.total_teorico_kg) * 100
       : 100;
-    const efficiencyTone = Math.abs(100 - efficiency) > 5 ? "err" : "ok";
 
-    dailyReportStatsGrid.innerHTML = `
-      <div class="stat-card">
-        <label>Total Remisiones</label>
-        <div class="value">${production.total_remisiones}</div>
-      </div>
-      <div class="stat-card">
-        <label>Volumen Total</label>
-        <div class="value">${formatNum(production.total_m3)} m³</div>
-      </div>
-      <div class="stat-card stat-card--${efficiencyTone}">
-         <label>Eficiencia de Carga</label>
-         <div class="value">${formatNum(efficiency)}%</div>
-         <p style="font-size:0.75rem; color:var(--text-soft); font-weight:600; margin:0;">Real vs Teórico</p>
-      </div>
-    `;
-
-    // Consumption Table
-    dailyReportConsumptionBody.innerHTML = consumption.map(c => `
+    const remisionesRows = remisiones.map(r => `
       <tr>
-        <td style="font-weight:600; color:var(--text-main);">${escapeHtml(c.name)}</td>
-        <td style="text-align:right;">${formatNum(c.total_entrada)}</td>
-        <td style="text-align:right; color:var(--danger); font-weight:600;">-${formatNum(c.total_salida)}</td>
-        <td style="text-align:center;"><span class="ui-dialog__chip">${escapeHtml(c.unit)}</span></td>
+        <td><strong>${escapeHtml(r.remision_no)}</strong></td>
+        <td>${escapeHtml(r.formula)}</td>
+        <td class="num">${formatNum(r.dosificacion_m3)} m³</td>
+        <td style="text-align:center;">${r.created_at.split(' ')[1] || ''}</td>
       </tr>
-    `).join("") || "<tr><td colspan='4' style='text-align:center; padding:20px; color:var(--text-soft);'>Sin movimientos registrados</td></tr>";
+    `).join("") || "<tr><td colspan='4' style='text-align:center;'>No hubo remisiones</td></tr>";
 
-    // Production Table
-    dailyReportProductionBody.innerHTML = `
-      <tr><td>Total Concreto Despachado</td><td style="text-align:right;"><strong>${formatNum(production.total_m3)} m³</strong></td></tr>
-      <tr><td>Peso Teórico Total</td><td style="text-align:right; font-family:monospace;">${formatNum(production.total_teorico_kg)} kg</td></tr>
-      <tr><td>Peso Real Total</td><td style="text-align:right; font-family:monospace;">${formatNum(production.total_real_kg)} kg</td></tr>
-      <tr style="background:var(--bg-0);"><td style="font-weight:600;">Variación neta (Kg)</td><td style="text-align:right; font-weight:700;">${formatNum(production.total_real_kg - production.total_teorico_kg)} kg</td></tr>
-    `;
+    const consumptionRows = consumption.map(c => `
+      <tr>
+        <td><strong>${escapeHtml(c.name)}</strong></td>
+        <td class="num">${formatNum(c.total_entrada)}</td>
+        <td class="num" style="color:#b91c1c;">-${formatNum(c.total_salida)}</td>
+        <td style="text-align:center;">${escapeHtml(c.unit)}</td>
+      </tr>
+    `).join("") || "<tr><td colspan='4' style='text-align:center;'>Sin movimientos</td></tr>";
 
-    // Remisiones Table
-    const dailyReportRemisionesBody = document.getElementById("dailyReportRemisionesBody");
-    if (dailyReportRemisionesBody) {
-      dailyReportRemisionesBody.innerHTML = remisiones.map(r => `
-        <tr>
-          <td><strong>${escapeHtml(r.remision_no)}</strong></td>
-          <td>${escapeHtml(r.formula)}</td>
-          <td style="text-align:right;">${formatNum(r.dosificacion_m3)} m³</td>
-          <td style="text-align:center; font-size:0.8rem; color:var(--text-soft);">${r.created_at.split(' ')[1] || ''}</td>
-        </tr>
-      `).join("") || "<tr><td colspan='4' style='text-align:center; padding:20px; color:var(--text-soft);'>No hubo remisiones este día</td></tr>";
+    const inventoryCards = current_inventory.map(m => {
+      const isLow = m.current_stock <= m.min_stock;
+      return `
+        <div class="card ${isLow ? 'card--warn' : ''}">
+          <div class="card-label">${escapeHtml(m.name)}</div>
+          <div class="card-val">${formatNum(m.current_stock)} <span>${escapeHtml(m.unit)}</span></div>
+        </div>
+      `;
+    }).join("");
+
+    const html = `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Reporte Diario - ${date}</title>
+  <style>
+    @page { size: letter portrait; margin: 10mm; }
+    body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 0; color: #1a2c3f; font-size: 12px; line-height: 1.4; background: #f8fafc; }
+    .page { background: #fff; max-width: 800px; margin: 0 auto; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.05); min-height: 100vh; }
+    .header { border-bottom: 3px solid #005da6; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+    .header-brand { display: flex; align-items: center; gap: 12px; }
+    .logo { width: 50px; height: 50px; object-fit: contain; }
+    .header h1 { margin: 0; font-size: 20px; color: #004d8a; }
+    .header p { margin: 2px 0 0; color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    
+    .subtitle { margin-bottom: 20px; font-size: 14px; color: #334155; font-weight: 600; background: #f1f5f9; padding: 8px 12px; border-radius: 6px; }
+    
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 25px; }
+    .stat-box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #fff; text-align: center; }
+    .stat-box label { display: block; font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px; font-weight: 700; }
+    .stat-box .val { font-size: 18px; font-weight: 800; color: #0f172a; }
+    
+    .section { margin-bottom: 25px; break-inside: avoid; }
+    .section h2 { font-size: 14px; color: #005da6; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    th, td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; font-size: 11px; }
+    th { background: #f8fafc; color: #475569; font-weight: 700; }
+    td.num { text-align: right; }
+    
+    .stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+    .card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; background: #fff; }
+    .card--warn { border-color: #fca5a5; background: #fff1f1; }
+    .card-label { font-size: 9px; color: #64748b; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-val { font-size: 13px; font-weight: 700; margin-top: 2px; }
+    .card-val span { font-size: 10px; font-weight: 400; color: #64748b; }
+
+    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 10px; text-align: center; font-size: 10px; color: #94a3b8; font-weight: 600; }
+
+    @media print {
+      body { background: #fff; }
+      .page { box-shadow: none; margin: 0; width: 100%; max-width: none; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      button { display: none; }
     }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-brand">
+        <img src="${logoUrl}" class="logo" alt="ALMEX">
+        <div>
+          <h1>Reporte Diario de Operaciones</h1>
+          <p>Planta Cancún | ALMEX</p>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <button onclick="window.print()" style="padding: 6px 12px; background: #005da6; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Imprimir Reporte</button>
+        <div style="font-size: 9px; color: #94a3b8; margin-top: 4px;">Generado: ${reportDate}</div>
+      </div>
+    </div>
 
-    // Stock Cards (Restante)
-    const dailyReportStockGrid = document.getElementById("dailyReportStockGrid");
-    if (dailyReportStockGrid && current_inventory) {
-      dailyReportStockGrid.innerHTML = current_inventory.map(m => {
-        const isLow = m.current_stock <= m.min_stock;
-        const toneClass = isLow ? "err" : "ok";
-        return `
-          <div class="stat-card stat-card--${toneClass}">
-            <label style="font-size:0.7rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(m.name)}">${escapeHtml(m.name)}</label>
-            <div class="value" style="font-size:1.1rem; margin-top:4px;">${formatNum(m.current_stock)} <span style="font-size:0.8rem; font-weight:normal;">${escapeHtml(m.unit)}</span></div>
-          </div>
-        `;
-      }).join("");
+    <div class="subtitle">Resumen consolidado al ${date}</div>
+
+    <div class="stats-grid">
+      <div class="stat-box"><label>Total Remisiones</label><div class="val">${production.total_remisiones}</div></div>
+      <div class="stat-box"><label>Volumen Total</label><div class="val">${formatNum(production.total_m3)} m³</div></div>
+      <div class="stat-box"><label>Eficiencia de Carga</label><div class="val">${formatNum(efficiency)}%</div></div>
+    </div>
+
+    <div class="section">
+      <h2>Detalle de Remisiones</h2>
+      <table>
+        <thead>
+          <tr><th>No. Remisión</th><th>Diseño / f'c</th><th class="num">Volumen</th><th style="text-align:center;">Hora</th></tr>
+        </thead>
+        <tbody>${remisionesRows}</tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Resumen de Producción y Pesos</h2>
+      <table>
+        <tbody>
+          <tr><td>Total Concreto Despachado</td><td class="num"><strong>${formatNum(production.total_m3)} m³</strong></td></tr>
+          <tr><td>Peso Teórico Total</td><td class="num">${formatNum(production.total_teorico_kg)} kg</td></tr>
+          <tr><td>Peso Real Total</td><td class="num">${formatNum(production.total_real_kg)} kg</td></tr>
+          <tr style="background:#f1f5f9;"><td><strong>Variación neta</strong></td><td class="num"><strong>${formatNum(production.total_real_kg - production.total_teorico_kg)} kg</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Consumo de Materiales</h2>
+      <table>
+        <thead>
+          <tr><th>Material</th><th class="num">Entradas</th><th class="num">Salidas</th><th style="text-align:center;">Unidad</th></tr>
+        </thead>
+        <tbody>${consumptionRows}</tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Inventario Restante en Planta</h2>
+      <div class="stock-grid">${inventoryCards}</div>
+    </div>
+
+    <div class="footer">ForMIX by LABSICO - Sistema de Gestión de Concreto</div>
+  </div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (!win) {
+      alert("Habilite los pop-ups para ver el reporte.");
+      return;
     }
-
-    document.getElementById("dailyReportTitle").textContent = `Reporte Diario de Operaciones`;
-    if (dailyReportSubtitle) dailyReportSubtitle.textContent = `Resumen consolidado al ${date}`;
-    dailyReportModal.classList.remove("is-hidden");
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
   }
 
-  function printDailyReport() {
-    window.print();
-  }
 
-  if (invGenDailyReportBtn) invGenDailyReportBtn.addEventListener("click", generateDailyReport);
-
-  // Handlers para cerrar el modal del reporte
-  document.addEventListener("click", (e) => {
-    if (e.target.id === "closeDailyReportBtn" || e.target.id === "closeDailyReportFooterBtn") {
-      const modal = document.getElementById("dailyReportModal");
-      if (modal) modal.classList.add("is-hidden");
-    }
-  });
-
-  if (printDailyReportBtn) printDailyReportBtn.addEventListener("click", printDailyReport);
 
   if (invDailyReportDate) {
     invDailyReportDate.value = globals.getTodayCancun ? globals.getTodayCancun() : new Date().toISOString().split('T')[0];
