@@ -1523,54 +1523,65 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
     ) -> dict:
         max_limit = max(1, min(int(limit or 80), 500))
         q = (query or "").strip().upper()
+        
+        # Si no hay filtro de fecha y es una consulta global (o incluso especifica),
+        # podriamos querer por defecto el dia de hoy para no saturar.
+        # Pero si el usuario borra el filtro de fecha explicitamente, tal vez quiera ver todo.
+        # Por ahora, si date_filter es None, usaremos el dia de hoy como sugiere el usuario.
+        final_date = date_filter
+        if final_date is None:
+             final_date = get_now().strftime("%Y-%m-%d")
+
         with self.lock:
             with self._conn() as conn:
-                # Encontrar el dataset activo para el nombre dado (si existe)
-                # Pero queremos remisiones de TODAS las versiones de ese archivo (borradas o no)
-                target_name = (dataset_name or "").strip()
-                if not target_name:
-                    did = self._active_id(conn)
-                    if did:
-                        active_ds = self._load_by_id(conn, did)
-                        target_name = active_ds["name"]
-                
-                if not target_name:
-                    raise FileNotFoundError("No se puede listar remisiones sin un archivo activo o nombre especificado.")
+                sql_where = []
+                params = []
 
-                # Buscar todos los IDs de datasets que tengan ese nombre o sean versiones borradas del mismo
-                pattern = f"{target_name}__deleted__%"
-                ds_rows = conn.execute(
-                    "SELECT id FROM datasets WHERE name = ? OR name LIKE ?",
-                    (target_name, pattern)
-                ).fetchall()
-                ds_ids = [int(r["id"]) for r in ds_rows]
-                
-                if not ds_ids:
-                    return {"file": target_name, "items": []}
-
-                placeholders = ",".join(["?"] * len(ds_ids))
-                sql = f"""
-                    SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
-                           peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
-                    FROM remisiones
-                    WHERE dataset_id IN ({placeholders})
-                """
-                params = list(ds_ids)
+                if dataset_name and dataset_name.strip():
+                    target_name = dataset_name.strip()
+                    pattern = f"{target_name}__deleted__%"
+                    ds_rows = conn.execute(
+                        "SELECT id FROM datasets WHERE name = ? OR name LIKE ?",
+                        (target_name, pattern)
+                    ).fetchall()
+                    ds_ids = [int(r["id"]) for r in ds_rows]
+                    if ds_ids:
+                        placeholders = ",".join(["?"] * len(ds_ids))
+                        sql_where.append(f"r.dataset_id IN ({placeholders})")
+                        params.extend(ds_ids)
+                    else:
+                        # Si se pidio un archivo que no existe
+                        return {"file": target_name, "items": [], "global": False}
 
                 if q:
-                    sql += " AND (remision_no LIKE ? OR formula LIKE ?)"
+                    sql_where.append("(r.remision_no LIKE ? OR r.formula LIKE ?)")
                     params.extend([f"%{q}%", f"%{q}%"])
-                
-                if date_filter:
-                    sql += " AND created_at LIKE ?"
-                    params.append(f"{date_filter}%")
 
-                sql += " ORDER BY id DESC LIMIT ?"
+                if final_date:
+                    sql_where.append("r.created_at LIKE ?")
+                    params.append(f"{final_date}%")
+
+                where_clause = ""
+                if sql_where:
+                    where_clause = "WHERE " + " AND ".join(sql_where)
+
+                sql = f"""
+                    SELECT r.id, r.remision_no, r.formula, r.fc, r.edad, r.tipo, r.tma, r.rev, r.comp, r.dosificacion_m3,
+                           r.peso_receta, r.peso_teorico_total, r.peso_real_total, r.status, r.created_at, r.created_by,
+                           d.name as source_file
+                    FROM remisiones r
+                    JOIN datasets d ON r.dataset_id = d.id
+                    {where_clause}
+                    ORDER BY r.id DESC LIMIT ?
+                """
                 params.append(max_limit)
 
                 rows = conn.execute(sql, params).fetchall()
+                
                 return {
-                    "file": target_name,
+                    "file": dataset_name or "Global",
+                    "date_filter": final_date,
+                    "is_global": not bool(dataset_name),
                     "items": [
                         {
                             "id": int(r["id"]),
@@ -1589,6 +1600,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                             "status": r["status"] or "abierta",
                             "created_at": r["created_at"] or "",
                             "created_by": r["created_by"] or "",
+                            "source_file": r["source_file"] or "",
                         }
                         for r in rows
                     ],

@@ -2610,7 +2610,7 @@ function renderRemisionList() {
   const items = Array.isArray(state.doser.remisiones) ? state.doser.remisiones : [];
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="10">Sin remisiones guardadas para este archivo.</td>`;
+    tr.innerHTML = `<td colspan="11">Sin remisiones guardadas para esta fecha.</td>`;
     doserRemisionBody.appendChild(tr);
     if (remisionMeta) remisionMeta.textContent = "Remisiones: 0";
     return;
@@ -2625,6 +2625,7 @@ function renderRemisionList() {
       <td>${formatNum(item.dosificacion_m3 || 0)}</td>
       <td>${formatNum(item.peso_real_total || 0)}</td>
       <td>${escapeHtml(item.created_at || "-")}</td>
+      <td>${escapeHtml(item.source_file || "-")}</td>
       <td>${escapeHtml(item.created_by || "-")}</td>
       <td class="remision-actions">
         <button type="button" class="btn btn--secondary btn--small remision-report-btn">Reporte</button>
@@ -2635,7 +2636,7 @@ function renderRemisionList() {
     const reportBtn = tr.querySelector(".remision-report-btn");
     if (reportBtn) reportBtn.addEventListener("click", () => openRemisionReport(item.id));
     const deleteBtn = tr.querySelector(".remision-delete-btn");
-    if (deleteBtn) deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no));
+    if (deleteBtn) deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no, item.source_file));
     const editBtn = tr.querySelector(".remision-edit-btn");
     if (editBtn) editBtn.addEventListener("click", () => openEditRemisionModal(item));
     doserRemisionBody.appendChild(tr);
@@ -2648,7 +2649,7 @@ async function loadRemisiones() {
   const filterDate = (remisionFilterDate && remisionFilterDate.value) ? remisionFilterDate.value : "";
   try {
     if (remisionMeta) remisionMeta.textContent = "Cargando remisiones...";
-    const url = `/api/remisiones?file=${encodeURIComponent(state.file || "")}&limit=100${filterDate ? `&date=${filterDate}` : ""}`;
+    const url = `/api/remisiones?limit=150${filterDate ? `&date=${filterDate}` : ""}`;
     const response = await apiFetch(url);
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error || "No se pudo cargar remisiones.");
@@ -2724,7 +2725,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-async function deleteRemision(remisionId, remisionNo) {
+async function deleteRemision(remisionId, remisionNo, sourceFile) {
   try {
     const id = Number(remisionId);
     if (!Number.isFinite(id) || id <= 0) {
@@ -2740,7 +2741,8 @@ async function deleteRemision(remisionId, remisionNo) {
       }
     );
     if (!confirmed) return;
-    const response = await apiFetch(`/api/remisiones/${encodeURIComponent(id)}?file=${encodeURIComponent(state.file || "")}`, {
+    const fileParam = sourceFile || state.file || "";
+    const response = await apiFetch(`/api/remisiones/${encodeURIComponent(id)}?file=${encodeURIComponent(fileParam)}`, {
       method: "DELETE",
     });
     const payload = await response.json();
