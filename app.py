@@ -888,6 +888,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         family_code: str | None = None,
     ) -> int:
         base = name.strip() or "dataset.csv"
+        candidate = base
+        idx = 1
         while True:
             # Primero buscamos si el nombre exacto ya existe (activo o borrado)
             row = conn.execute("SELECT id, deleted_at FROM datasets WHERE name=?", (candidate,)).fetchone()
