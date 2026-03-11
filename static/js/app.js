@@ -42,7 +42,6 @@ const state = {
     paramsVersion: 0,
     paramsUpdatedAt: "",
     results: [],
-    selectedRow: null,
     remisiones: [],
     quality: {
       "Fino 1": { pvs: 0, pvc: 0, densidad: 0, absorcion: 0, humedad: 0 },
@@ -63,6 +62,7 @@ const state = {
     invMaterials: [],
     familiesSummary: [],
     globalRecipes: [],
+    selectedEntry: null,
   },
 };
 const MOD_DATE_HEADER = "FECHA_MODIF";
@@ -1180,16 +1180,29 @@ function extractRecipe(row) {
   const counters = { fino: 0, grueso: 0 };
   const metaIndexes = getMetaIndexes();
   const aggregate = new Map();
+  const isGlobal = !Array.isArray(row);
 
-  state.headers.forEach((header, index) => {
-    if (metaIndexes.has(index)) return;
-    const rawHeader = (header ?? "").toString().trim();
-    if (rawHeader === "") return;
-    const qty = toNumber(row[index]);
-    if (qty === 0) return;
-    const component = classifyComponent(rawHeader, counters);
-    aggregate.set(component, (aggregate.get(component) || 0) + qty);
-  });
+  if (isGlobal) {
+    // Si es un objeto global de recipes_global
+    Object.keys(row).forEach(header => {
+      if (header.startsWith("_")) return; // saltar meta-campos
+      const qty = toNumber(row[header]);
+      if (qty === 0) return;
+      const component = classifyComponent(header, counters);
+      aggregate.set(component, (aggregate.get(component) || 0) + qty);
+    });
+  } else {
+    // Si es un arreglo local de state.rows
+    state.headers.forEach((header, index) => {
+      if (metaIndexes.has(index)) return;
+      const rawHeader = (header ?? "").toString().trim();
+      if (rawHeader === "") return;
+      const qty = toNumber(row[index]);
+      if (qty === 0) return;
+      const component = classifyComponent(rawHeader, counters);
+      aggregate.set(component, (aggregate.get(component) || 0) + qty);
+    });
+  }
 
   // Mostrar siempre los agregados principales en Receta/Costos, aun cuando su valor sea 0.
   ["Fino 1", "Fino 2", "Grueso 1", "Grueso 2"].forEach((aggName) => {
@@ -1733,9 +1746,12 @@ function buildDoserReportSnapshot() {
   state.doser.params = readDoserParamsFromInputs();
   state.doser.dosageM3 = dose;
 
-  const selectedIndex = state.doser.selectedRow;
-  const selectedRow = typeof selectedIndex === "number" ? state.rows[selectedIndex] : null;
+  const entry = state.doser.selectedEntry;
+  const selectedRow = entry ? entry.row : null;
   if (!selectedRow) return null;
+
+  const isGlobal = !Array.isArray(selectedRow);
+  const getV = (key) => isGlobal ? (selectedRow[key] || "") : valueByKey(selectedRow, key);
 
   const recipeItems = normalizeDoserRecipeItems(extractRecipe(selectedRow));
   const detailed = computeDoserDetailedLoads(recipeItems, dose, state.doser.params);
@@ -1785,14 +1801,14 @@ function buildDoserReportSnapshot() {
     };
   });
 
-  const formula = valueByKey(selectedRow, "formula") || "-";
-  const fc = valueByKey(selectedRow, "fc") || "-";
-  const tipo = valueByKey(selectedRow, "cod") || "-";
-  const coloc = valueByKey(selectedRow, "tipo") || "-";
-  const tma = valueByKey(selectedRow, "tma") || "-";
-  const rev = valueByKey(selectedRow, "rev") || "-";
-  const comp = valueByKey(selectedRow, "comp") || "-";
-  const modDate = getRowModDate(selectedRow) || "-";
+  const formula = getV("formula") || "-";
+  const fc = getV("fc") || "-";
+  const tipo = getV("cod") || "-";
+  const coloc = getV("tipo") || "-";
+  const tma = getV("tma") || "-";
+  const rev = getV("rev") || "-";
+  const comp = getV("comp") || "-";
+  const modDate = (isGlobal ? selectedRow._updated : getRowModDate(selectedRow)) || "-";
   const remisionNo = ((remisionNoInput?.value || "").toString().trim().toUpperCase()) || "-";
 
   return {
@@ -2450,10 +2466,17 @@ function runDoserSearch() {
 
   state.doser.results = pool.filter((entry) => applyDoserFilter(entry, filters));
 
-  if (!state.doser.results.some((item) => item.sourceIndex === state.doser.selectedRow)) {
-    state.doser.selectedRow = state.doser.results.length ? state.doser.results[0].sourceIndex : null;
+  const current = state.doser.selectedEntry;
+  const stillInResults = current && state.doser.results.some(r =>
+    r.isGlobal === current.isGlobal &&
+    (r.isGlobal ? (r.row.formula === current.row.formula && r.row.no === current.row.no) : (r.sourceIndex === current.sourceIndex))
+  );
+
+  if (!stillInResults) {
+    state.doser.selectedEntry = state.doser.results.length ? state.doser.results[0] : null;
     state.doser.realLoads = {};
   }
+
   renderDoserResults();
   renderDosificador();
 }
@@ -2510,11 +2533,10 @@ function renderDoserResults() {
   }
   state.doser.results.forEach((entry) => {
     const row = entry.row;
-    const isSelected = entry.isGlobal
-      ? (entry.row._source === state.file && state.doser.selectedRow !== null &&
-        valueByKey(state.rows[state.doser.selectedRow], "formula") === entry.row.formula &&
-        valueByKey(state.rows[state.doser.selectedRow], "no") === entry.row.no)
-      : (entry.sourceIndex === state.doser.selectedRow);
+    const current = state.doser.selectedEntry;
+    const isSelected = current &&
+      current.isGlobal === entry.isGlobal &&
+      (entry.isGlobal ? (entry.row.formula === current.row.formula && entry.row.no === current.row.no) : (entry.sourceIndex === current.sourceIndex));
 
     const tr = document.createElement("tr");
     if (isSelected) tr.classList.add("is-selected");
@@ -2540,6 +2562,8 @@ function renderDoserResults() {
 }
 
 async function selectDoserRecipe(entry) {
+  state.doser.selectedEntry = entry;
+
   if (entry.isGlobal) {
     if (entry.row._source !== state.file) {
       setStatus(`Cambiando al archivo ${entry.row._source}...`, "info");
@@ -2566,14 +2590,6 @@ async function selectDoserRecipe(entry) {
         return;
       }
     }
-    // Buscar índice local por formula y no (evitar desajuste de índices)
-    const localIndex = state.rows.findIndex(r =>
-      valueByKey(r, "formula") === entry.row.formula &&
-      valueByKey(r, "no") === entry.row.no
-    );
-    state.doser.selectedRow = localIndex !== -1 ? localIndex : null;
-  } else {
-    state.doser.selectedRow = entry.sourceIndex;
   }
 
   state.doser.realLoads = {};
@@ -2863,8 +2879,8 @@ function renderDosificador() {
   const dose = Math.max(0, toNumber(doseM3Input.value));
   state.doser.dosageM3 = dose;
 
-  const selectedIndex = state.doser.selectedRow;
-  const selectedRow = typeof selectedIndex === "number" ? state.rows[selectedIndex] : null;
+  const entry = state.doser.selectedEntry;
+  const selectedRow = entry ? entry.row : null;
   const baseSummary = `Dosificacion actual: ${formatNum(dose)} m<sup>3</sup>`;
   doserSummary.innerHTML = baseSummary;
   if (doserParamsMeta) {
@@ -2885,9 +2901,12 @@ function renderDosificador() {
     return;
   }
 
-  doserSelectedMeta.textContent = `Formula: ${valueByKey(selectedRow, "formula") || "-"} | f'c: ${valueByKey(selectedRow, "fc") || "-"
-    } | Edad: ${valueByKey(selectedRow, "edad") || "-"} | Tipo: ${valueByKey(selectedRow, "tipo") || "-"} | T.M.A.: ${valueByKey(selectedRow, "tma") || "-"
-    } | Rev: ${valueByKey(selectedRow, "rev") || "-"} | Comp: ${valueByKey(selectedRow, "comp") || "-"}`;
+  const isGlobal = !Array.isArray(selectedRow);
+  const getV = (key) => isGlobal ? (selectedRow[key] || "") : valueByKey(selectedRow, key);
+
+  doserSelectedMeta.textContent = `Formula: ${getV("formula") || "-"} | f'c: ${getV("fc") || "-"
+    } | Edad: ${getV("edad") || "-"} | Tipo: ${getV("tipo") || "-"} | T.M.A.: ${getV("tma") || "-"
+    } | Rev: ${getV("rev") || "-"} | Comp: ${getV("comp") || "-"}`;
 
   const recipeItems = normalizeDoserRecipeItems(extractRecipe(selectedRow));
   const detailed = computeDoserDetailedLoads(recipeItems, dose, state.doser.params);
