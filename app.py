@@ -1525,15 +1525,37 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         q = (query or "").strip().upper()
         with self.lock:
             with self._conn() as conn:
-                ds = self._resolve_dataset(conn, dataset_name)
+                # Encontrar el dataset activo para el nombre dado (si existe)
+                # Pero queremos remisiones de TODAS las versiones de ese archivo (borradas o no)
+                target_name = (dataset_name or "").strip()
+                if not target_name:
+                    did = self._active_id(conn)
+                    if did:
+                        active_ds = self._load_by_id(conn, did)
+                        target_name = active_ds["name"]
                 
-                sql = """
+                if not target_name:
+                    raise FileNotFoundError("No se puede listar remisiones sin un archivo activo o nombre especificado.")
+
+                # Buscar todos los IDs de datasets que tengan ese nombre o sean versiones borradas del mismo
+                pattern = f"{target_name}__deleted__%"
+                ds_rows = conn.execute(
+                    "SELECT id FROM datasets WHERE name = ? OR name LIKE ?",
+                    (target_name, pattern)
+                ).fetchall()
+                ds_ids = [int(r["id"]) for r in ds_rows]
+                
+                if not ds_ids:
+                    return {"file": target_name, "items": []}
+
+                placeholders = ",".join(["?"] * len(ds_ids))
+                sql = f"""
                     SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
                            peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
                     FROM remisiones
-                    WHERE dataset_id=?
+                    WHERE dataset_id IN ({placeholders})
                 """
-                params = [ds["id"]]
+                params = list(ds_ids)
 
                 if q:
                     sql += " AND (remision_no LIKE ? OR formula LIKE ?)"
@@ -1548,7 +1570,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
 
                 rows = conn.execute(sql, params).fetchall()
                 return {
-                    "file": ds["name"],
+                    "file": target_name,
                     "items": [
                         {
                             "id": int(r["id"]),
@@ -1578,26 +1600,49 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             raise ValueError("ID de remision invalido.")
         with self.lock:
             with self._conn() as conn:
-                ds = self._resolve_dataset(conn, dataset_name)
+                # Resolver todos los IDs posibles para este nombre
+                target_name = (dataset_name or "").strip()
+                if not target_name:
+                    active_id = self._active_id(conn)
+                    if active_id:
+                        active_ds = self._load_by_id(conn, active_id)
+                        target_name = active_ds["name"]
+                
+                if not target_name:
+                    raise FileNotFoundError("Archivo no especificado para obtener remision.")
+
+                pattern = f"{target_name}__deleted__%"
+                ds_rows = conn.execute(
+                    "SELECT id FROM datasets WHERE name = ? OR name LIKE ?",
+                    (target_name, pattern)
+                ).fetchall()
+                ds_ids = [int(r["id"]) for r in ds_rows]
+
+                if not ds_ids:
+                    raise FileNotFoundError(f"No se encontraron datasets para el nombre: {target_name}")
+
+                placeholders = ",".join(["?"] * len(ds_ids))
                 row = conn.execute(
-                    """
+                    f"""
                     SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
                            peso_receta,peso_teorico_total,peso_real_total,status,snapshot_json,
-                           created_at,created_by,updated_at,version
+                           created_at,created_by,updated_at,version,dataset_id
                     FROM remisiones
-                    WHERE id=? AND dataset_id=?
+                    WHERE id=? AND dataset_id IN ({placeholders})
                     LIMIT 1
                     """,
-                    (rid, ds["id"]),
+                    [rid] + ds_ids
                 ).fetchone()
+                
                 if not row:
-                    raise FileNotFoundError("Remision no encontrada para el dataset activo.")
+                    raise FileNotFoundError(f"Remision {rid} no encontrada para el archivo {target_name}")
+
                 raw = json.loads(row["snapshot_json"] or "{}")
                 snapshot = raw if isinstance(raw, dict) else {}
                 if not snapshot.get("remisionNo"):
                     snapshot["remisionNo"] = row["remision_no"] or "-"
                 if not snapshot.get("file"):
-                    snapshot["file"] = ds["name"]
+                    snapshot["file"] = target_name
                 return {
                     "id": int(row["id"]),
                     "remision_no": row["remision_no"] or "",
@@ -1617,7 +1662,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     "created_by": row["created_by"] or "",
                     "updated_at": row["updated_at"] or "",
                     "version": int(row["version"] or 1),
-                    "file": ds["name"],
+                    "file": target_name,
                     "snapshot": snapshot,
                 }
 
@@ -1628,32 +1673,50 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         with self.lock:
             self._snapshot_db("before_remision_delete")
             with self._conn() as conn:
-                ds = self._resolve_dataset(conn, dataset_name)
+                # Resolver todos los IDs posibles para este nombre
+                target_name = (dataset_name or "").strip()
+                if not target_name:
+                    active_id = self._active_id(conn)
+                    if active_id:
+                        active_ds = self._load_by_id(conn, active_id)
+                        target_name = active_ds["name"]
+                
+                if not target_name:
+                    raise FileNotFoundError("Archivo no especificado para borrar remision.")
+
+                pattern = f"{target_name}__deleted__%"
+                ds_rows = conn.execute(
+                    "SELECT id FROM datasets WHERE name = ? OR name LIKE ?",
+                    (target_name, pattern)
+                ).fetchall()
+                ds_ids = [int(r["id"]) for r in ds_rows]
+
+                if not ds_ids:
+                    raise FileNotFoundError(f"No se encontraron datasets para el nombre: {target_name}")
+
+                placeholders = ",".join(["?"] * len(ds_ids))
                 row = conn.execute(
-                    """
-                    SELECT id, remision_no
-                    FROM remisiones
-                    WHERE id=? AND dataset_id=?
-                    LIMIT 1
-                    """,
-                    (rid, ds["id"]),
+                    f"SELECT id, remision_no, dataset_id FROM remisiones WHERE id=? AND dataset_id IN ({placeholders}) LIMIT 1",
+                    [rid] + ds_ids
                 ).fetchone()
+                
                 if not row:
-                    raise FileNotFoundError("Remision no encontrada para el dataset activo.")
-                conn.execute("DELETE FROM remisiones WHERE id=? AND dataset_id=?", (rid, ds["id"]))
+                    raise FileNotFoundError(f"Remision {rid} no encontrada para el archivo {target_name}")
+
+                conn.execute("DELETE FROM remisiones WHERE id=?", (rid,))
                 self._audit(
                     conn,
                     action="remision.delete",
                     username=actor,
                     entity="remision",
                     entity_id=str(int(row["id"])),
-                    dataset_id=ds["id"],
-                    details={"file": ds["name"], "remision_no": row["remision_no"] or ""},
+                    dataset_id=row["dataset_id"],
+                    details={"file": target_name, "remision_no": row["remision_no"] or ""},
                 )
                 return {
                     "id": int(row["id"]),
                     "remision_no": row["remision_no"] or "",
-                    "file": ds["name"],
+                    "file": target_name,
                 }
 
     def _user_row(self, conn: sqlite3.Connection, username: str):

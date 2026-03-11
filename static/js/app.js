@@ -1141,6 +1141,12 @@ function classifyComponent(headerText, counters) {
   if (nName.includes("fibra")) return "Fibra";
   if (nName.includes("imper")) return "Imper";
 
+  // Soporte para nombres normalizados (sin espacios ni parentesis)
+  if (nName === "fino1" || nName === "arena1") return "Fino 1";
+  if (nName === "fino2" || nName === "arena2") return "Fino 2";
+  if (nName === "grueso1" || nName === "grava1" || nName === "nava20") return "Grueso 1";
+  if (nName === "grueso2" || nName === "grava2" || nName === "nava5") return "Grueso 2";
+
   if (nType.includes("grava 1") || nType.includes("grueso 1")) return "Grueso 1";
   if (nType.includes("grava 2") || nType.includes("grueso 2")) return "Grueso 2";
   if (nType.includes("fino 1") || nType.includes("arena 1")) return "Fino 1";
@@ -1155,8 +1161,6 @@ function classifyComponent(headerText, counters) {
     return counters.fino === 1 ? "Fino 1" : "Fino 2";
   }
 
-  if (nName.includes("nava 20")) return "Grueso 1";
-  if (nName.includes("nava 5")) return "Grueso 2";
   if (nName.includes("lavada") || nName.includes("arena")) return "Fino 1";
 
   return name || "Otro";
@@ -1184,8 +1188,11 @@ function extractRecipe(row) {
 
   if (isGlobal) {
     // Si es un objeto global de recipes_global
+    const EXCLUDE = ["formula", "no", "cod", "fc", "edad", "tipo", "tma", "rev", "comp", "family", "source", "updated", "id", "dataset_id"];
     Object.keys(row).forEach(header => {
       if (header.startsWith("_")) return; // saltar meta-campos
+      if (EXCLUDE.includes(header.toLowerCase())) return;
+
       const qty = toNumber(row[header]);
       if (qty === 0) return;
       const component = classifyComponent(header, counters);
