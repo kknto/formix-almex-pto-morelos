@@ -1865,15 +1865,33 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 deleted_ids = [int(r["id"]) for r in rows]
                 deleted_names = [r["name"] for r in rows]
                 
-                # 2. Eliminar revisiones asociadas
                 placeholders = ",".join("?" * len(deleted_ids))
+                
+                # 2. Obtener remisiones vinculadas para limpiar inventario
+                rem_rows = conn.execute(f"SELECT remision_no FROM remisiones WHERE dataset_id IN ({placeholders})", tuple(deleted_ids)).fetchall()
+                remision_nos = [r["remision_no"] for r in rem_rows]
+                
+                # 3. Eliminar transacciones de inventario vinculadas
+                if remision_nos:
+                    # En SQLite/Postgres usamos LIKE o IN para las referencias
+                    for rno in remision_nos:
+                        ref = f"Remision #{rno}"
+                        conn.execute("DELETE FROM inventory_transactions WHERE reference=?", (ref,))
+                
+                # 4. Eliminar remisiones
+                conn.execute(f"DELETE FROM remisiones WHERE dataset_id IN ({placeholders})", tuple(deleted_ids))
+                
+                # 5. Eliminar revisiones asociadas
                 conn.execute(f"DELETE FROM dataset_revisions WHERE dataset_id IN ({placeholders})", tuple(deleted_ids))
                 
-                # 3. Eliminar perfiles asociados (QC y Dosificador)
+                # 6. Eliminar perfiles asociados (QC y Dosificador)
                 conn.execute(f"DELETE FROM qc_profiles WHERE dataset_id IN ({placeholders})", tuple(deleted_ids))
                 conn.execute(f"DELETE FROM doser_profiles WHERE dataset_id IN ({placeholders})", tuple(deleted_ids))
                 
-                # 4. Eliminar registros de la tabla datasets
+                # 7. Limpiar logs de auditoría (opcional, ponemos a NULL para no perder el log pero quitar la referencia)
+                conn.execute(f"UPDATE audit_log SET dataset_id = NULL WHERE dataset_id IN ({placeholders})", tuple(deleted_ids))
+
+                # 8. Eliminar registros de la tabla datasets
                 conn.execute(f"DELETE FROM datasets WHERE id IN ({placeholders})", tuple(deleted_ids))
                 
                 self._audit(
