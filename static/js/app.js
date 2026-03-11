@@ -3768,20 +3768,20 @@ const purgeBtn = document.getElementById("purgeDeletedBtn");
 if (purgeBtn) {
   purgeBtn.addEventListener("click", async () => {
     const confirmHard = await uiConfirm(
-      "¿Estás seguro de que deseas eliminar DEFINITIVAMENTE todos los archivos borrados de la base de datos?",
+      "¿Estás seguro de que deseas eliminar DEFINITIVAMENTE todos los archivos borrados? Esto eliminará también todas las REMISIONES vinculadas a ellos.",
       {
         title: "Hard Reset - Purga Definitiva",
-        confirmText: "Si, estoy seguro",
+        confirmText: "Si, entiendo el riesgo",
         tone: "err",
       }
     );
     if (!confirmHard) return;
 
     const finalBoss = await uiConfirm(
-      "Esta acción es irreversible y borrará el historial de revisiones y perfiles de los archivos eliminados. ¿Deseas continuar realmente?",
+      "¡ADVERTENCIA CRÍTICA! Esta acción borrará permanentemente el historial de remisiones, transacciones de inventario y perfiles. No se puede deshacer. ¿Deseas purgar todo ahora?",
       {
-        title: "Confirmacion Final",
-        confirmText: "Borrar Todo Permanentemente",
+        title: "Confirmacion Final Irreversible",
+        confirmText: "BORRAR TODO DEFINITIVAMENTE",
         tone: "err",
       }
     );
