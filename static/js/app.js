@@ -3763,6 +3763,46 @@ document.getElementById("deleteFileBtn").addEventListener("click", async () => {
   await deleteCsvFile(selectedFile);
 });
 
+// Purga definitiva (Hard Reset) - Solo Admin
+const purgeBtn = document.getElementById("purgeDeletedBtn");
+if (purgeBtn) {
+  purgeBtn.addEventListener("click", async () => {
+    const confirmHard = await uiConfirm(
+      "¿Estás seguro de que deseas eliminar DEFINITIVAMENTE todos los archivos borrados de la base de datos?",
+      {
+        title: "Hard Reset - Purga Definitiva",
+        confirmText: "Si, estoy seguro",
+        tone: "err",
+      }
+    );
+    if (!confirmHard) return;
+
+    const finalBoss = await uiConfirm(
+      "Esta acción es irreversible y borrará el historial de revisiones y perfiles de los archivos eliminados. ¿Deseas continuar realmente?",
+      {
+        title: "Confirmacion Final",
+        confirmText: "Borrar Todo Permanentemente",
+        tone: "err",
+      }
+    );
+    if (!finalBoss) return;
+
+    setStatus("Purgando archivos de la base de datos...", "info");
+    try {
+      const resp = await apiFetch("/api/purge_deleted", { method: "POST" });
+      const res = await resp.json();
+      if (res.ok) {
+        setStatus(`Purga completada: ${res.purged_count} archivos eliminados físicamente.`, "ok");
+        await loadFiles();
+      } else {
+        setStatus("Error al purgar: " + (res.error || "Error desconocido"), "err");
+      }
+    } catch (err) {
+      setStatus("Error de red al purgar: " + err.message, "err");
+    }
+  });
+}
+
 uploadInput.addEventListener("change", async (event) => {
   const file = event.target.files && event.target.files[0];
   if (!file) return;

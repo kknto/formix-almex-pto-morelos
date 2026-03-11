@@ -888,11 +888,23 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         family_code: str | None = None,
     ) -> int:
         base = name.strip() or "dataset.csv"
-        candidate = base
-        idx = 1
-        while conn.execute("SELECT 1 FROM datasets WHERE name=? AND deleted_at IS NULL", (candidate,)).fetchone():
-            candidate = f"{Path(base).stem}_{idx}{Path(base).suffix or '.csv'}"
-            idx += 1
+        while True:
+            # Primero buscamos si el nombre exacto ya existe (activo o borrado)
+            row = conn.execute("SELECT id, deleted_at FROM datasets WHERE name=?", (candidate,)).fetchone()
+            if not row:
+                break # Nombre libre
+            
+            if row["deleted_at"] is not None:
+                # El nombre esta ocupado por un archivo borrado (Soft Delete antiguo).
+                # Lo renombranos para liberarlo.
+                old_id = int(row["id"])
+                unique_suffix = f"__deleted__{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+                conn.execute("UPDATE datasets SET name=name || ? WHERE id=?", (unique_suffix, old_id))
+                break # Ahora candidate esta libre
+            else:
+                # El nombre esta ocupado por un archivo ACTIVO. Generamos nuevo candidato.
+                candidate = f"{Path(base).stem}_{idx}{Path(base).suffix or '.csv'}"
+                idx += 1
         h = content_hash(headers, rows)
         created = now_str()
         fam = normalize_family_code(family_code, allow_empty=True) if family_code is not None else guess_family_from_filename(candidate)
@@ -1814,7 +1826,14 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 if count <= 1:
                     raise ValueError("No puedes eliminar el unico dataset disponible.")
                 did = int(row["id"])
-                conn.execute("UPDATE datasets SET deleted_at=? WHERE id=?", (now_str(), did))
+                # Renombrar para liberar el nombre original inmediatamente
+                ts = now_str()
+                unique_suffix = f"__deleted__{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+                new_name = f"{clean}{unique_suffix}"
+                conn.execute(
+                    "UPDATE datasets SET name=?, deleted_at=? WHERE id=?", 
+                    (new_name, ts, did)
+                )
                 self._audit(
                     conn,
                     action="dataset.delete",
@@ -1822,7 +1841,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     entity="dataset",
                     entity_id=str(did),
                     dataset_id=did,
-                    details={"file": clean},
+                    details={"file": clean, "renamed_to": new_name},
                 )
                 aid = self._active_id(conn)
                 if aid == did or aid is None:
@@ -1832,6 +1851,40 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 else:
                     active_name = self._load_by_id(conn, aid)["name"]
                 return {"deleted": clean, "active": active_name}
+
+    def purge_deleted_datasets(self, actor: str = "") -> dict:
+        """Elimina fisicamente los datasets marcados como borrados."""
+        with self.lock:
+            self._snapshot_db("before_purge")
+            with self._conn() as conn:
+                # 1. Obtener IDs de los datasets borrados
+                rows = conn.execute("SELECT id, name FROM datasets WHERE deleted_at IS NOT NULL").fetchall()
+                if not rows:
+                    return {"purged_count": 0, "message": "No hay datasets borrados para purgar."}
+                
+                deleted_ids = [int(r["id"]) for r in rows]
+                deleted_names = [r["name"] for r in rows]
+                
+                # 2. Eliminar revisiones asociadas
+                placeholders = ",".join("?" * len(deleted_ids))
+                conn.execute(f"DELETE FROM dataset_revisions WHERE dataset_id IN ({placeholders})", tuple(deleted_ids))
+                
+                # 3. Eliminar perfiles asociados (QC y Dosificador)
+                conn.execute(f"DELETE FROM qc_profiles WHERE dataset_id IN ({placeholders})", tuple(deleted_ids))
+                conn.execute(f"DELETE FROM doser_profiles WHERE dataset_id IN ({placeholders})", tuple(deleted_ids))
+                
+                # 4. Eliminar registros de la tabla datasets
+                conn.execute(f"DELETE FROM datasets WHERE id IN ({placeholders})", tuple(deleted_ids))
+                
+                self._audit(
+                    conn,
+                    action="datasets.purge",
+                    username=actor,
+                    entity="system",
+                    entity_id="bulk_purge",
+                    details={"files_purged": deleted_names},
+                )
+                return {"purged_count": len(deleted_ids), "files": deleted_names}
 
     def _cleanup_staging(self, conn: sqlite3.Connection):
         conn.execute("DELETE FROM upload_staging WHERE expires_at < ?", (now_str(),))
@@ -2908,6 +2961,15 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
                 actor=request.current_user["username"],
             )
             return jsonify({"ok": True, "file": res["file"], "files": store.list_files(), "file_infos": store.list_file_infos()})
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.post("/api/purge_deleted")
+    @require_roles(ROLE_ADMIN)
+    def api_purge_deleted():
+        try:
+            res = store.purge_deleted_datasets(actor=request.current_user["username"])
+            return jsonify({"ok": True, **res})
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 

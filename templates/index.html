@@ -73,6 +73,10 @@
           <button id="loadSelectedBtn" class="btn btn--muted">Abrir seleccionado</button>
           <button id="uploadBtn" class="btn btn--secondary">Cargar nuevo CSV</button>
           <button id="deleteFileBtn" class="btn btn--danger">Eliminar CSV</button>
+          {% if auth_boot.role == 'administrador' %}
+          <button id="purgeDeletedBtn" class="btn btn--danger"
+            title="Eliminar definitivamente archivos borrados de la base de datos">Purgar Eliminados de la BD</button>
+          {% endif %}
           <input id="uploadInput" type="file" accept=".csv,text/csv" hidden>
         </div>
         <div class="search-wrap">
