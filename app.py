@@ -971,6 +971,40 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             ).fetchall()
             return [{"name": r["name"], "family": (r["family_code"] or "").strip()} for r in rows]
 
+    def get_all_recipes_global(self) -> list[dict]:
+        """Consolida todas las recetas de todos los archivos CSV activos para el buscador global del dosificador."""
+        global_list = []
+        with self._conn() as conn:
+            datasets = conn.execute(
+                "SELECT id, name, family_code, headers_json, rows_json, updated_at FROM datasets WHERE deleted_at IS NULL"
+            ).fetchall()
+            
+            for ds in datasets:
+                try:
+                    headers = json.loads(ds["headers_json"])
+                    rows = json.loads(ds["rows_json"])
+                    name = ds["name"]
+                    family_ds = (ds["family_code"] or "").strip()
+                    updated = ds["updated_at"]
+                    
+                    # Convertir filas de lista a dict usando headers normalizados
+                    norm_headers = [norm_header(h) for h in headers]
+                    
+                    for row in rows:
+                        entry = {"_source": name, "_updated": updated}
+                        for i, h in enumerate(norm_headers):
+                            if i < len(row):
+                                entry[h] = row[i]
+                        
+                        # Asegurar familia
+                        if not entry.get("family") and family_ds:
+                            entry["family"] = family_ds
+                        
+                        global_list.append(entry)
+                except Exception:
+                    continue
+        return global_list
+
     def get_all_families_summary(self) -> list[dict]:
         """Extrae combinaciones únicas de Familia y T.M.A. de todos los archivos CSV activos."""
         summary = {}
@@ -2797,6 +2831,14 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": True, **out})
         except ConcurrencyError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 409
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @app.get("/api/doser/recipes_global")
+    @require_roles(*DOSIFICADOR_ROLES)
+    def api_doser_recipes_global():
+        try:
+            return jsonify({"ok": True, "recipes": store.get_all_recipes_global()})
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 

@@ -62,6 +62,7 @@ const state = {
     selectedMaterials: {},
     invMaterials: [],
     familiesSummary: [],
+    globalRecipes: [],
   },
 };
 const MOD_DATE_HEADER = "FECHA_MODIF";
@@ -2407,21 +2408,25 @@ function toleranceFor(componentName) {
 
 function applyDoserFilter(entry, filters) {
   const row = entry.row;
-  const family = deriveFamily(row);
-  const formula = valueByKey(row, "formula");
-  const no = valueByKey(row, "no");
-  const cod = valueByKey(row, "cod");
+  const isGlobal = !!entry.isGlobal;
+
+  const getV = (key) => isGlobal ? (row[key] || "") : valueByKey(row, key);
+  const family = isGlobal ? (row.family || "") : deriveFamily(row);
+  const formula = getV("formula");
+  const no = getV("no");
+  const cod = getV("cod");
+
   if (filters.family) {
     const term = normalize(filters.family);
     const haystack = `${family} ${formula} ${no} ${cod}`;
     if (!normalize(haystack).includes(term)) return false;
   }
-  if (filters.fc && normalize(valueByKey(row, "fc")) !== normalize(filters.fc)) return false;
-  if (filters.edad && normalize(valueByKey(row, "edad")) !== normalize(filters.edad)) return false;
-  if (filters.tipo && normalize(valueByKey(row, "tipo")) !== normalize(filters.tipo)) return false;
-  if (filters.tma && normalize(valueByKey(row, "tma")) !== normalize(filters.tma)) return false;
-  if (filters.rev && normalize(valueByKey(row, "rev")) !== normalize(filters.rev)) return false;
-  if (filters.comp && normalize(valueByKey(row, "comp")) !== normalize(filters.comp)) return false;
+  if (filters.fc && normalize(getV("fc")) !== normalize(filters.fc)) return false;
+  if (filters.edad && normalize(getV("edad")) !== normalize(filters.edad)) return false;
+  if (filters.tipo && normalize(getV("tipo")) !== normalize(filters.tipo)) return false;
+  if (filters.tma && normalize(getV("tma")) !== normalize(filters.tma)) return false;
+  if (filters.rev && normalize(getV("rev")) !== normalize(filters.rev)) return false;
+  if (filters.comp && normalize(getV("comp")) !== normalize(filters.comp)) return false;
   return true;
 }
 
@@ -2435,14 +2440,55 @@ function runDoserSearch() {
     rev: doserFields.rev.value,
     comp: doserFields.comp.value,
   };
-  const mapped = state.rows.map((row, sourceIndex) => ({ row, sourceIndex }));
-  state.doser.results = mapped.filter((entry) => applyDoserFilter(entry, filters));
+
+  let pool = [];
+  if (state.doser.globalRecipes.length > 0) {
+    pool = state.doser.globalRecipes.map((r, idx) => ({ row: r, sourceIndex: idx, isGlobal: true }));
+  } else {
+    pool = state.rows.map((row, sourceIndex) => ({ row, sourceIndex, isGlobal: false }));
+  }
+
+  state.doser.results = pool.filter((entry) => applyDoserFilter(entry, filters));
+
   if (!state.doser.results.some((item) => item.sourceIndex === state.doser.selectedRow)) {
     state.doser.selectedRow = state.doser.results.length ? state.doser.results[0].sourceIndex : null;
     state.doser.realLoads = {};
   }
   renderDoserResults();
   renderDosificador();
+}
+
+async function loadGlobalRecipes() {
+  try {
+    const resp = await apiFetch("/api/doser/recipes_global");
+    const data = await resp.json();
+    if (data.ok) {
+      state.doser.globalRecipes = data.recipes || [];
+      fillDoserSelectorsGlobal();
+      runDoserSearch();
+    }
+  } catch (err) {
+    console.warn("No se pudieron cargar recetas globales:", err);
+  }
+}
+
+function fillDoserSelectorsGlobal() {
+  if (!state.doser.globalRecipes.length) return fillDoserSelectors();
+
+  const getUnique = (key) => {
+    const s = new Set();
+    state.doser.globalRecipes.forEach(r => {
+      if (r[key]) s.add(String(r[key]).trim());
+    });
+    return Array.from(s).sort();
+  };
+
+  fillSelect(doserFields.fc, getUnique("fc"));
+  fillSelect(doserFields.edad, getUnique("edad"));
+  fillSelect(doserFields.tipo, getUnique("tipo"));
+  fillSelect(doserFields.tma, getUnique("tma"));
+  fillSelect(doserFields.rev, getUnique("rev"));
+  fillSelect(doserFields.comp, getUnique("comp"));
 }
 
 function fillDoserSelectors() {
@@ -2466,25 +2512,66 @@ function renderDoserResults() {
     const row = entry.row;
     const tr = document.createElement("tr");
     if (entry.sourceIndex === state.doser.selectedRow) tr.classList.add("is-selected");
+
+    const displayVal = (key) => escapeHtml(entry.isGlobal ? (row[key] || "-") : (valueByKey(row, key) || "-"));
+
     tr.innerHTML = `
-      <td>${escapeHtml(deriveFamily(row))}</td>
-      <td>${escapeHtml(valueByKey(row, "formula") || "-")}</td>
-      <td>${escapeHtml(valueByKey(row, "fc") || "-")}</td>
-      <td>${escapeHtml(valueByKey(row, "edad") || "-")}</td>
-      <td>${escapeHtml(valueByKey(row, "tipo") || "-")}</td>
-      <td>${escapeHtml(valueByKey(row, "tma") || "-")}</td>
-      <td>${escapeHtml(valueByKey(row, "rev") || "-")}</td>
-      <td>${escapeHtml(valueByKey(row, "comp") || "-")}</td>
-      <td>${escapeHtml(getRowModDate(row) || "-")}</td>
+      <td>${escapeHtml(entry.isGlobal ? (row.family || "") : deriveFamily(row))}</td>
+      <td>${displayVal("formula")}</td>
+      <td>${displayVal("fc")}</td>
+      <td>${displayVal("edad")}</td>
+      <td>${displayVal("tipo")}</td>
+      <td>${displayVal("tma")}</td>
+      <td>${displayVal("rev")}</td>
+      <td>${displayVal("comp")}</td>
+      <td>${escapeHtml((entry.isGlobal ? row._updated : getRowModDate(row)) || "-")}</td>
     `;
     tr.addEventListener("click", () => {
-      state.doser.selectedRow = entry.sourceIndex;
-      state.doser.realLoads = {};
-      renderDoserResults();
-      renderDosificador();
+      selectDoserRecipe(entry);
     });
     doserQueryBody.appendChild(tr);
   });
+}
+
+async function selectDoserRecipe(entry) {
+  if (entry.isGlobal && entry.row._source !== state.file) {
+    setStatus(`Cambiando al archivo ${entry.row._source}...`, "info");
+    try {
+      const resp = await apiFetch("/api/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: entry.row._source })
+      });
+      const res = await resp.json();
+      if (res.ok) {
+        state.file = res.file;
+        state.headers = res.headers || [];
+        state.rows = res.rows || [];
+        state.datasetFamily = res.family || "";
+        state.version = res.version;
+
+        await Promise.all([loadQc(), loadDoserParams()]);
+
+        const localIndex = state.rows.findIndex(r =>
+          valueByKey(r, "formula") === entry.row.formula &&
+          valueByKey(r, "no") === entry.row.no
+        );
+        state.doser.selectedRow = localIndex !== -1 ? localIndex : null;
+      } else {
+        setStatus("Error al cambiar de archivo: " + res.error, "err");
+        return;
+      }
+    } catch (err) {
+      setStatus("Error de red al cambiar archivo: " + err.message, "err");
+      return;
+    }
+  } else {
+    state.doser.selectedRow = entry.sourceIndex;
+  }
+
+  state.doser.realLoads = {};
+  renderDoserResults();
+  renderDosificador();
 }
 
 function renderRemisionList() {
@@ -2493,7 +2580,7 @@ function renderRemisionList() {
   const items = Array.isArray(state.doser.remisiones) ? state.doser.remisiones : [];
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="9">Sin remisiones guardadas para este archivo.</td>`;
+    tr.innerHTML = `<td colspan="10">Sin remisiones guardadas para este archivo.</td>`;
     doserRemisionBody.appendChild(tr);
     if (remisionMeta) remisionMeta.textContent = "Remisiones: 0";
     return;
@@ -2516,18 +2603,12 @@ function renderRemisionList() {
       </td>
     `;
     const reportBtn = tr.querySelector(".remision-report-btn");
-    if (reportBtn) {
-      reportBtn.addEventListener("click", () => openRemisionReport(item.id));
-    }
+    if (reportBtn) reportBtn.addEventListener("click", () => openRemisionReport(item.id));
     const deleteBtn = tr.querySelector(".remision-delete-btn");
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no));
-    }
+    if (deleteBtn) deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no));
     const editBtn = tr.querySelector(".remision-edit-btn");
-    if (editBtn) {
-      editBtn.addEventListener("click", () => openEditRemisionModal(item));
-    }
-    doserRemisionBody.appendChild(tr);
+    if (editBtn) editBtn.addEventListener("click", () => openEditRemisionModal(item));
+    doserQueryBody.appendChild(tr);
   });
   if (remisionMeta) remisionMeta.textContent = `Remisiones: ${items.length}`;
 }
@@ -2540,9 +2621,7 @@ async function loadRemisiones() {
     const url = `/api/remisiones?file=${encodeURIComponent(state.file || "")}&limit=100${filterDate ? `&date=${filterDate}` : ""}`;
     const response = await apiFetch(url);
     const payload = await response.json();
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || "No se pudo cargar remisiones.");
-    }
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "No se pudo cargar remisiones.");
     state.doser.remisiones = Array.isArray(payload.items) ? payload.items : [];
   } catch (error) {
     state.doser.remisiones = [];
@@ -3827,6 +3906,7 @@ if (tabDosificador) {
     }
     switchView("dosificador");
     loadRemisiones();
+    loadGlobalRecipes();
   });
 }
 if (consultaPrevBtn) {
