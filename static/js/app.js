@@ -2510,8 +2510,14 @@ function renderDoserResults() {
   }
   state.doser.results.forEach((entry) => {
     const row = entry.row;
+    const isSelected = entry.isGlobal
+      ? (entry.row._source === state.file && state.doser.selectedRow !== null &&
+        valueByKey(state.rows[state.doser.selectedRow], "formula") === entry.row.formula &&
+        valueByKey(state.rows[state.doser.selectedRow], "no") === entry.row.no)
+      : (entry.sourceIndex === state.doser.selectedRow);
+
     const tr = document.createElement("tr");
-    if (entry.sourceIndex === state.doser.selectedRow) tr.classList.add("is-selected");
+    if (isSelected) tr.classList.add("is-selected");
 
     const displayVal = (key) => escapeHtml(entry.isGlobal ? (row[key] || "-") : (valueByKey(row, key) || "-"));
 
@@ -2534,37 +2540,38 @@ function renderDoserResults() {
 }
 
 async function selectDoserRecipe(entry) {
-  if (entry.isGlobal && entry.row._source !== state.file) {
-    setStatus(`Cambiando al archivo ${entry.row._source}...`, "info");
-    try {
-      const resp = await apiFetch("/api/select", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file: entry.row._source })
-      });
-      const res = await resp.json();
-      if (res.ok) {
-        state.file = res.file;
-        state.headers = res.headers || [];
-        state.rows = res.rows || [];
-        state.datasetFamily = res.family || "";
-        state.version = res.version;
-
-        await Promise.all([loadQc(), loadDoserParams()]);
-
-        const localIndex = state.rows.findIndex(r =>
-          valueByKey(r, "formula") === entry.row.formula &&
-          valueByKey(r, "no") === entry.row.no
-        );
-        state.doser.selectedRow = localIndex !== -1 ? localIndex : null;
-      } else {
-        setStatus("Error al cambiar de archivo: " + res.error, "err");
+  if (entry.isGlobal) {
+    if (entry.row._source !== state.file) {
+      setStatus(`Cambiando al archivo ${entry.row._source}...`, "info");
+      try {
+        const resp = await apiFetch("/api/select", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file: entry.row._source })
+        });
+        const res = await resp.json();
+        if (res.ok) {
+          state.file = res.file;
+          state.headers = res.headers || [];
+          state.rows = res.rows || [];
+          state.datasetFamily = res.family || "";
+          state.version = res.version;
+          await Promise.all([loadQc(), loadDoserParams()]);
+        } else {
+          setStatus("Error al cambiar de archivo: " + res.error, "err");
+          return;
+        }
+      } catch (err) {
+        setStatus("Error de red al cambiar archivo: " + err.message, "err");
         return;
       }
-    } catch (err) {
-      setStatus("Error de red al cambiar archivo: " + err.message, "err");
-      return;
     }
+    // Buscar índice local por formula y no (evitar desajuste de índices)
+    const localIndex = state.rows.findIndex(r =>
+      valueByKey(r, "formula") === entry.row.formula &&
+      valueByKey(r, "no") === entry.row.no
+    );
+    state.doser.selectedRow = localIndex !== -1 ? localIndex : null;
   } else {
     state.doser.selectedRow = entry.sourceIndex;
   }
@@ -2608,7 +2615,7 @@ function renderRemisionList() {
     if (deleteBtn) deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no));
     const editBtn = tr.querySelector(".remision-edit-btn");
     if (editBtn) editBtn.addEventListener("click", () => openEditRemisionModal(item));
-    doserQueryBody.appendChild(tr);
+    doserRemisionBody.appendChild(tr);
   });
   if (remisionMeta) remisionMeta.textContent = `Remisiones: ${items.length}`;
 }
