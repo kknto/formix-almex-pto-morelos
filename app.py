@@ -1612,49 +1612,32 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             raise ValueError("ID de remision invalido.")
         with self.lock:
             with self._conn() as conn:
-                # Resolver todos los IDs posibles para este nombre
-                target_name = (dataset_name or "").strip()
-                if not target_name:
-                    active_id = self._active_id(conn)
-                    if active_id:
-                        active_ds = self._load_by_id(conn, active_id)
-                        target_name = active_ds["name"]
-                
-                if not target_name:
-                    raise FileNotFoundError("Archivo no especificado para obtener remision.")
-
-                pattern = f"{target_name}__deleted__%"
-                ds_rows = conn.execute(
-                    "SELECT id FROM datasets WHERE name = ? OR name LIKE ?",
-                    (target_name, pattern)
-                ).fetchall()
-                ds_ids = [int(r["id"]) for r in ds_rows]
-
-                if not ds_ids:
-                    raise FileNotFoundError(f"No se encontraron datasets para el nombre: {target_name}")
-
-                placeholders = ",".join(["?"] * len(ds_ids))
+                # Consulta global por ID, obteniendo el nombre del archivo mediante JOIN
                 row = conn.execute(
-                    f"""
-                    SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
-                           peso_receta,peso_teorico_total,peso_real_total,status,snapshot_json,
-                           created_at,created_by,updated_at,version,dataset_id
-                    FROM remisiones
-                    WHERE id=? AND dataset_id IN ({placeholders})
+                    """
+                    SELECT r.id, r.remision_no, r.formula, r.fc, r.edad, r.tipo, r.tma, r.rev, r.comp, r.dosificacion_m3,
+                           r.peso_receta, r.peso_teorico_total, r.peso_real_total, r.status, r.snapshot_json,
+                           r.created_at, r.created_by, r.updated_at, r.version, r.dataset_id,
+                           d.name as source_file
+                    FROM remisiones r
+                    JOIN datasets d ON r.dataset_id = d.id
+                    WHERE r.id = ?
                     LIMIT 1
                     """,
-                    [rid] + ds_ids
+                    (rid,),
                 ).fetchone()
                 
                 if not row:
-                    raise FileNotFoundError(f"Remision {rid} no encontrada para el archivo {target_name}")
+                    raise FileNotFoundError(f"Remision {rid} no encontrada.")
 
+                target_name = row["source_file"]
                 raw = json.loads(row["snapshot_json"] or "{}")
                 snapshot = raw if isinstance(raw, dict) else {}
                 if not snapshot.get("remisionNo"):
                     snapshot["remisionNo"] = row["remision_no"] or "-"
                 if not snapshot.get("file"):
                     snapshot["file"] = target_name
+
                 return {
                     "id": int(row["id"]),
                     "remision_no": row["remision_no"] or "",
@@ -1685,35 +1668,23 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         with self.lock:
             self._snapshot_db("before_remision_delete")
             with self._conn() as conn:
-                # Resolver todos los IDs posibles para este nombre
-                target_name = (dataset_name or "").strip()
-                if not target_name:
-                    active_id = self._active_id(conn)
-                    if active_id:
-                        active_ds = self._load_by_id(conn, active_id)
-                        target_name = active_ds["name"]
-                
-                if not target_name:
-                    raise FileNotFoundError("Archivo no especificado para borrar remision.")
-
-                pattern = f"{target_name}__deleted__%"
-                ds_rows = conn.execute(
-                    "SELECT id FROM datasets WHERE name = ? OR name LIKE ?",
-                    (target_name, pattern)
-                ).fetchall()
-                ds_ids = [int(r["id"]) for r in ds_rows]
-
-                if not ds_ids:
-                    raise FileNotFoundError(f"No se encontraron datasets para el nombre: {target_name}")
-
-                placeholders = ",".join(["?"] * len(ds_ids))
+                # Consulta global por ID para identificar el origen y validar existencia
                 row = conn.execute(
-                    f"SELECT id, remision_no, dataset_id FROM remisiones WHERE id=? AND dataset_id IN ({placeholders}) LIMIT 1",
-                    [rid] + ds_ids
+                    """
+                    SELECT r.id, r.remision_no, r.dataset_id, d.name as source_file
+                    FROM remisiones r
+                    JOIN datasets d ON r.dataset_id = d.id
+                    WHERE r.id = ?
+                    LIMIT 1
+                    """,
+                    (rid,),
                 ).fetchone()
                 
                 if not row:
-                    raise FileNotFoundError(f"Remision {rid} no encontrada para el archivo {target_name}")
+                    raise FileNotFoundError(f"Remision {rid} no encontrada.")
+
+                target_name = row["source_file"]
+                did = row["dataset_id"]
 
                 conn.execute("DELETE FROM remisiones WHERE id=?", (rid,))
                 self._audit(
@@ -1722,7 +1693,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     username=actor,
                     entity="remision",
                     entity_id=str(int(row["id"])),
-                    dataset_id=row["dataset_id"],
+                    dataset_id=did,
                     details={"file": target_name, "remision_no": row["remision_no"] or ""},
                 )
                 return {

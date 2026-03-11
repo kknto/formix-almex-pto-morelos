@@ -2173,7 +2173,9 @@ function exportDoserReport() {
 
 async function openRemisionReport(remisionId) {
   try {
-    const response = await apiFetch(`/api/remisiones/${encodeURIComponent(remisionId)}?file=${encodeURIComponent(state.file || "")}`);
+    const id = Number(remisionId);
+    if (!Number.isFinite(id) || id <= 0) return setStatus("ID invalido.", "warn");
+    const response = await apiFetch(`/api/remisiones/${encodeURIComponent(id)}`);
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo cargar la remision.");
@@ -2743,8 +2745,7 @@ async function deleteRemision(remisionId, remisionNo, sourceFile) {
       }
     );
     if (!confirmed) return;
-    const fileParam = sourceFile || state.file || "";
-    const response = await apiFetch(`/api/remisiones/${encodeURIComponent(id)}?file=${encodeURIComponent(fileParam)}`, {
+    const response = await apiFetch(`/api/remisiones/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
     const payload = await response.json();
