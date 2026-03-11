@@ -2513,6 +2513,7 @@ function fillDoserSelectorsGlobal() {
     return Array.from(s).sort();
   };
 
+  fillSelect(doserFields.family, getUnique("family"));
   fillSelect(doserFields.fc, getUnique("fc"));
   fillSelect(doserFields.edad, getUnique("edad"));
   fillSelect(doserFields.tipo, getUnique("tipo"));
@@ -2522,6 +2523,7 @@ function fillDoserSelectorsGlobal() {
 }
 
 function fillDoserSelectors() {
+  fillSelect(doserFields.family, getUniqueValues("family"));
   fillSelect(doserFields.fc, getUniqueValues("fc"));
   fillSelect(doserFields.edad, getUniqueValues("edad"));
   fillSelect(doserFields.tipo, getUniqueValues("tipo"));
@@ -3972,6 +3974,7 @@ if (toggleQuoteModeBtn) {
 }
 document.getElementById("clearQueryBtn").addEventListener("click", () => {
   queryFields.family.value = "";
+  if (doserFields.family) doserFields.family.value = "";
   queryFields.fc.value = "";
   queryFields.edad.value = "";
   queryFields.tipo.value = "";
