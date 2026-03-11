@@ -32,11 +32,11 @@ import pytz
 
 load_dotenv()
 
-CANCUN_TZ = pytz.timezone('America/Cancun')
+PUERTO_MORELOS_TZ = pytz.timezone("America/Cancun")
 
 def get_now() -> datetime:
-    """Retorna datetime.now() en la zona horaria de Cancun."""
-    return datetime.now(CANCUN_TZ)
+    """Retorna datetime.now() en la zona horaria de Puerto Morelos."""
+    return datetime.now(PUERTO_MORELOS_TZ)
 
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -378,8 +378,8 @@ def parse_dt(value: str | None) -> datetime | None:
         return None
     try:
         parsed = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
-        # Stored timestamps are naive text; localize back to Cancun timezone for safe comparisons.
-        return CANCUN_TZ.localize(parsed)
+        # Stored timestamps are naive text; localize back to Puerto Morelos timezone for safe comparisons.
+        return PUERTO_MORELOS_TZ.localize(parsed)
     except ValueError:
         return None
 

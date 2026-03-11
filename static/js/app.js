@@ -71,9 +71,9 @@ const QC_FIELDS = ["pvs", "pvc", "densidad", "absorcion", "humedad"];
 const BRAND_LOGO_URL = `${window.location.origin}/static/img/logo_almex.png`;
 const MUTATING_HTTP_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-// --- CANCUN TIME HELPERS ---
-function getCancunDate() {
-  // Retorna un objeto Date ajustado a America/Cancun
+// --- PUERTO MORELOS TIME HELPERS ---
+function getPuertoMorelosDate() {
+  // Retorna un objeto Date ajustado a Puerto Morelos (zona tecnica America/Cancun)
   const now = new Date();
   // Intl.DateTimeFormat es la forma mas robusta de obtener la hora en una zona especifica sin librerias
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -87,20 +87,20 @@ function getCancunDate() {
     acc[part.type] = part.value;
     return acc;
   }, {});
-  // Construir un Date local que "represente" la hora de Cancun
+  // Construir un Date local que "represente" la hora de Puerto Morelos
   return new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`);
 }
 
-function getTodayCancun() {
-  const d = getCancunDate();
+function getTodayPuertoMorelos() {
+  const d = getPuertoMorelosDate();
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-function getFullTodayCancun() {
-  const d = getCancunDate();
+function getFullTodayPuertoMorelos() {
+  const d = getPuertoMorelosDate();
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -109,12 +109,12 @@ function getFullTodayCancun() {
   return `${year}-${month}-${day} ${hrs}:${min}`;
 }
 
-function updateCancunClock() {
+function updatePuertoMorelosClock() {
   const timeEl = document.getElementById("clockTime");
   const dateEl = document.getElementById("clockDate");
   if (!timeEl || !dateEl) return;
 
-  const d = getCancunDate();
+  const d = getPuertoMorelosDate();
 
   // Formatear hora: HH:mm:ss
   const hrs = String(d.getHours()).padStart(2, '0');
@@ -128,13 +128,13 @@ function updateCancunClock() {
 }
 
 // Iniciar reloj
-setInterval(updateCancunClock, 1000);
-window.addEventListener('DOMContentLoaded', updateCancunClock);
+setInterval(updatePuertoMorelosClock, 1000);
+window.addEventListener('DOMContentLoaded', updatePuertoMorelosClock);
 
 // Expose to AppGlobals
 window.AppGlobals = window.AppGlobals || {};
-window.AppGlobals.getTodayCancun = getTodayCancun;
-window.AppGlobals.getFullTodayCancun = getFullTodayCancun;
+window.AppGlobals.getTodayPuertoMorelos = getTodayPuertoMorelos;
+window.AppGlobals.getFullTodayPuertoMorelos = getFullTodayPuertoMorelos;
 // ---------------------------
 
 const tableHead = document.querySelector("#csvTable thead");
@@ -3940,7 +3940,7 @@ tabConsulta.addEventListener("click", () => {
 if (tabDosificador) {
   tabDosificador.addEventListener("click", () => {
     if (remisionFilterDate && !remisionFilterDate.value) {
-      remisionFilterDate.value = getTodayCancun();
+      remisionFilterDate.value = getTodayPuertoMorelos();
     }
     switchView("dosificador");
     loadRemisiones();
@@ -4094,6 +4094,7 @@ window.AppGlobals = {
   renderDosificador,
   uiConfirm,
   BRAND_LOGO_URL,
-  getFullTodayCancun
+  getTodayPuertoMorelos,
+  getFullTodayPuertoMorelos
 };
 

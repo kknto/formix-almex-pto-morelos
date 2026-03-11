@@ -18,7 +18,7 @@
     uiDialogHost,
     uiToastHost,
     BRAND_LOGO_URL,
-    getFullTodayCancun
+    getFullTodayPuertoMorelos
   } = globals;
 
   // --- DOM Elements ---
@@ -581,7 +581,7 @@
 
   function openDailyReportInNewTab(summary) {
     const { production, consumption, remisiones, current_inventory, date } = summary;
-    const reportDate = getFullTodayCancun ? getFullTodayCancun() : new Date().toLocaleString();
+    const reportDate = getFullTodayPuertoMorelos ? getFullTodayPuertoMorelos() : new Date().toLocaleString();
     const logoUrl = BRAND_LOGO_URL || "";
 
     const efficiency = production.total_teorico_kg > 0
@@ -670,7 +670,7 @@
         <img src="${logoUrl}" class="logo" alt="ALMEX">
         <div>
           <h1>Reporte Diario de Operaciones</h1>
-          <p>Planta Cancún | ALMEX</p>
+          <p>Planta Puerto Morelos | ALMEX</p>
         </div>
       </div>
       <div style="text-align:right">
@@ -747,7 +747,7 @@
   }
 
   if (invDailyReportDate) {
-    invDailyReportDate.value = globals.getTodayCancun ? globals.getTodayCancun() : new Date().toISOString().split('T')[0];
+    invDailyReportDate.value = globals.getTodayPuertoMorelos ? globals.getTodayPuertoMorelos() : new Date().toISOString().split('T')[0];
   }
 
 })(window.AppGlobals);

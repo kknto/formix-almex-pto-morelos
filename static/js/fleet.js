@@ -171,7 +171,7 @@ function renderFuelTable() {
 
 function showFuelDialog() {
   const host = document.getElementById("uiDialogHost"); if (!host) return;
-  const ds = globals.getFullTodayCancun ? globals.getFullTodayCancun() : new Date().toLocaleString();
+  const ds = globals.getFullTodayPuertoMorelos ? globals.getFullTodayPuertoMorelos() : new Date().toLocaleString();
   const vOpts = fleetState.vehicles.map(v=>`<option value="${v.id}">${esc(v.unit_number)} - ${esc(v.driver)}</option>`).join("");
   host.innerHTML = `<div class="ui-dialog-backdrop"><div class="ui-dialog" style="max-width:480px;"><h3>Registrar Carga</h3><div class="fleet-form"><label>Veh\u00edculo <select id="ffVehicle">${vOpts}</select></label><label>Fecha/Hora <input id="ffDate" type="text" value="${ds}"></label><label>Km Od\u00f3metro <input id="ffKm" type="number" min="0" value="0"></label><label>Litros <input id="ffLiters" type="number" min="0" value="0"></label><label>Costo $ <input id="ffCost" type="number" min="0" value="0"></label><label>Chofer <input id="ffDriver" type="text"></label><label>Estaci\u00f3n <input id="ffStation" type="text"></label><label>Notas <input id="ffNotes" type="text"></label></div><div class="query-actions" style="margin-top:12px;justify-content:flex-end;"><button id="ffCancel" class="btn btn--muted">Cancelar</button><button id="ffSave" class="btn btn--primary">Guardar</button></div></div></div>`;
   host.classList.remove("is-hidden"); host.setAttribute("aria-hidden","false");
@@ -219,7 +219,7 @@ function renderMaintenanceTable() {
 
 function showMaintDialog() {
   const host = document.getElementById("uiDialogHost"); if (!host) return;
-  const now = globals.getTodayCancun ? globals.getTodayCancun() : new Date().toISOString().split("T")[0];
+  const now = globals.getTodayPuertoMorelos ? globals.getTodayPuertoMorelos() : new Date().toISOString().split("T")[0];
   const vOpts = fleetState.vehicles.map(v=>`<option value="${v.id}">${esc(v.unit_number)}</option>`).join("");
   const types = ["Cambio de aceite","Filtro de aire","Filtro de diesel","Llantas","Frenos","Afinaci\u00f3n","Bater\u00eda","Otro"];
   const tOpts = types.map(t=>`<option value="${t}">${t}</option>`).join("");
