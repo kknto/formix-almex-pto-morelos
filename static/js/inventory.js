@@ -23,7 +23,7 @@
 
   // --- DOM Elements ---
   const invStatusBar = document.getElementById("invStatusBar");
-  const invMaterialsBody = document.getElementById("maintBody");
+  const invMaterialsBody = document.getElementById("invMaterialsBody");
   const invTransactionsBody = document.getElementById("invTransactionsBody");
   const invDashboardGrid = document.getElementById("invDashboardGrid");
   const invReloadBtn = document.getElementById("invReloadBtn");
