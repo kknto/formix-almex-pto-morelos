@@ -2965,7 +2965,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.post("/api/purge_deleted")
-    @require_roles(ROLE_ADMIN)
+    @require_roles("administrador")
     def api_purge_deleted():
         try:
             res = store.purge_deleted_datasets(actor=request.current_user["username"])
