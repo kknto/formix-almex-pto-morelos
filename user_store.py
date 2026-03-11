@@ -1,5 +1,12 @@
 from werkzeug.security import generate_password_hash
-import datetime
+
+ALLOWED_USER_ROLES = {
+    "administrador",
+    "jefe-de-planta",
+    "dosificador",
+    "presupuestador",
+    "laboratorista",
+}
 
 class UserStoreMixin:
     def list_users(self) -> list:
@@ -11,9 +18,11 @@ class UserStoreMixin:
 
     def save_user(self, payload: dict) -> dict:
         username = payload.get("username", "").strip().lower()
-        role = payload.get("role", "operador")
+        role = (payload.get("role") or "presupuestador").strip()
         is_active = payload.get("is_active", 1)
         now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
+        if role not in ALLOWED_USER_ROLES:
+            raise ValueError(f"Rol invalido: '{role}'.")
 
         with self.lock:
             with self._conn() as conn:
@@ -49,10 +58,22 @@ class UserStoreMixin:
                         if "UNIQUE" in str(e):
                             raise ValueError(f"El usuario '{username}' ya existe.")
                         raise e
-                        
+
                 # Fetch updated
-                cur = conn.execute("SELECT id, username, role, is_active, created_at, last_login_at FROM users WHERE username = ?", (username,))
-                return dict(cur.fetchone())
+                if user_id:
+                    cur = conn.execute(
+                        "SELECT id, username, role, is_active, created_at, last_login_at FROM users WHERE id = ?",
+                        (user_id,),
+                    )
+                else:
+                    cur = conn.execute(
+                        "SELECT id, username, role, is_active, created_at, last_login_at FROM users WHERE username = ?",
+                        (username,),
+                    )
+                row = cur.fetchone()
+                if not row:
+                    raise ValueError("No se pudo recuperar el usuario guardado.")
+                return dict(row)
 
     def admin_reset_password(self, user_id: int, new_password: str) -> bool:
         if not new_password:

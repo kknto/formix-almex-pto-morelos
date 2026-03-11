@@ -64,6 +64,9 @@ ROLE_ALLOWED_VIEWS = {
 EDITOR_ROLES = {"administrador", "jefe-de-planta"}
 QC_HUMIDITY_ROLES = {"dosificador"}
 DOSIFICADOR_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "dosificador" in views))
+FLEET_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "flotilla" in views))
+INVENTORY_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "inventario" in views))
+LAB_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "laboratorio" in views))
 DEFAULT_USERS = (
     {"username": "admin", "role": "administrador", "password": "Admin#2026!"},
     {"username": "jefe_planta", "role": "jefe-de-planta", "password": "Planta#2026!"},
@@ -374,7 +377,9 @@ def parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+        parsed = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+        # Stored timestamps are naive text; localize back to Cancun timezone for safe comparisons.
+        return CANCUN_TZ.localize(parsed)
     except ValueError:
         return None
 
@@ -1685,6 +1690,38 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
 
                 target_name = row["source_file"]
                 did = row["dataset_id"]
+                ts = now_str()
+                ref = f"Remision #{row['remision_no'] or ''}"
+
+                # Revert inventory impact generated when this remision was saved.
+                reverse_rows = conn.execute(
+                    """
+                    SELECT material_id,
+                           COALESCE(
+                               SUM(
+                                   CASE
+                                       WHEN transaction_type='SALIDA' THEN amount
+                                       WHEN transaction_type='ENTRADA' THEN -amount
+                                       ELSE 0
+                                   END
+                               ),
+                               0
+                           ) AS revert_delta
+                    FROM inventory_transactions
+                    WHERE reference=?
+                    GROUP BY material_id
+                    """,
+                    (ref,),
+                ).fetchall()
+                for rev in reverse_rows:
+                    delta = float(rev["revert_delta"] or 0)
+                    if abs(delta) <= 1e-12:
+                        continue
+                    conn.execute(
+                        "UPDATE materials SET current_stock=current_stock + ?, updated_at=? WHERE id=?",
+                        (delta, ts, int(rev["material_id"])),
+                    )
+                conn.execute("DELETE FROM inventory_transactions WHERE reference=?", (ref,))
 
                 conn.execute("DELETE FROM remisiones WHERE id=?", (rid,))
                 self._audit(
@@ -1694,7 +1731,11 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     entity="remision",
                     entity_id=str(int(row["id"])),
                     dataset_id=did,
-                    details={"file": target_name, "remision_no": row["remision_no"] or ""},
+                    details={
+                        "file": target_name,
+                        "remision_no": row["remision_no"] or "",
+                        "inventory_reversed": len(reverse_rows),
+                    },
                 )
                 return {
                     "id": int(row["id"]),
@@ -1765,7 +1806,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     if locked_until and locked_until > get_now():
                         mins = max(1, int((locked_until - get_now()).total_seconds() // 60))
                         msg = f"Cuenta bloqueada temporalmente. Intente en {mins} minutos."
-                        return _api_unauthorized(msg, 403)
+                        raise PermissionError(msg)
                     if locked_until and locked_until <= get_now():
                         self._clear_auth_lock(conn, uname)
 
@@ -2532,17 +2573,6 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     },
                 )
                 return {"id": rid, "ok": True}
-                self._audit(
-                    conn,
-                    action="dataset.revision.restore",
-                    username=actor,
-                    entity="dataset_revision",
-                    entity_id=str(revision_id),
-                    dataset_id=ds["id"],
-                    details={"file": ds["name"], "version": new_ver},
-                )
-                self._set_active(conn, ds["id"])
-                return new_ver
     # -- Fleet methods provided by FleetStoreMixin (fleet_store.py) --
 
 
@@ -2556,6 +2586,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = bool(int(os.getenv("SESSION_COOKIE_SECURE", "0")))
+    app.config["BASE_DIR"] = str(base_dir.resolve())
     db_url = os.getenv("DATABASE_URL")
     store = AppStore(base_dir=base_dir, csv_file=csv_file, db_url=db_url)
 
@@ -3244,15 +3275,15 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
 
     # ── Fleet API ──────────────────────────────────────────────────────────
     from fleet_routes import register_fleet_routes
-    register_fleet_routes(app, store, login_required)
+    register_fleet_routes(app, store, login_required, require_roles, FLEET_ROLES)
 
     # ── Inventory API ──────────────────────────────────────────────────────
     from inventory_routes import register_inventory_routes
-    register_inventory_routes(app, store, login_required, require_roles)
+    register_inventory_routes(app, store, login_required, require_roles, INVENTORY_ROLES)
 
     # ── QC Lab API ─────────────────────────────────────────────────────────
     from qc_lab_routes import register_qc_lab_routes
-    register_qc_lab_routes(app, store, login_required)
+    register_qc_lab_routes(app, store, login_required, require_roles, LAB_ROLES)
 
     # ── Users API ─────────────────────────────────────────────────────────
     from user_routes import register_user_routes

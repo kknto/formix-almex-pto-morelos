@@ -1,18 +1,20 @@
 from flask import Blueprint, jsonify, request
 
-def register_inventory_routes(app, store, login_required, require_roles=None):
+def register_inventory_routes(app, store, login_required, require_roles=None, allowed_roles=None):
     """
     Registers all inventory-related API routes to the given Flask app via a Blueprint.
     """
     inv_bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
+    allowed = tuple(allowed_roles or ())
+    route_guard = require_roles(*allowed) if (require_roles and allowed) else login_required
 
     @inv_bp.route("/materials", methods=["GET"])
-    @login_required
+    @route_guard
     def api_inv_materials_list():
         return jsonify({"ok": True, "materials": store.list_materials()})
 
     @inv_bp.route("/materials", methods=["POST"])
-    @login_required
+    @route_guard
     def api_inv_materials_save():
         data = request.get_json(silent=True) or {}
         try:
@@ -22,7 +24,7 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @inv_bp.route("/materials/<int:material_id>", methods=["DELETE"])
-    @login_required
+    @route_guard
     def api_inv_materials_delete(material_id):
         force = request.args.get("force") == "true"
         if force and request.current_user.get("role") != "administrador":
@@ -32,7 +34,7 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
         return jsonify({"ok": True, "materials": store.list_materials()})
 
     @inv_bp.route("/materials/purge-inactive", methods=["POST"])
-    @login_required
+    @route_guard
     def api_inv_materials_purge():
         if request.current_user.get("role") != "administrador":
             return jsonify({"ok": False, "error": "Acceso denegado: Se requiere rol de administrador"}), 403
@@ -44,14 +46,14 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @inv_bp.route("/transactions", methods=["GET"])
-    @login_required
+    @route_guard
     def api_inv_transactions_list():
         mat_id = request.args.get("material_id", type=int)
         limit = request.args.get("limit", 100, type=int)
         return jsonify({"ok": True, "transactions": store.list_inventory_transactions(material_id=mat_id, limit=limit)})
 
     @inv_bp.route("/transactions", methods=["POST"])
-    @login_required
+    @route_guard
     def api_inv_transactions_save():
         data = request.get_json(silent=True) or {}
         try:
@@ -72,7 +74,7 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @inv_bp.route("/transactions/<int:transaction_id>", methods=["DELETE"])
-    @login_required
+    @route_guard
     def api_inv_transactions_delete(transaction_id):
         if request.current_user.get("role") != "administrador":
             return jsonify({"ok": False, "error": "Acceso denegado: se requiere rol de administrador"}), 403
@@ -88,7 +90,7 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @inv_bp.route("/transactions", methods=["DELETE"])
-    @login_required
+    @route_guard
     def api_inv_transactions_clear():
         if request.current_user.get("role") != "administrador":
             return jsonify({"ok": False, "error": "Acceso denegado: se requiere rol de administrador"}), 403
@@ -100,7 +102,7 @@ def register_inventory_routes(app, store, login_required, require_roles=None):
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @inv_bp.route("/daily_summary", methods=["GET"])
-    @login_required
+    @route_guard
     def api_inv_daily_summary():
         date_str = request.args.get("date")
         if not date_str:

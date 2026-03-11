@@ -16,7 +16,7 @@ class QCLabStoreMixin:
     def list_qc_cylinders(self, sample_id: int | None = None, pending_only: bool = False, limit: int = 500) -> list[dict]:
         with self._conn() as conn:
             query = """
-                SELECT c.*, s.sample_code, s.fc_expected, 
+                SELECT c.*, s.sample_code, s.fc_expected, s.remision_id, 
                        r.formula, r.fc, r.tma, r.tipo, r.rev, r.comp
                 FROM qc_cylinders c
                 JOIN qc_samples s ON c.sample_id = s.id

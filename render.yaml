@@ -10,6 +10,14 @@ services:
       - key: SESSION_COOKIE_SECURE
         value: 1
       - key: APP_SECRET_KEY
-        value: Formix#2026!SecretKey
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: formix-db
+          property: connectionString
       - key: TZ
         value: America/Cancun
+databases:
+  - name: formix-db
+    databaseName: formix
+    user: formix_user

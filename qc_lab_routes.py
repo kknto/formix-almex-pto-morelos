@@ -1,15 +1,17 @@
 import os
 import uuid
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request
 
-def register_qc_lab_routes(app, store, login_required):
+def register_qc_lab_routes(app, store, login_required, require_roles=None, allowed_roles=None):
     """
     Registers QC Lab-related API routes to the given Flask app via a Blueprint.
     """
     qc_bp = Blueprint("qc_lab", __name__, url_prefix="/api/qclab")
+    allowed = tuple(allowed_roles or ())
+    route_guard = require_roles(*allowed) if (require_roles and allowed) else login_required
 
     @qc_bp.route("/samples", methods=["GET"])
-    @login_required
+    @route_guard
     def api_list_samples():
         limit = request.args.get("limit", 100, type=int)
         try:
@@ -18,7 +20,7 @@ def register_qc_lab_routes(app, store, login_required):
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @qc_bp.route("/samples/<int:sample_id>", methods=["GET"])
-    @login_required
+    @route_guard
     def api_get_sample(sample_id):
         try:
             sample = store.get_qc_sample(sample_id)
@@ -29,7 +31,7 @@ def register_qc_lab_routes(app, store, login_required):
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @qc_bp.route("/samples/<int:sample_id>", methods=["DELETE"])
-    @login_required
+    @route_guard
     def api_delete_sample(sample_id):
         try:
             success = store.delete_qc_sample(sample_id)
@@ -40,7 +42,7 @@ def register_qc_lab_routes(app, store, login_required):
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @qc_bp.route("/lookup_remision/<remision_no>", methods=["GET"])
-    @login_required
+    @route_guard
     def api_lookup_remision(remision_no):
         try:
             remision = store.get_remision_by_no(remision_no)
@@ -51,7 +53,7 @@ def register_qc_lab_routes(app, store, login_required):
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @qc_bp.route("/samples", methods=["POST"])
-    @login_required
+    @route_guard
     def api_save_sample():
         payload = request.json
         try:
@@ -61,7 +63,7 @@ def register_qc_lab_routes(app, store, login_required):
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @qc_bp.route("/cylinders", methods=["GET"])
-    @login_required
+    @route_guard
     def api_get_all_cylinders():
         limit = request.args.get("limit", 500, type=int)
         pending_only = request.args.get("pending_only", "false") == "true"
@@ -72,7 +74,7 @@ def register_qc_lab_routes(app, store, login_required):
             return jsonify({"ok": False, "error": str(e)}), 500
 
     @qc_bp.route("/cylinders/<int:cylinder_id>/test", methods=["POST"])
-    @login_required
+    @route_guard
     def api_save_cylinder_test(cylinder_id):
         file = request.files.get("image")
         image_path = ""
