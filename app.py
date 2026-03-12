@@ -230,6 +230,21 @@ def normalize_remision_no(value: str | None) -> str:
     return text
 
 
+def normalize_remision_field(
+    value: str | None,
+    field_name: str,
+    *,
+    required: bool = False,
+    max_len: int = 180,
+) -> str:
+    text = str(value or "").strip()
+    if required and not text:
+        raise ValueError(f"El campo {field_name} es requerido.")
+    if len(text) > max_len:
+        raise ValueError(f"El campo {field_name} excede el maximo de {max_len} caracteres.")
+    return text
+
+
 def canonical_key_for_header(header: str) -> str | None:
     n = norm_header(header)
     if not n:
@@ -599,6 +614,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                   tma TEXT NOT NULL DEFAULT '',
                   rev TEXT NOT NULL DEFAULT '',
                   comp TEXT NOT NULL DEFAULT '',
+                  cliente TEXT NOT NULL DEFAULT '',
+                  ubicacion TEXT NOT NULL DEFAULT '',
                   dosificacion_m3 {real_type} NOT NULL DEFAULT 0,
                   peso_receta {real_type} NOT NULL DEFAULT 0,
                   peso_teorico_total {real_type} NOT NULL DEFAULT 0,
@@ -749,6 +766,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             self._ensure_column(conn, "remisiones", "created_by", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(conn, "remisiones", "updated_at", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(conn, "remisiones", "version", "INTEGER NOT NULL DEFAULT 1")
+            self._ensure_column(conn, "remisiones", "cliente", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "remisiones", "ubicacion", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(conn, "audit_log", "created_at", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(conn, "audit_log", "username", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(conn, "audit_log", "action", "TEXT NOT NULL DEFAULT ''")
@@ -1358,11 +1377,17 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         self,
         remision_no: str,
         snapshot: dict,
+        cliente: str,
+        ubicacion: str,
         dataset_name: str | None = None,
         created_by: str = "",
     ) -> dict:
         remision = normalize_remision_no(remision_no)
         snap = snapshot if isinstance(snapshot, dict) else {}
+        cliente_norm = normalize_remision_field(cliente, "cliente", required=True)
+        ubicacion_norm = normalize_remision_field(ubicacion, "ubicacion", required=True)
+        snap["cliente"] = cliente_norm
+        snap["ubicacion"] = ubicacion_norm
 
         def text(key: str) -> str:
             return str(snap.get(key, "")).strip()
@@ -1384,11 +1409,11 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 conn.execute(
                     """
                     INSERT INTO remisiones(
-                      dataset_id,remision_no,formula,fc,edad,tipo,tma,rev,comp,
+                      dataset_id,remision_no,formula,fc,edad,tipo,tma,rev,comp,cliente,ubicacion,
                       dosificacion_m3,peso_receta,peso_teorico_total,peso_real_total,
                       status,snapshot_json,created_at,created_by,updated_at,version
                     )
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
                     """,
                     (
                         ds["id"],
@@ -1400,6 +1425,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                         text("tma"),
                         text("rev"),
                         text("comp"),
+                        cliente_norm,
+                        ubicacion_norm,
                         number("dose"),
                         number("recipeWeight"),
                         number("theoreticalWeight"),
@@ -1413,7 +1440,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 )
                 row = conn.execute(
                     """
-                    SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,dosificacion_m3,
+                    SELECT id,remision_no,formula,fc,edad,tipo,tma,rev,comp,cliente,ubicacion,dosificacion_m3,
                            peso_receta,peso_teorico_total,peso_real_total,status,created_at,created_by
                     FROM remisiones
                     WHERE remision_no=?
@@ -1428,7 +1455,12 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     entity="remision",
                     entity_id=str(int(row["id"])),
                     dataset_id=ds["id"],
-                    details={"file": ds["name"], "remision_no": remision},
+                    details={
+                        "file": ds["name"],
+                        "remision_no": remision,
+                        "cliente": cliente_norm,
+                        "ubicacion": ubicacion_norm,
+                    },
                 )
 
                 # Auto-deduct inventory
@@ -1509,6 +1541,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     "tma": row["tma"] or "",
                     "rev": row["rev"] or "",
                     "comp": row["comp"] or "",
+                    "cliente": row["cliente"] or "",
+                    "ubicacion": row["ubicacion"] or "",
                     "dosificacion_m3": float(row["dosificacion_m3"] or 0),
                     "peso_receta": float(row["peso_receta"] or 0),
                     "peso_teorico_total": float(row["peso_teorico_total"] or 0),
@@ -1572,7 +1606,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
 
                 sql = f"""
                     SELECT r.id, r.remision_no, r.formula, r.fc, r.edad, r.tipo, r.tma, r.rev, r.comp, r.dosificacion_m3,
-                           r.peso_receta, r.peso_teorico_total, r.peso_real_total, r.status, r.created_at, r.created_by,
+                           r.cliente, r.ubicacion, r.peso_receta, r.peso_teorico_total, r.peso_real_total, r.status, r.created_at, r.created_by,
                            d.name as source_file
                     FROM remisiones r
                     JOIN datasets d ON r.dataset_id = d.id
@@ -1598,6 +1632,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                             "tma": r["tma"] or "",
                             "rev": r["rev"] or "",
                             "comp": r["comp"] or "",
+                            "cliente": r["cliente"] or "",
+                            "ubicacion": r["ubicacion"] or "",
                             "dosificacion_m3": float(r["dosificacion_m3"] or 0),
                             "peso_receta": float(r["peso_receta"] or 0),
                             "peso_teorico_total": float(r["peso_teorico_total"] or 0),
@@ -1621,7 +1657,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 row = conn.execute(
                     """
                     SELECT r.id, r.remision_no, r.formula, r.fc, r.edad, r.tipo, r.tma, r.rev, r.comp, r.dosificacion_m3,
-                           r.peso_receta, r.peso_teorico_total, r.peso_real_total, r.status, r.snapshot_json,
+                           r.cliente, r.ubicacion, r.peso_receta, r.peso_teorico_total, r.peso_real_total, r.status, r.snapshot_json,
                            r.created_at, r.created_by, r.updated_at, r.version, r.dataset_id,
                            d.name as source_file
                     FROM remisiones r
@@ -1642,6 +1678,10 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     snapshot["remisionNo"] = row["remision_no"] or "-"
                 if not snapshot.get("file"):
                     snapshot["file"] = target_name
+                if not snapshot.get("cliente"):
+                    snapshot["cliente"] = row["cliente"] or "-"
+                if not snapshot.get("ubicacion"):
+                    snapshot["ubicacion"] = row["ubicacion"] or "-"
 
                 return {
                     "id": int(row["id"]),
@@ -1653,6 +1693,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     "tma": row["tma"] or "",
                     "rev": row["rev"] or "",
                     "comp": row["comp"] or "",
+                    "cliente": row["cliente"] or "",
+                    "ubicacion": row["ubicacion"] or "",
                     "dosificacion_m3": float(row["dosificacion_m3"] or 0),
                     "peso_receta": float(row["peso_receta"] or 0),
                     "peso_teorico_total": float(row["peso_teorico_total"] or 0),
@@ -2512,7 +2554,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             with self._conn() as conn:
                 ds = self._resolve_dataset(conn, dataset_name)
                 exists = conn.execute(
-                    "SELECT snapshot_json FROM remisiones WHERE id=? AND dataset_id=?", (rid, ds["id"])
+                    "SELECT snapshot_json, cliente, ubicacion FROM remisiones WHERE id=? AND dataset_id=?", (rid, ds["id"])
                 ).fetchone()
                 if not exists:
                     raise FileNotFoundError("Remision no encontrada.")
@@ -2522,10 +2564,12 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 peso_real = float(data.get("peso_real_total", 0))
                 remision_no = str(data.get("remision_no", "")).strip()
                 created_at = data.get("created_at")
+                cliente = normalize_remision_field(data.get("cliente", exists["cliente"]), "cliente")
+                ubicacion = normalize_remision_field(data.get("ubicacion", exists["ubicacion"]), "ubicacion")
 
                 # Actualizar campos denormalizados
-                sql = "UPDATE remisiones SET formula=?, dosificacion_m3=?, peso_real_total=?, remision_no=?, updated_at=?"
-                params = [formula, m3, peso_real, remision_no, ts]
+                sql = "UPDATE remisiones SET formula=?, dosificacion_m3=?, peso_real_total=?, remision_no=?, cliente=?, ubicacion=?, updated_at=?"
+                params = [formula, m3, peso_real, remision_no, cliente, ubicacion, ts]
                 if created_at:
                     sql += ", created_at=?"
                     params.append(created_at)
@@ -2550,6 +2594,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     snap["dose"] = m3
                     snap["realWeight"] = peso_real
                     snap["remisionNo"] = remision_no
+                    snap["cliente"] = cliente or "-"
+                    snap["ubicacion"] = ubicacion or "-"
                     if created_at:
                         snap["timestamp"] = created_at
                     conn.execute("UPDATE remisiones SET snapshot_json=? WHERE id=?", (json.dumps(snap, ensure_ascii=False), rid))
@@ -2569,6 +2615,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                         "formula": formula,
                         "m3": m3,
                         "peso_real": peso_real,
+                        "cliente": cliente,
+                        "ubicacion": ubicacion,
                         "created_at": created_at
                     },
                 )
@@ -2978,12 +3026,18 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             payload = decode_json_payload(request.get_data(cache=False))
             remision_no = payload.get("remision_no", "")
             snapshot = payload.get("snapshot", {})
+            cliente = payload.get("cliente", "")
+            ubicacion = payload.get("ubicacion", "")
             file_name = payload.get("file")
             if file_name is not None and not isinstance(file_name, str):
                 return jsonify({"ok": False, "error": "file must be string."}), 400
+            if not isinstance(cliente, str) or not isinstance(ubicacion, str):
+                return jsonify({"ok": False, "error": "cliente y ubicacion deben ser texto."}), 400
             out = store.save_remision(
                 remision_no=remision_no,
                 snapshot=snapshot,
+                cliente=cliente,
+                ubicacion=ubicacion,
                 dataset_name=file_name,
                 created_by=request.current_user["username"],
             )

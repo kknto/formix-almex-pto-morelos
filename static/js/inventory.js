@@ -591,11 +591,13 @@
     const remisionesRows = remisiones.map(r => `
       <tr>
         <td><strong>${escapeHtml(r.remision_no)}</strong></td>
+        <td>${escapeHtml(r.cliente || "-")}</td>
+        <td>${escapeHtml(r.ubicacion || "-")}</td>
         <td>${escapeHtml(r.formula)}</td>
         <td class="num">${formatNum(r.dosificacion_m3)} m³</td>
         <td style="text-align:center;">${r.created_at.split(' ')[1] || ''}</td>
       </tr>
-    `).join("") || "<tr><td colspan='4' style='text-align:center;'>No hubo remisiones</td></tr>";
+    `).join("") || "<tr><td colspan='6' style='text-align:center;'>No hubo remisiones</td></tr>";
 
     const consumptionRows = consumption.map(c => `
       <tr>
@@ -691,7 +693,7 @@
       <h2>Detalle de Remisiones</h2>
       <table>
         <thead>
-          <tr><th>No. Remisión</th><th>Diseño / f'c</th><th class="num">Volumen</th><th style="text-align:center;">Hora</th></tr>
+          <tr><th>No. Remisión</th><th>Cliente</th><th>Ubicacion</th><th>Diseño / f'c</th><th class="num">Volumen</th><th style="text-align:center;">Hora</th></tr>
         </thead>
         <tbody>${remisionesRows}</tbody>
       </table>

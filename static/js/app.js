@@ -199,6 +199,8 @@ const doserRealWeight = document.getElementById("doserRealWeight");
 const doserExportReportBtn = document.getElementById("dExportReportBtn");
 const doseM3Input = document.getElementById("doseM3");
 const remisionNoInput = document.getElementById("dRemisionNo");
+const remisionClienteInput = document.getElementById("dCliente");
+const remisionUbicacionInput = document.getElementById("dUbicacion");
 const saveRemisionBtn = document.getElementById("dSaveRemisionBtn");
 const refreshRemisionBtn = document.getElementById("dRefreshRemisionBtn");
 const remisionFilterDate = document.getElementById("dRemisionFilterDate");
@@ -1817,9 +1819,13 @@ function buildDoserReportSnapshot() {
   const comp = getV("comp") || "-";
   const modDate = (isGlobal ? selectedRow._updated : getRowModDate(selectedRow)) || "-";
   const remisionNo = ((remisionNoInput?.value || "").toString().trim().toUpperCase()) || "-";
+  const cliente = ((remisionClienteInput?.value || "").toString().trim()) || "-";
+  const ubicacion = ((remisionUbicacionInput?.value || "").toString().trim()) || "-";
 
   return {
     remisionNo,
+    cliente,
+    ubicacion,
     file: state.file || "",
     qcUpdatedAt: state.qcUpdatedAt || "",
     formula,
@@ -1855,6 +1861,8 @@ function normalizeDoserReportSnapshot(raw, fallback = {}) {
 
   return {
     remisionNo: (snap.remisionNo || snap.remision_no || fallback.remisionNo || "-").toString(),
+    cliente: (snap.cliente || fallback.cliente || "-").toString(),
+    ubicacion: (snap.ubicacion || fallback.ubicacion || "-").toString(),
     file: snap.file || fallback.file || "-",
     qcUpdatedAt: snap.qcUpdatedAt || fallback.qcUpdatedAt || "-",
     formula: snap.formula || "-",
@@ -2052,9 +2060,15 @@ function buildDoserReportHtml(rawSnapshot, reportDate) {
           <th>Comp</th><td>${escapeHtml(snap.comp)}</td>
         </tr>
         <tr>
+          <th>Cliente</th><td>${escapeHtml(snap.cliente)}</td>
+          <th>Ubicacion</th><td>${escapeHtml(snap.ubicacion)}</td>
           <th>Fecha Modif</th><td>${escapeHtml(snap.modDate)}</td>
           <th>Dosificacion</th><td class="nowrap">${escapeHtml(formatNum(snap.dose))} m<sup>3</sup></td>
+        </tr>
+        <tr>
           <th>QC</th><td>${escapeHtml(snap.qcUpdatedAt)}</td>
+          <th></th><td></td>
+          <th></th><td></td>
           <th></th><td></td>
         </tr>
       </tbody>
@@ -2187,6 +2201,8 @@ async function openRemisionReport(remisionId) {
     const remisionNo = snap.remisionNo || snap.remision_no || payload.remision_no || "-";
     const normalized = normalizeDoserReportSnapshot(snap, {
       remisionNo,
+      cliente: payload.cliente || "-",
+      ubicacion: payload.ubicacion || "-",
       file: payload.file || state.file || "-",
       qcUpdatedAt: state.qcUpdatedAt || "-",
     });
@@ -2614,7 +2630,7 @@ function renderRemisionList() {
   const items = Array.isArray(state.doser.remisiones) ? state.doser.remisiones : [];
   if (!items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="11">Sin remisiones guardadas para esta fecha.</td>`;
+    tr.innerHTML = `<td colspan="12">Sin remisiones guardadas para esta fecha.</td>`;
     doserRemisionBody.appendChild(tr);
     if (remisionMeta) remisionMeta.textContent = "Remisiones: 0";
     return;
@@ -2623,6 +2639,8 @@ function renderRemisionList() {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(item.remision_no || "-")}</td>
+      <td>${escapeHtml(item.cliente || "-")}</td>
+      <td>${escapeHtml(item.ubicacion || "-")}</td>
       <td>${escapeHtml(item.formula || "-")}</td>
       <td>${escapeHtml(item.fc || "-")}</td>
       <td>${escapeHtml(item.tma || "-")}</td>
@@ -2672,6 +2690,8 @@ window.openEditRemisionModal = function (item) {
   document.getElementById("editRemisionId").value = item.id;
   document.getElementById("erNo").value = item.remision_no || "";
   document.getElementById("erFormula").value = item.formula || "";
+  document.getElementById("erCliente").value = item.cliente || "";
+  document.getElementById("erUbicacion").value = item.ubicacion || "";
   document.getElementById("erM3").value = item.dosificacion_m3 || 0;
   document.getElementById("erWeight").value = item.peso_real_total || 0;
 
@@ -2703,6 +2723,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const payload = {
         remision_no: document.getElementById("erNo").value,
         formula: document.getElementById("erFormula").value,
+        cliente: document.getElementById("erCliente").value,
+        ubicacion: document.getElementById("erUbicacion").value,
         dosificacion_m3: parseFloat(document.getElementById("erM3").value),
         peso_real_total: parseFloat(document.getElementById("erWeight").value),
         created_at: document.getElementById("erDate").value.replace('T', ' ') + ':00'
@@ -2762,8 +2784,18 @@ async function deleteRemision(remisionId, remisionNo, sourceFile) {
 async function saveRemision() {
   try {
     const remisionNo = ((remisionNoInput?.value || "").toString().trim().toUpperCase());
+    const cliente = ((remisionClienteInput?.value || "").toString().trim());
+    const ubicacion = ((remisionUbicacionInput?.value || "").toString().trim());
     if (!remisionNo) {
       setStatus("Ingresa el numero de remision.", "warn");
+      return;
+    }
+    if (!cliente) {
+      setStatus("Ingresa el cliente.", "warn");
+      return;
+    }
+    if (!ubicacion) {
+      setStatus("Ingresa la ubicacion.", "warn");
       return;
     }
     const snap = buildDoserReportSnapshot();
@@ -2777,6 +2809,8 @@ async function saveRemision() {
       body: JSON.stringify({
         file: state.file,
         remision_no: remisionNo,
+        cliente,
+        ubicacion,
         snapshot: snap,
       }),
     });
@@ -2785,6 +2819,8 @@ async function saveRemision() {
       throw new Error(payload.error || "No se pudo guardar la remision.");
     }
     if (remisionNoInput) remisionNoInput.value = "";
+    if (remisionClienteInput) remisionClienteInput.value = "";
+    if (remisionUbicacionInput) remisionUbicacionInput.value = "";
     await loadRemisiones();
     setStatus(`Remision guardada: ${payload.remision_no}`, "ok");
     pushToast(`Remisión guardada con éxito: ${payload.remision_no}`, "ok");
@@ -4013,6 +4049,14 @@ if (remisionNoInput) {
     saveRemision();
   });
 }
+[remisionClienteInput, remisionUbicacionInput].forEach((el) => {
+  if (!el) return;
+  el.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    saveRemision();
+  });
+});
 document.getElementById("dClearBtn").addEventListener("click", () => {
   doserFields.family.value = "";
   doserFields.fc.value = "";

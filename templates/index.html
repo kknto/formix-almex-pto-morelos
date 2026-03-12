@@ -379,6 +379,12 @@
           <label>No. Remision
             <input id="dRemisionNo" type="text" maxlength="40" placeholder="Ej. R-000123">
           </label>
+          <label>Cliente
+            <input id="dCliente" type="text" maxlength="180" placeholder="Nombre del cliente">
+          </label>
+          <label>Ubicacion
+            <input id="dUbicacion" type="text" maxlength="180" placeholder="Obra / ubicacion">
+          </label>
           <button id="dSaveRemisionBtn" class="btn btn--primary">Guardar Remision</button>
           <div style="display:inline-flex; align-items:center; gap:8px; margin-left: auto;">
             <label for="dRemisionFilterDate" style="font-size:0.85rem; color:var(--text-soft);">Filtrar por
@@ -411,6 +417,8 @@
             <thead>
               <tr>
                 <th>Remision</th>
+                <th>Cliente</th>
+                <th>Ubicacion</th>
                 <th>Formula</th>
                 <th>f'c</th>
                 <th>T.M.A.</th>
@@ -1026,6 +1034,14 @@
           <div class="form-group">
             <label for="erFormula">Fórmula / Diseño</label>
             <input type="text" id="erFormula" class="ui-dialog__input" required>
+          </div>
+          <div class="form-group">
+            <label for="erCliente">Cliente</label>
+            <input type="text" id="erCliente" class="ui-dialog__input" maxlength="180" required>
+          </div>
+          <div class="form-group">
+            <label for="erUbicacion">Ubicacion</label>
+            <input type="text" id="erUbicacion" class="ui-dialog__input" maxlength="180" required>
           </div>
           <div class="form-group">
             <label for="erM3">Volumen (m³)</label>
