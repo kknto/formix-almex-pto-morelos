@@ -261,8 +261,16 @@ function renderQcCylinders() {
         samplesMap.get(cyl.sample_id).cylinders.push(cyl);
     });
 
+    // Render sample groups ordered naturally by sample code (e.g. AP-1, AP-2, AP-10).
+    const orderedSamples = Array.from(samplesMap.values()).sort((a, b) =>
+        String(a.sample_code || "").localeCompare(String(b.sample_code || ""), 'es-MX', {
+            numeric: true,
+            sensitivity: 'base',
+        })
+    );
+
     // Render each group
-    samplesMap.forEach(sample => {
+    orderedSamples.forEach(sample => {
         // --- 1. Header Row (The Sample) ---
         const trHeader = document.createElement("tr");
         trHeader.className = "qc-sample-header";
