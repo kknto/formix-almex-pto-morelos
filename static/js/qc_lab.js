@@ -289,32 +289,48 @@ window.removeQcAge = function (index) {
     renderAgesBadges();
 }
 
-window.editQcSample = function (sampleId) {
+window.editQcSample = async function (sampleId) {
     const userRole = (window.APP_BOOT && window.APP_BOOT.role) ? window.APP_BOOT.role.toLowerCase() : "";
     if (userRole !== "administrador" && userRole !== "laboratorista") {
         if (typeof setStatus === 'function') setStatus("No tienes permisos para editar muestras.", 'err');
         return;
     }
-    const sample = stateQcCylinders.find(c => c.sample_id === sampleId);
-    if (!sample) return;
 
-    // Fill form
-    document.getElementById("qcSampleId").value = sample.sample_id;
-    document.getElementById("qcSampleCode").value = sample.sample_code || "";
-    document.getElementById("qcRemisionNo").value = sample.remision_id || "";
-    document.getElementById("qcCastDate").value = sample.cast_date || "";
-    document.getElementById("qcFcExpected").value = sample.fc_expected || "";
-    document.getElementById("qcSlump").value = sample.slump_cm || "";
+    try {
+        if (typeof setStatus === 'function') setStatus("Cargando datos de la muestra...", 'warn');
 
-    // UI Changes
-    document.getElementById("qcSubmitBtn").innerText = "Actualizar Muestra";
-    const title = document.getElementById("qcFormTitle");
-    if (title) title.innerText = "Editar Muestra";
-    document.getElementById("qcCancelEditBtn").classList.remove("is-hidden");
+        const response = await apiFetch("/api/qclab/samples/" + encodeURIComponent(sampleId));
+        const data = await response.json();
+        if (!data.ok || !data.sample) {
+            throw new Error(data.error || "No se pudo cargar el detalle de la muestra.");
+        }
 
-    // Smooth scroll to form
-    const form = document.getElementById("addQcSampleForm");
-    if (form) form.scrollIntoView({ behavior: 'smooth' });
+        const sample = data.sample;
+
+        // Fill form with persisted sample data, preserving valid 0 values.
+        document.getElementById("qcSampleId").value = sample.id ?? sampleId;
+        document.getElementById("qcSampleCode").value = sample.sample_code ?? "";
+        document.getElementById("qcRemisionNo").value = sample.remision_id ?? "";
+        document.getElementById("qcCastDate").value = sample.cast_date ?? "";
+        document.getElementById("qcFcExpected").value = sample.fc_expected ?? "";
+        document.getElementById("qcSlump").value = sample.slump_cm ?? "";
+
+        // UI Changes
+        document.getElementById("qcSubmitBtn").innerText = "Actualizar Muestra";
+        const title = document.getElementById("qcFormTitle");
+        if (title) title.innerText = "Editar Muestra";
+        document.getElementById("qcCancelEditBtn").classList.remove("is-hidden");
+
+        // Smooth scroll to form
+        const form = document.getElementById("addQcSampleForm");
+        if (form) form.scrollIntoView({ behavior: 'smooth' });
+
+        if (typeof setStatus === 'function') setStatus("Muestra cargada para edición.", 'ok');
+    } catch (err) {
+        if (typeof setStatus === 'function') {
+            setStatus("Error al cargar muestra para edición: " + err.message, 'err');
+        }
+    }
 }
 
 window.cancelQcEdit = function () {
