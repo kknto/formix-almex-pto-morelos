@@ -991,10 +991,43 @@
       </header>
       <div class="ui-dialog__body">
         <form id="testCylinderForm">
+          <input type="hidden" id="testAreaCm2">
           <div class="form-group" style="margin-bottom: 1rem;">
             <label for="testStrength" style="color:var(--text-soft); font-size:0.85rem;">Resistencia a la compresión
               obtenida (kg/cm²)</label>
             <input type="number" id="testStrength" class="ui-dialog__input" step="0.1" required>
+          </div>
+
+          <div class="qc-test-calc">
+            <div class="qc-test-calc__title">Calculadora de Resistencia</div>
+            <div class="qc-test-calc__grid">
+              <div class="form-group">
+                <label for="testLoadTotal" style="color:var(--text-soft); font-size:0.85rem;">Carga total (kg)</label>
+                <input type="number" id="testLoadTotal" class="ui-dialog__input" step="0.1" min="0"
+                  placeholder="Ej. 16838">
+              </div>
+              <div class="form-group">
+                <label for="testDiameterCm" style="color:var(--text-soft); font-size:0.85rem;">Diámetro (cm)</label>
+                <select id="testDiameterCm" class="ui-dialog__input">
+                  <option value="">Selecciona diámetro...</option>
+                  <option value="10">10 cm (78.54 cm²)</option>
+                  <option value="15">15 cm (176.71 cm²)</option>
+                </select>
+              </div>
+            </div>
+            <div class="qc-test-calc__grid qc-test-calc__grid--single">
+              <div class="form-group">
+                <label for="testCorrectionFactor" style="color:var(--text-soft); font-size:0.85rem;">Factor de
+                  corrección</label>
+                <input type="number" id="testCorrectionFactor" class="ui-dialog__input" step="0.01" min="0"
+                  value="1.00">
+              </div>
+            </div>
+            <div class="qc-test-calc__results">
+              <div><strong>Área:</strong> <span id="testAreaDisplay">-</span></div>
+              <div><strong>Resistencia calculada:</strong> <span id="testStrengthCalcDisplay">-</span></div>
+            </div>
+            <button type="button" id="applyStrengthCalcBtn" class="btn btn--muted btn--small qc-test-calc__btn">Calcular y aplicar</button>
           </div>
 
           <div class="form-group" style="margin-bottom: 1rem;">

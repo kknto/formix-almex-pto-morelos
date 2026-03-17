@@ -139,15 +139,32 @@ class QCLabStoreMixin:
                 now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
                 status = payload.get("status", "ensayado")
                 strength = float(payload.get("strength_kgcm2", 0))
+                load_total = float(payload.get("load_total", 0) or 0)
+                diameter_cm = float(payload.get("diameter_cm", 0) or 0)
+                area_cm2 = float(payload.get("area_cm2", 0) or 0)
+                correction_factor = float(payload.get("correction_factor", 1) or 1)
                 notes = payload.get("notes", "")
 
                 update_fields = [
                     "status = ?",
                     "strength_kgcm2 = ?",
+                    "load_total = ?",
+                    "diameter_cm = ?",
+                    "area_cm2 = ?",
+                    "correction_factor = ?",
                     "break_date = ?",
                     "notes = ?"
                 ]
-                params = [status, strength, payload.get("break_date") or now, notes]
+                params = [
+                    status,
+                    strength,
+                    load_total,
+                    diameter_cm,
+                    area_cm2,
+                    correction_factor,
+                    payload.get("break_date") or now,
+                    notes,
+                ]
 
                 if image_path:
                     update_fields.append("image_path = ?")

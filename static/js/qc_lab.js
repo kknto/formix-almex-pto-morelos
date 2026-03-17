@@ -70,6 +70,110 @@ function getPerformanceClass(percentAchieved, targetDays) {
     return 'qc-perf-bad';
 }
 
+function formatQcCalcNumber(value, decimals = 2) {
+    return Number(value).toLocaleString("es-MX", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    });
+}
+
+function calculateCylinderAreaCm2(diameterCm) {
+    const diameter = Number(diameterCm);
+    if (!Number.isFinite(diameter) || diameter <= 0) return 0;
+    const radius = diameter / 2;
+    return radius * radius * Math.PI;
+}
+
+function getCylinderStrengthCalculation() {
+    const loadInput = document.getElementById("testLoadTotal");
+    const diameterInput = document.getElementById("testDiameterCm");
+    const factorInput = document.getElementById("testCorrectionFactor");
+    const loadTotal = Number(loadInput?.value || 0);
+    const diameterCm = Number(diameterInput?.value || 0);
+    const correctionFactor = Number(factorInput?.value || 0);
+
+    if (!Number.isFinite(loadTotal) || loadTotal <= 0) {
+        throw new Error("Ingresa una carga total válida.");
+    }
+    if (!Number.isFinite(diameterCm) || diameterCm <= 0) {
+        throw new Error("Selecciona un diámetro válido.");
+    }
+    if (!Number.isFinite(correctionFactor) || correctionFactor <= 0) {
+        throw new Error("Ingresa un factor de corrección válido.");
+    }
+
+    const areaCm2 = calculateCylinderAreaCm2(diameterCm);
+    if (!Number.isFinite(areaCm2) || areaCm2 <= 0) {
+        throw new Error("No se pudo calcular el área del cilindro.");
+    }
+
+    const rawStrength = loadTotal / areaCm2;
+    const correctedStrength = rawStrength * correctionFactor;
+
+    return {
+        loadTotal,
+        diameterCm,
+        areaCm2,
+        correctionFactor,
+        rawStrength,
+        correctedStrength,
+        roundedStrength: Math.round(correctedStrength),
+    };
+}
+
+function updateCylinderCalcPreview() {
+    const areaDisplay = document.getElementById("testAreaDisplay");
+    const strengthDisplay = document.getElementById("testStrengthCalcDisplay");
+    const hiddenAreaInput = document.getElementById("testAreaCm2");
+    if (!areaDisplay || !strengthDisplay || !hiddenAreaInput) return;
+
+    const diameterValue = Number(document.getElementById("testDiameterCm")?.value || 0);
+    const areaCm2 = calculateCylinderAreaCm2(diameterValue);
+    hiddenAreaInput.value = areaCm2 > 0 ? areaCm2.toFixed(4) : "";
+    areaDisplay.textContent = areaCm2 > 0 ? `${formatQcCalcNumber(areaCm2, 2)} cm²` : "-";
+
+    try {
+        const result = getCylinderStrengthCalculation();
+        strengthDisplay.textContent = `${result.roundedStrength} kg/cm²`;
+    } catch (_err) {
+        strengthDisplay.textContent = "-";
+    }
+}
+
+function applyCylinderStrengthCalculation() {
+    try {
+        const result = getCylinderStrengthCalculation();
+        const strengthInput = document.getElementById("testStrength");
+        const hiddenAreaInput = document.getElementById("testAreaCm2");
+        if (strengthInput) strengthInput.value = String(result.roundedStrength);
+        if (hiddenAreaInput) hiddenAreaInput.value = result.areaCm2.toFixed(4);
+        updateCylinderCalcPreview();
+        if (typeof setStatus === 'function') {
+            setStatus(`Resistencia calculada y aplicada: ${result.roundedStrength} kg/cm².`, 'ok');
+        }
+    } catch (err) {
+        if (typeof setStatus === 'function') {
+            setStatus("Error al calcular resistencia: " + err.message, 'err');
+        }
+    }
+}
+
+function resetTestCylinderCalculation() {
+    const loadInput = document.getElementById("testLoadTotal");
+    const diameterInput = document.getElementById("testDiameterCm");
+    const factorInput = document.getElementById("testCorrectionFactor");
+    const hiddenAreaInput = document.getElementById("testAreaCm2");
+    const areaDisplay = document.getElementById("testAreaDisplay");
+    const strengthDisplay = document.getElementById("testStrengthCalcDisplay");
+
+    if (loadInput) loadInput.value = "";
+    if (diameterInput) diameterInput.value = "";
+    if (factorInput) factorInput.value = "1.00";
+    if (hiddenAreaInput) hiddenAreaInput.value = "";
+    if (areaDisplay) areaDisplay.textContent = "-";
+    if (strengthDisplay) strengthDisplay.textContent = "-";
+}
+
 async function loadLaboratoryData() {
     try {
         const response = await apiFetch("/api/qclab/cylinders?pending_only=false");
@@ -458,6 +562,10 @@ function setupListeners() {
 
             const formData = new FormData();
             formData.append("strength_kgcm2", document.getElementById("testStrength").value);
+            formData.append("load_total", document.getElementById("testLoadTotal").value || "");
+            formData.append("diameter_cm", document.getElementById("testDiameterCm").value || "");
+            formData.append("area_cm2", document.getElementById("testAreaCm2").value || "");
+            formData.append("correction_factor", document.getElementById("testCorrectionFactor").value || "1");
             formData.append("notes", document.getElementById("testNotes").value);
             formData.append("break_date", (window.AppGlobals && window.AppGlobals.getTodayPuertoMorelos) ? window.AppGlobals.getTodayPuertoMorelos() : new Date().toISOString().split("T")[0]);
             formData.append("status", "ensayado");
@@ -487,6 +595,18 @@ function setupListeners() {
     if (lookupBtn) {
         lookupBtn.addEventListener("click", lookupRemision);
     }
+    const applyStrengthCalcBtn = document.getElementById("applyStrengthCalcBtn");
+    if (applyStrengthCalcBtn) {
+        applyStrengthCalcBtn.addEventListener("click", applyCylinderStrengthCalculation);
+    }
+    const calcInputs = ["testLoadTotal", "testDiameterCm", "testCorrectionFactor"];
+    calcInputs.forEach((inputId) => {
+        const el = document.getElementById(inputId);
+        if (el) {
+            el.addEventListener("input", updateCylinderCalcPreview);
+            el.addEventListener("change", updateCylinderCalcPreview);
+        }
+    });
 }
 
 window.openTestModal = function (cylinderId, sampleCode) {
@@ -497,6 +617,7 @@ window.openTestModal = function (cylinderId, sampleCode) {
     currentTestCylinderId = cylinderId;
     document.getElementById("testModalTitle").innerText = `Ensaye Cilindro: ${sampleCode}`;
     if (testCylinderForm) testCylinderForm.reset();
+    resetTestCylinderCalculation();
     if (compressPreviewImg) compressPreviewImg.style.display = "none";
     if (testCylinderModal) {
         testCylinderModal.classList.remove("is-hidden");
@@ -511,6 +632,7 @@ window.closeTestModal = function () {
         testCylinderModal.classList.remove("is-active");
     }
     currentTestCylinderId = null;
+    resetTestCylinderCalculation();
 }
 
 window.openChartModal = async function (sampleId, sampleCode) {
