@@ -145,6 +145,7 @@ function renderQcCylinders() {
             samplesMap.set(cyl.sample_id, {
                 sample_id: cyl.sample_id,
                 sample_code: cyl.sample_code,
+                remision_id: cyl.remision_id ?? "",
                 formula: cyl.formula,
                 fc: cyl.fc,
                 tma: cyl.tma,
