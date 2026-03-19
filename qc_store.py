@@ -1,5 +1,6 @@
 import uuid
 import datetime
+import sqlite3
 
 class QCLabStoreMixin:
     def list_qc_samples(self, limit: int = 100) -> list[dict]:
@@ -16,7 +17,11 @@ class QCLabStoreMixin:
     def list_qc_cylinders(self, sample_id: int | None = None, pending_only: bool = False, limit: int = 500) -> list[dict]:
         with self._conn() as conn:
             query = """
-                SELECT c.*, s.sample_code, s.fc_expected, s.remision_id, 
+                SELECT c.id, c.sample_id, c.target_age_days, c.expected_test_date, c.status,
+                       c.strength_kgcm2, c.break_date, c.image_path, c.notes, c.failure_type,
+                       c.load_total, c.diameter_cm, c.area_cm2, c.correction_factor,
+                       (CASE WHEN c.image_data IS NOT NULL THEN 1 ELSE 0 END) as has_image_data,
+                       s.sample_code, s.fc_expected, s.remision_id, s.cast_date, s.slump_cm,
                        r.formula, r.fc, r.tma, r.tipo, r.rev, r.comp
                 FROM qc_cylinders c
                 JOIN qc_samples s ON c.sample_id = s.id
@@ -29,7 +34,7 @@ class QCLabStoreMixin:
                 params.append(sample_id)
             if pending_only:
                 query += " AND c.status = 'pendiente'"
-            query += " ORDER BY c.expected_test_date ASC LIMIT ?"
+            query += " ORDER BY s.sample_code ASC, c.target_age_days ASC LIMIT ?"
             params.append(limit)
             
             cur = conn.execute(query, tuple(params))
@@ -133,17 +138,34 @@ class QCLabStoreMixin:
                 cur = conn.execute("DELETE FROM qc_samples WHERE id = ?", (sample_id,))
                 return cur.rowcount > 0
 
-    def test_qc_cylinder(self, cylinder_id: int, payload: dict, image_path: str = "") -> dict:
+    def test_qc_cylinder(self, cylinder_id: int, payload: dict, image_path: str = "", image_data: bytes | None = None) -> dict:
         with self.lock:
             with self._conn() as conn:
                 now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
                 status = payload.get("status", "ensayado")
-                strength = float(payload.get("strength_kgcm2", 0))
-                load_total = float(payload.get("load_total", 0) or 0)
-                diameter_cm = float(payload.get("diameter_cm", 0) or 0)
-                area_cm2 = float(payload.get("area_cm2", 0) or 0)
-                correction_factor = float(payload.get("correction_factor", 1) or 1)
+                try:
+                    strength_val = payload.get("strength_kgcm2", "0")
+                    strength = float(strength_val) if str(strength_val).strip() else 0.0
+                except (TypeError, ValueError):
+                    strength = 0.0
+                try:
+                    load_total = float(payload.get("load_total", 0) or 0)
+                except (TypeError, ValueError):
+                    load_total = 0.0
+                try:
+                    diameter_cm = float(payload.get("diameter_cm", 0) or 0)
+                except (TypeError, ValueError):
+                    diameter_cm = 0.0
+                try:
+                    area_cm2 = float(payload.get("area_cm2", 0) or 0)
+                except (TypeError, ValueError):
+                    area_cm2 = 0.0
+                try:
+                    correction_factor = float(payload.get("correction_factor", 1) or 1)
+                except (TypeError, ValueError):
+                    correction_factor = 1.0
                 notes = payload.get("notes", "")
+                failure_type = str(payload.get("failure_type", "") or "").strip()
 
                 update_fields = [
                     "status = ?",
@@ -153,7 +175,8 @@ class QCLabStoreMixin:
                     "area_cm2 = ?",
                     "correction_factor = ?",
                     "break_date = ?",
-                    "notes = ?"
+                    "notes = ?",
+                    "failure_type = ?",
                 ]
                 params = [
                     status,
@@ -164,11 +187,16 @@ class QCLabStoreMixin:
                     correction_factor,
                     payload.get("break_date") or now,
                     notes,
+                    failure_type,
                 ]
 
                 if image_path:
                     update_fields.append("image_path = ?")
                     params.append(image_path)
+
+                if image_data is not None:
+                    update_fields.append("image_data = ?")
+                    params.append(sqlite3.Binary(image_data) if not self.is_postgres else image_data)
 
                 params.append(cylinder_id)
                 query = f"UPDATE qc_cylinders SET {', '.join(update_fields)} WHERE id = ?"

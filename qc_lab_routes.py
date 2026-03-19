@@ -1,6 +1,7 @@
 import os
+import mimetypes
 import uuid
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
 def register_qc_lab_routes(app, store, login_required, require_roles=None, allowed_roles=None):
     """
@@ -78,6 +79,7 @@ def register_qc_lab_routes(app, store, login_required, require_roles=None, allow
     def api_save_cylinder_test(cylinder_id):
         file = request.files.get("image")
         image_path = ""
+        image_data = None
         
         if file and file.filename:
             uploads_dir = os.path.join(app.config.get("BASE_DIR", "."), "static", "uploads", "qc_images")
@@ -86,13 +88,45 @@ def register_qc_lab_routes(app, store, login_required, require_roles=None, allow
             ext = os.path.splitext(file.filename)[1]
             unique_name = f"{uuid.uuid4().hex}{ext}"
             full_path = os.path.join(uploads_dir, unique_name)
+            image_data = file.read()
+            file.seek(0)
             file.save(full_path)
             image_path = f"/static/uploads/qc_images/{unique_name}"
         
         try:
             payload = request.form.to_dict()
-            updated_sample = store.test_qc_cylinder(cylinder_id, payload, image_path)
+            updated_sample = store.test_qc_cylinder(cylinder_id, payload, image_path, image_data)
             return jsonify({"ok": True, "sample": updated_sample})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @qc_bp.route("/cylinders/<int:cylinder_id>/image", methods=["GET"])
+    @route_guard
+    def api_get_cylinder_image(cylinder_id):
+        try:
+            with store._conn() as conn:
+                row = conn.execute(
+                    "SELECT image_data, image_path FROM qc_cylinders WHERE id = ? LIMIT 1",
+                    (cylinder_id,),
+                ).fetchone()
+                if not row:
+                    return jsonify({"ok": False, "error": "Cilindro no encontrado"}), 404
+
+                image_path = row["image_path"] or ""
+                mime_type = mimetypes.guess_type(image_path)[0] or "image/jpeg"
+                image_data = row["image_data"]
+
+                if image_data:
+                    return Response(image_data, mimetype=mime_type)
+
+                if image_path:
+                    rel_path = image_path[1:] if image_path.startswith("/") else image_path
+                    full_path = os.path.join(current_app.root_path, rel_path)
+                    if os.path.exists(full_path):
+                        with open(full_path, "rb") as fh:
+                            return Response(fh.read(), mimetype=mime_type)
+
+                return jsonify({"ok": False, "error": "Imagen no encontrada"}), 404
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 

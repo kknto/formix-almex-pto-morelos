@@ -45,6 +45,8 @@ MAX_COLUMNS = 400
 STAGING_TTL_MIN = 30
 MODES = {"new", "replace", "merge"}
 MAX_DB_SNAPSHOTS = 40
+QC_GLOBAL_DATASET_ID = -1
+QC_GLOBAL_DATASET_NAME = "__GLOBAL_QC__"
 QC_AGGREGATES = ("Fino 1", "Fino 2", "Grueso 1", "Grueso 2")
 QC_FIELDS = ("pvs", "pvc", "densidad", "absorcion", "humedad")
 DOSER_PARAM_FIELDS = (
@@ -528,6 +530,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
     def _init_db(self):
         id_type = "SERIAL PRIMARY KEY" if self.is_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
         real_type = "DOUBLE PRECISION" if self.is_postgres else "REAL"
+        blob_type = "BYTEA" if self.is_postgres else "BLOB"
         
         with self._conn() as conn:
             conn.executescript(
@@ -683,7 +686,9 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                   strength_kgcm2 {real_type} NOT NULL DEFAULT 0,
                   break_date TEXT,
                   image_path TEXT NOT NULL DEFAULT '',
-                  notes TEXT NOT NULL DEFAULT ''
+                  image_data {blob_type} DEFAULT NULL,
+                  notes TEXT NOT NULL DEFAULT '',
+                  failure_type TEXT NOT NULL DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS idx_qc_cyl_expected_date ON qc_cylinders(expected_test_date ASC);
                 CREATE INDEX IF NOT EXISTS idx_qc_cyl_sample_id ON qc_cylinders(sample_id);
@@ -737,6 +742,24 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 CREATE INDEX IF NOT EXISTS idx_maint_vehicle_date ON maintenance_records(vehicle_id, record_date DESC);
                 """
             )
+            now = now_str()
+            if self.is_postgres:
+                conn.execute(
+                    """
+                    INSERT INTO datasets(id,name,family_code,headers_json,rows_json,encoding,delimiter,content_hash,row_count,created_at,updated_at,version,deleted_at)
+                    VALUES(%s,%s,'SYSTEM','[]','[]','utf-8',',','',0,%s,%s,1,NULL)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (QC_GLOBAL_DATASET_ID, QC_GLOBAL_DATASET_NAME, now, now),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO datasets(id,name,family_code,headers_json,rows_json,encoding,delimiter,content_hash,row_count,created_at,updated_at,version,deleted_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NULL)
+                    """,
+                    (QC_GLOBAL_DATASET_ID, QC_GLOBAL_DATASET_NAME, "SYSTEM", "[]", "[]", "utf-8", ",", "", 0, now, now, 1),
+                )
             # Re-implement bootstrap and migration logic for both engines...
             # Note: SERIAL and DOUBLE PRECISION are PG specific, sqlite3 handles them via fallback or wrapper translations.
             # Schema migration for older databases.
@@ -766,6 +789,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             self._ensure_column(conn, "qc_cylinders", "diameter_cm", f"{real_type} NOT NULL DEFAULT 0")
             self._ensure_column(conn, "qc_cylinders", "area_cm2", f"{real_type} NOT NULL DEFAULT 0")
             self._ensure_column(conn, "qc_cylinders", "correction_factor", f"{real_type} NOT NULL DEFAULT 1")
+            self._ensure_column(conn, "qc_cylinders", "failure_type", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "qc_cylinders", "image_data", "BYTEA" if self.is_postgres else "BLOB")
             self._ensure_column(conn, "remisiones", "status", "TEXT NOT NULL DEFAULT 'abierta'")
             self._ensure_column(conn, "remisiones", "created_by", "TEXT NOT NULL DEFAULT ''")
             self._ensure_column(conn, "remisiones", "updated_at", "TEXT NOT NULL DEFAULT ''")
@@ -780,7 +805,6 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             self._ensure_column(conn, "audit_log", "dataset_id", "INTEGER")
             self._ensure_column(conn, "audit_log", "details_json", "TEXT NOT NULL DEFAULT '{}'")
 
-            now = now_str()
             for item in DEFAULT_USERS:
                 conn.execute(
                     """
@@ -839,12 +863,18 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         if row:
             try:
                 did = int(row["value"])
-                ok = conn.execute("SELECT 1 FROM datasets WHERE id=? AND deleted_at IS NULL", (did,)).fetchone()
+                ok = conn.execute(
+                    "SELECT 1 FROM datasets WHERE id=? AND deleted_at IS NULL AND id != ?",
+                    (did, QC_GLOBAL_DATASET_ID),
+                ).fetchone()
                 if ok:
                     return did
             except ValueError:
                 pass
-        row = conn.execute("SELECT id FROM datasets WHERE deleted_at IS NULL ORDER BY id LIMIT 1").fetchone()
+        row = conn.execute(
+            "SELECT id FROM datasets WHERE deleted_at IS NULL AND id != ? ORDER BY id LIMIT 1",
+            (QC_GLOBAL_DATASET_ID,),
+        ).fetchone()
         return int(row["id"]) if row else None
 
     def _set_active(self, conn, did: int):
@@ -970,10 +1000,16 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
     def _bootstrap(self, csv_file: str | None):
         with self.lock:
             with self._conn() as conn:
-                count = conn.execute("SELECT COUNT(*) c FROM datasets WHERE deleted_at IS NULL").fetchone()["c"]
+                count = conn.execute(
+                    "SELECT COUNT(*) c FROM datasets WHERE deleted_at IS NULL AND id != ?",
+                    (QC_GLOBAL_DATASET_ID,),
+                ).fetchone()["c"]
                 if count > 0:
                     if self._active_id(conn) is None:
-                        first = conn.execute("SELECT id FROM datasets WHERE deleted_at IS NULL ORDER BY id LIMIT 1").fetchone()
+                        first = conn.execute(
+                            "SELECT id FROM datasets WHERE deleted_at IS NULL AND id != ? ORDER BY id LIMIT 1",
+                            (QC_GLOBAL_DATASET_ID,),
+                        ).fetchone()
                         if first:
                             self._set_active(conn, int(first["id"]))
                     return
@@ -995,7 +1031,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
     def list_file_infos(self) -> list[dict[str, str]]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT name,family_code FROM datasets WHERE deleted_at IS NULL ORDER BY name"
+                "SELECT name,family_code FROM datasets WHERE deleted_at IS NULL AND id != ? ORDER BY name",
+                (QC_GLOBAL_DATASET_ID,),
             ).fetchall()
             return [{"name": r["name"], "family": (r["family_code"] or "").strip()} for r in rows]
 
@@ -1004,7 +1041,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         global_list = []
         with self._conn() as conn:
             datasets = conn.execute(
-                "SELECT id, name, family_code, headers_json, rows_json, updated_at FROM datasets WHERE deleted_at IS NULL"
+                "SELECT id, name, family_code, headers_json, rows_json, updated_at FROM datasets WHERE deleted_at IS NULL AND id != ?",
+                (QC_GLOBAL_DATASET_ID,),
             ).fetchall()
             
             for ds in datasets:
@@ -1038,7 +1076,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         summary = {}
         with self._conn() as conn:
             datasets = conn.execute(
-                "SELECT id, name, family_code, headers_json, rows_json FROM datasets WHERE deleted_at IS NULL"
+                "SELECT id, name, family_code, headers_json, rows_json FROM datasets WHERE deleted_at IS NULL AND id != ?",
+                (QC_GLOBAL_DATASET_ID,),
             ).fetchall()
             
             for ds in datasets:
@@ -1118,7 +1157,10 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
             raise ValueError("Dataset name is required.")
         with self.lock:
             with self._conn() as conn:
-                row = conn.execute("SELECT id FROM datasets WHERE name=? AND deleted_at IS NULL", (clean,)).fetchone()
+                row = conn.execute(
+                    "SELECT id FROM datasets WHERE name=? AND deleted_at IS NULL AND id != ?",
+                    (clean, QC_GLOBAL_DATASET_ID),
+                ).fetchone()
                 if not row:
                     raise FileNotFoundError(f"Dataset not found: {clean}")
                 self._set_active(conn, int(row["id"]))
@@ -1135,22 +1177,29 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
     def load_qc(self, dataset_name: str | None = None) -> dict:
         with self.lock:
             with self._conn() as conn:
-                ds = self._resolve_dataset(conn, dataset_name)
-                # First try to load the profile specifically for this dataset
                 row = conn.execute(
                     "SELECT values_json,version,updated_at FROM qc_profiles WHERE dataset_id=?",
-                    (ds["id"],),
+                    (QC_GLOBAL_DATASET_ID,),
                 ).fetchone()
-                
-                # If no profile exists for this dataset, find the most recently updated profile in the database
                 if not row:
                     row = conn.execute(
-                        "SELECT values_json,version,updated_at FROM qc_profiles ORDER BY updated_at DESC LIMIT 1"
+                        "SELECT values_json,version,updated_at FROM qc_profiles WHERE dataset_id != ? ORDER BY updated_at DESC LIMIT 1",
+                        (QC_GLOBAL_DATASET_ID,),
                     ).fetchone()
-                
+                    if row:
+                        try:
+                            values = sanitize_qc_values(json.loads(row["values_json"] or "{}"))
+                        except Exception:
+                            values = default_qc_values()
+                        return {
+                            "file": "GLOBAL",
+                            "version": 0,
+                            "updated_at": row["updated_at"] or "",
+                            "values": values,
+                        }
                 if not row:
                     return {
-                        "file": ds["name"],
+                        "file": "GLOBAL",
                         "version": 0,
                         "updated_at": "",
                         "values": default_qc_values(),
@@ -1161,7 +1210,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 except Exception:
                     values = default_qc_values()
                 return {
-                    "file": ds["name"],
+                    "file": "GLOBAL",
                     "version": int(row["version"] or 0),
                     "updated_at": row["updated_at"] or "",
                     "values": values,
@@ -1178,17 +1227,16 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         with self.lock:
             self._snapshot_db("before_qc_save")
             with self._conn() as conn:
-                ds = self._resolve_dataset(conn, dataset_name)
                 row = conn.execute(
                     "SELECT version FROM qc_profiles WHERE dataset_id=?",
-                    (ds["id"],),
+                    (QC_GLOBAL_DATASET_ID,),
                 ).fetchone()
                 ts = now_str()
                 if row:
                     curr_ver = int(row["version"] or 0)
                     if expected_version is not None and curr_ver != expected_version:
                         raise ConcurrencyError(
-                            f"Version conflict. Current QC version is {curr_ver}, expected {expected_version}."
+                            f"Version conflict. Current Global QC version is {curr_ver}, expected {expected_version}."
                         )
                     new_ver = curr_ver + 1
                     conn.execute(
@@ -1197,12 +1245,12 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                         SET values_json=?, version=?, updated_at=?
                         WHERE dataset_id=?
                         """,
-                        (json.dumps(clean_values, ensure_ascii=False), new_ver, ts, ds["id"]),
+                        (json.dumps(clean_values, ensure_ascii=False), new_ver, ts, QC_GLOBAL_DATASET_ID),
                     )
                 else:
                     if expected_version not in (None, 0):
                         raise ConcurrencyError(
-                            f"Version conflict. Current QC version is 0, expected {expected_version}."
+                            f"Version conflict. No global QC profile exists, expected {expected_version}."
                         )
                     new_ver = 1
                     conn.execute(
@@ -1210,18 +1258,17 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                         INSERT INTO qc_profiles(dataset_id,values_json,version,updated_at)
                         VALUES(?,?,?,?)
                         """,
-                        (ds["id"], json.dumps(clean_values, ensure_ascii=False), new_ver, ts),
+                        (QC_GLOBAL_DATASET_ID, json.dumps(clean_values, ensure_ascii=False), new_ver, ts),
                     )
                 self._audit(
                     conn,
-                    action="qc.save",
+                    action="qc.save.global",
                     username=actor,
                     entity="qc_profile",
-                    entity_id=str(ds["id"]),
-                    dataset_id=ds["id"],
-                    details={"file": ds["name"], "version": new_ver},
+                    entity_id="GLOBAL",
+                    details={"version": new_ver},
                 )
-                return {"file": ds["name"], "version": new_ver, "updated_at": ts, "values": clean_values}
+                return {"file": "GLOBAL", "version": new_ver, "updated_at": ts, "values": clean_values}
 
     def save_qc_humidity(
         self,
@@ -1239,17 +1286,16 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         with self.lock:
             self._snapshot_db("before_qc_humidity_save")
             with self._conn() as conn:
-                ds = self._resolve_dataset(conn, dataset_name)
                 row = conn.execute(
                     "SELECT values_json,version FROM qc_profiles WHERE dataset_id=?",
-                    (ds["id"],),
+                    (QC_GLOBAL_DATASET_ID,),
                 ).fetchone()
                 ts = now_str()
                 if row:
                     curr_ver = int(row["version"] or 0)
                     if expected_version is not None and curr_ver != expected_version:
                         raise ConcurrencyError(
-                            f"Version conflict. Current QC version is {curr_ver}, expected {expected_version}."
+                            f"Version conflict. Current Global QC version is {curr_ver}, expected {expected_version}."
                         )
                     raw = json.loads(row["values_json"] or "{}")
                     try:
@@ -1265,14 +1311,24 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                         SET values_json=?, version=?, updated_at=?
                         WHERE dataset_id=?
                         """,
-                        (json.dumps(clean_values, ensure_ascii=False), new_ver, ts, ds["id"]),
+                        (json.dumps(clean_values, ensure_ascii=False), new_ver, ts, QC_GLOBAL_DATASET_ID),
                     )
                 else:
                     if expected_version not in (None, 0):
                         raise ConcurrencyError(
-                            f"Version conflict. Current QC version is 0, expected {expected_version}."
+                            f"Version conflict. No global QC profile exists, expected {expected_version}."
                         )
-                    clean_values = default_qc_values()
+                    template_row = conn.execute(
+                        "SELECT values_json FROM qc_profiles WHERE dataset_id != ? ORDER BY updated_at DESC LIMIT 1",
+                        (QC_GLOBAL_DATASET_ID,),
+                    ).fetchone()
+                    if template_row:
+                        try:
+                            clean_values = sanitize_qc_values(json.loads(template_row["values_json"] or "{}"))
+                        except Exception:
+                            clean_values = default_qc_values()
+                    else:
+                        clean_values = default_qc_values()
                     for agg in QC_AGGREGATES:
                         clean_values[agg]["humedad"] = humidity_by_agg[agg]
                     new_ver = 1
@@ -1281,18 +1337,17 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                         INSERT INTO qc_profiles(dataset_id,values_json,version,updated_at)
                         VALUES(?,?,?,?)
                         """,
-                        (ds["id"], json.dumps(clean_values, ensure_ascii=False), new_ver, ts),
+                        (QC_GLOBAL_DATASET_ID, json.dumps(clean_values, ensure_ascii=False), new_ver, ts),
                     )
                 self._audit(
                     conn,
-                    action="qc.humidity.save",
+                    action="qc.humidity.save.global",
                     username=actor,
                     entity="qc_profile",
-                    entity_id=str(ds["id"]),
-                    dataset_id=ds["id"],
-                    details={"file": ds["name"], "version": new_ver},
+                    entity_id="GLOBAL",
+                    details={"version": new_ver},
                 )
-                return {"file": ds["name"], "version": new_ver, "updated_at": ts, "values": clean_values}
+                return {"file": "GLOBAL", "version": new_ver, "updated_at": ts, "values": clean_values}
 
     def load_doser_params(self, dataset_name: str | None = None) -> dict:
         with self.lock:
@@ -1611,7 +1666,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 sql = f"""
                     SELECT r.id, r.remision_no, r.formula, r.fc, r.edad, r.tipo, r.tma, r.rev, r.comp, r.dosificacion_m3,
                            r.cliente, r.ubicacion, r.peso_receta, r.peso_teorico_total, r.peso_real_total, r.status, r.created_at, r.created_by,
-                           d.name as source_file
+                           r.snapshot_json, d.name as source_file
                     FROM remisiones r
                     JOIN datasets d ON r.dataset_id = d.id
                     {where_clause}
@@ -1646,6 +1701,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                             "created_at": r["created_at"] or "",
                             "created_by": r["created_by"] or "",
                             "source_file": r["source_file"] or "",
+                            "snapshot": json.loads(r["snapshot_json"] or "{}") if r["snapshot_json"] else {},
                         }
                         for r in rows
                     ],
@@ -1991,7 +2047,10 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 row = conn.execute("SELECT id FROM datasets WHERE name=? AND deleted_at IS NULL", (clean,)).fetchone()
                 if not row:
                     raise FileNotFoundError(f"Dataset not found: {clean}")
-                count = conn.execute("SELECT COUNT(*) c FROM datasets WHERE deleted_at IS NULL").fetchone()["c"]
+                count = conn.execute(
+                    "SELECT COUNT(*) c FROM datasets WHERE deleted_at IS NULL AND id != ?",
+                    (QC_GLOBAL_DATASET_ID,),
+                ).fetchone()["c"]
                 if count <= 1:
                     raise ValueError("No puedes eliminar el unico dataset disponible.")
                 did = int(row["id"])
@@ -2014,7 +2073,10 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 )
                 aid = self._active_id(conn)
                 if aid == did or aid is None:
-                    nxt = conn.execute("SELECT id,name FROM datasets WHERE deleted_at IS NULL ORDER BY id LIMIT 1").fetchone()
+                    nxt = conn.execute(
+                        "SELECT id,name FROM datasets WHERE deleted_at IS NULL AND id != ? ORDER BY id LIMIT 1",
+                        (QC_GLOBAL_DATASET_ID,),
+                    ).fetchone()
                     self._set_active(conn, int(nxt["id"]))
                     active_name = nxt["name"]
                 else:
@@ -2078,8 +2140,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
 
     def _dup_by_hash(self, conn: sqlite3.Connection, hash_value: str):
         return conn.execute(
-            "SELECT id,name FROM datasets WHERE content_hash=? AND deleted_at IS NULL LIMIT 1",
-            (hash_value,),
+            "SELECT id,name FROM datasets WHERE content_hash=? AND deleted_at IS NULL AND id != ? LIMIT 1",
+            (hash_value, QC_GLOBAL_DATASET_ID),
         ).fetchone()
 
     def _snapshot_db(self, reason: str):
@@ -2556,12 +2618,17 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         with self.lock:
             ts = now_str()
             with self._conn() as conn:
-                ds = self._resolve_dataset(conn, dataset_name)
                 exists = conn.execute(
-                    "SELECT snapshot_json, cliente, ubicacion FROM remisiones WHERE id=? AND dataset_id=?", (rid, ds["id"])
+                    "SELECT dataset_id, snapshot_json, cliente, ubicacion FROM remisiones WHERE id=?",
+                    (rid,),
                 ).fetchone()
                 if not exists:
                     raise FileNotFoundError("Remision no encontrada.")
+                target_dataset_id = int(exists["dataset_id"])
+                try:
+                    ds = self._resolve_dataset(conn, dataset_name)
+                except Exception:
+                    ds = {"id": target_dataset_id, "name": dataset_name or "Global"}
 
                 formula = str(data.get("formula", "")).strip()
                 m3 = float(data.get("dosificacion_m3", 0))
@@ -2579,7 +2646,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     params.append(created_at)
                 
                 sql += " WHERE id=? AND dataset_id=?"
-                params.extend([rid, ds["id"]])
+                params.extend([rid, target_dataset_id])
                 
                 conn.execute(sql, params)
 
@@ -2612,7 +2679,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     username=actor,
                     entity="remision",
                     entity_id=str(rid),
-                    dataset_id=ds["id"],
+                    dataset_id=target_dataset_id,
                     details={
                         "file": ds["name"],
                         "remision_no": remision_no,

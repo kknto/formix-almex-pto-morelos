@@ -348,7 +348,7 @@ function renderQcCylinders() {
                 <td style="text-align:center; font-weight:600; color:${isPending ? 'var(--text-muted)' : 'var(--color-success)'};">${isPending ? '<span style="opacity:0.5">-</span>' : cyl.strength_kgcm2 + ' kg/cm²'}</td>
                 <td style="text-align:center;">${perfHtml}</td>
                 <td style="text-align:center;">
-                    ${cyl.image_path ? `<img src="${cyl.image_path}" class="qc-thumbnail" onclick="window.open('${cyl.image_path}')" title="Ver Evidencia">` : '<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Sin foto</span>'}
+                    ${(cyl.has_image_data || cyl.image_path) ? `<img src="/api/qclab/cylinders/${cyl.id}/image" class="qc-thumbnail" onclick="window.open('/api/qclab/cylinders/${cyl.id}/image')" title="Ver Evidencia">` : '<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Sin foto</span>'}
                 </td>
                 <td style="text-align:center; display:flex; justify-content:center; gap:8px;">
                     ${isPending
@@ -579,6 +579,7 @@ function setupListeners() {
             formData.append("area_cm2", document.getElementById("testAreaCm2").value || "");
             formData.append("correction_factor", document.getElementById("testCorrectionFactor").value || "1");
             formData.append("notes", document.getElementById("testNotes").value);
+            formData.append("failure_type", document.getElementById("testFailureType").value || "");
             formData.append("break_date", (window.AppGlobals && window.AppGlobals.getTodayPuertoMorelos) ? window.AppGlobals.getTodayPuertoMorelos() : new Date().toISOString().split("T")[0]);
             formData.append("status", "ensayado");
 
@@ -646,6 +647,11 @@ window.openTestModal = function (cylinderId, sampleCode, isEdit = false) {
             document.getElementById("testAreaCm2").value = cyl.area_cm2 || "";
             document.getElementById("testCorrectionFactor").value = cyl.correction_factor || "1.00";
             document.getElementById("testNotes").value = cyl.notes || "";
+            document.getElementById("testFailureType").value = cyl.failure_type || "";
+            if ((cyl.has_image_data || cyl.image_path) && compressPreviewImg) {
+                compressPreviewImg.src = `/api/qclab/cylinders/${cylinderId}/image`;
+                compressPreviewImg.style.display = "block";
+            }
             updateCylinderCalcPreview();
         }
         if (submitBtn) submitBtn.textContent = "Actualizar y Subir";

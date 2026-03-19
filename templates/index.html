@@ -999,6 +999,19 @@
         <form id="testCylinderForm">
           <input type="hidden" id="testAreaCm2">
           <div class="form-group" style="margin-bottom: 1rem;">
+            <label for="testFailureType" style="color:var(--text-soft); font-size:0.85rem;">Tipo de Falla</label>
+            <select id="testFailureType" class="ui-dialog__input">
+              <option value="">Seleccione tipo...</option>
+              <option value="Tipo 1">Tipo 1: Conos razonablemente bien formados</option>
+              <option value="Tipo 2">Tipo 2: Cono bien formado en un extremo</option>
+              <option value="Tipo 3">Tipo 3: Cono columnar</option>
+              <option value="Tipo 4">Tipo 4: Fractura diagonal</option>
+              <option value="Tipo 5">Tipo 5: Fracturas laterales</option>
+              <option value="Tipo 6">Tipo 6: Similar al tipo 5</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1rem;">
             <label for="testStrength" style="color:var(--text-soft); font-size:0.85rem;">Resistencia a la compresión
               obtenida (kg/cm²)</label>
             <input type="number" id="testStrength" class="ui-dialog__input" step="0.1" required>
