@@ -387,14 +387,6 @@
           </label>
           <button id="dSaveRemisionBtn" class="btn btn--primary">Guardar Remision</button>
         </div>
-        <div class="remision-filter-container"
-          style="display:flex; align-items:center; gap:10px; margin: 20px 0 10px 0; background: var(--bg-soft); padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-color); width: fit-content;">
-          <label for="dRemisionFilterDate"
-            style="font-size:0.9rem; color:var(--text-main); font-weight: 600;">Filtrar Remisión por fecha:</label>
-          <input id="dRemisionFilterDate" type="date" class="form-input"
-            style="padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 5px;">
-          <button id="dRefreshRemisionBtn" class="btn btn--muted" style="padding: 5px 15px;">Actualizar</button>
-        </div>
         <div id="dRemisionMeta" class="meta"></div>
         <div class="result-shell">
           <table id="doserQueryTable">
@@ -413,6 +405,14 @@
             </thead>
             <tbody id="doserQueryBody"></tbody>
           </table>
+        </div>
+        <div class="remision-filter-container"
+          style="display:flex; align-items:center; gap:10px; margin: 20px 0 10px 0; background: var(--bg-soft); padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-color); width: fit-content;">
+          <label for="dRemisionFilterDate"
+            style="font-size:0.9rem; color:var(--text-main); font-weight: 600;">Filtrar Remisión por fecha:</label>
+          <input id="dRemisionFilterDate" type="date" class="form-input"
+            style="padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 5px;">
+          <button id="dRefreshRemisionBtn" class="btn btn--muted" style="padding: 5px 15px;">Actualizar</button>
         </div>
         <div class="result-shell">
           <table id="doserRemisionTable">
