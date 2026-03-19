@@ -350,8 +350,12 @@ function renderQcCylinders() {
                 <td style="text-align:center;">
                     ${cyl.image_path ? `<img src="${cyl.image_path}" class="qc-thumbnail" onclick="window.open('${cyl.image_path}')" title="Ver Evidencia">` : '<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Sin foto</span>'}
                 </td>
-                <td style="text-align:center; display:flex; justify-content:center;">
-                    ${isPending ? `<button class="btn btn--primary btn--small" onclick="window.openTestModal(${cyl.id}, '${sample.sample_code}')" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 12px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Ensaye</button>` : `<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Completado</span>`}
+                <td style="text-align:center; display:flex; justify-content:center; gap:8px;">
+                    ${isPending
+                        ? `<button class="btn btn--primary btn--small" onclick="window.openTestModal(${cyl.id}, '${sample.sample_code}')" style="display:inline-flex; align-items:center; gap:4px; padding: 4px 12px;"><svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg> Ensaye</button>`
+                        : (canEditDelete
+                            ? `<button class="btn btn--muted btn--small" onclick="window.openTestModal(${cyl.id}, '${sample.sample_code}', true)" title="Editar Ensaye" style="padding: 4px 10px; color: var(--brand);">Editar</button>`
+                            : `<span style="color:var(--text-muted); font-size:0.85em; opacity:0.6;">Completado</span>`)}
                 </td>
             `;
             childRows.push(tr);
@@ -617,16 +621,38 @@ function setupListeners() {
     });
 }
 
-window.openTestModal = function (cylinderId, sampleCode) {
+window.openTestModal = function (cylinderId, sampleCode, isEdit = false) {
     const testCylinderModal = document.getElementById("testCylinderModal");
     const testCylinderForm = document.getElementById("testCylinderForm");
     const compressPreviewImg = document.getElementById("compressPreviewImg");
+    const submitBtn = testCylinderForm ? testCylinderForm.closest(".ui-dialog")?.querySelector('button[type="submit"][form="testCylinderForm"]') : null;
 
     currentTestCylinderId = cylinderId;
-    document.getElementById("testModalTitle").innerText = `Ensaye Cilindro: ${sampleCode}`;
+    document.getElementById("testModalTitle").innerText = isEdit ? `Editar Ensaye: ${sampleCode}` : `Ensaye Cilindro: ${sampleCode}`;
     if (testCylinderForm) testCylinderForm.reset();
     resetTestCylinderCalculation();
-    if (compressPreviewImg) compressPreviewImg.style.display = "none";
+    currentCompressedFile = null;
+    if (compressPreviewImg) {
+        compressPreviewImg.style.display = "none";
+        compressPreviewImg.src = "";
+    }
+
+    if (isEdit) {
+        const cyl = stateQcCylinders.find((item) => item.id === cylinderId);
+        if (cyl) {
+            document.getElementById("testStrength").value = cyl.strength_kgcm2 || "";
+            document.getElementById("testLoadTotal").value = cyl.load_total || "";
+            document.getElementById("testDiameterCm").value = cyl.diameter_cm || "";
+            document.getElementById("testAreaCm2").value = cyl.area_cm2 || "";
+            document.getElementById("testCorrectionFactor").value = cyl.correction_factor || "1.00";
+            document.getElementById("testNotes").value = cyl.notes || "";
+            updateCylinderCalcPreview();
+        }
+        if (submitBtn) submitBtn.textContent = "Actualizar y Subir";
+    } else if (submitBtn) {
+        submitBtn.textContent = "Registrar y Subir";
+    }
+
     if (testCylinderModal) {
         testCylinderModal.classList.remove("is-hidden");
         testCylinderModal.classList.add("is-active");
@@ -635,11 +661,17 @@ window.openTestModal = function (cylinderId, sampleCode) {
 
 window.closeTestModal = function () {
     const testCylinderModal = document.getElementById("testCylinderModal");
+    const compressPreviewImg = document.getElementById("compressPreviewImg");
     if (testCylinderModal) {
         testCylinderModal.classList.add("is-hidden");
         testCylinderModal.classList.remove("is-active");
     }
     currentTestCylinderId = null;
+    currentCompressedFile = null;
+    if (compressPreviewImg) {
+        compressPreviewImg.style.display = "none";
+        compressPreviewImg.src = "";
+    }
     resetTestCylinderCalculation();
 }
 

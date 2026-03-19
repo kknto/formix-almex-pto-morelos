@@ -376,22 +376,24 @@
           <button id="dExportReportBtn" class="btn btn--secondary">Exportar Reporte Dosificador</button>
         </div>
         <div class="doser-remision-row">
-          <label>No. Remision
-            <input id="dRemisionNo" type="text" maxlength="40" placeholder="Ej. R-000123">
-          </label>
           <label>Cliente
             <input id="dCliente" type="text" maxlength="180" placeholder="Nombre del cliente">
           </label>
-          <label>Ubicacion
-            <input id="dUbicacion" type="text" maxlength="180" placeholder="Obra / ubicacion">
+          <label>Ubicación
+            <input id="dUbicacion" type="text" maxlength="180" placeholder="Obra / ubicación">
+          </label>
+          <label>No. Remision
+            <input id="dRemisionNo" type="text" maxlength="40" placeholder="Ej. R-000123">
           </label>
           <button id="dSaveRemisionBtn" class="btn btn--primary">Guardar Remision</button>
-          <div style="display:inline-flex; align-items:center; gap:8px; margin-left: auto;">
-            <label for="dRemisionFilterDate" style="font-size:0.85rem; color:var(--text-soft);">Filtrar por
-              fecha:</label>
-            <input id="dRemisionFilterDate" type="date" class="form-input" style="padding: 4px 8px;">
-            <button id="dRefreshRemisionBtn" class="btn btn--muted">Actualizar</button>
-          </div>
+        </div>
+        <div class="remision-filter-container"
+          style="display:flex; align-items:center; gap:10px; margin: 20px 0 10px 0; background: var(--bg-soft); padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-color); width: fit-content;">
+          <label for="dRemisionFilterDate"
+            style="font-size:0.9rem; color:var(--text-main); font-weight: 600;">Filtrar Remisión por fecha:</label>
+          <input id="dRemisionFilterDate" type="date" class="form-input"
+            style="padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 5px;">
+          <button id="dRefreshRemisionBtn" class="btn btn--muted" style="padding: 5px 15px;">Actualizar</button>
         </div>
         <div id="dRemisionMeta" class="meta"></div>
         <div class="result-shell">
@@ -417,12 +419,12 @@
             <thead>
               <tr>
                 <th>Remision</th>
-                <th>Cliente</th>
-                <th>Ubicacion</th>
                 <th>Formula</th>
                 <th>f'c</th>
                 <th>T.M.A.</th>
                 <th>m³</th>
+                <th>Cliente</th>
+                <th>Ubicacion</th>
                 <th>Peso Real</th>
                 <th>Fecha</th>
                 <th>Archivo</th>
@@ -805,9 +807,13 @@
     </section>
 
     <section id="laboratorioView" class="view-pane is-hidden">
-      <header class="panel-header">
-        <h2>Laboratorio (Control de Calidad)</h2>
+      <header class="panel-header" style="display: flex; justify-content: space-between; align-items: start;">
+        <div>
+          <h2>Laboratorio (Control de Calidad)</h2>
         <p>Registro de muestras de concreto y control de ensayes a compresión de cilindros.</p>
+        </div>
+        <button id="btnShowTrends" class="btn btn--secondary" style="margin-top: 8px;"
+          onclick="window.open('/api/qclab/reports/trends', '_blank')">Analisis de Tendencias</button>
       </header>
 
       <div id="qcDashboard" class="status-grid" style="margin-bottom: 16px;"></div>

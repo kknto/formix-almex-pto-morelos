@@ -1,6 +1,6 @@
 import os
 import uuid
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 
 def register_qc_lab_routes(app, store, login_required, require_roles=None, allowed_roles=None):
     """
@@ -95,5 +95,45 @@ def register_qc_lab_routes(app, store, login_required, require_roles=None, allow
             return jsonify({"ok": True, "sample": updated_sample})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
+
+    @qc_bp.route("/stats/trends", methods=["GET"])
+    @route_guard
+    def api_get_qc_trends():
+        start_date = request.args.get("start_date", "").strip()
+        end_date = request.args.get("end_date", "").strip()
+
+        try:
+            with store._conn() as conn:
+                sql = """
+                    SELECT c.id, c.sample_id, c.target_age_days, c.expected_test_date, c.status,
+                           c.strength_kgcm2, c.break_date,
+                           s.sample_code, s.fc_expected, s.remision_id, s.cast_date,
+                           r.formula
+                    FROM qc_cylinders c
+                    JOIN qc_samples s ON c.sample_id = s.id
+                    LEFT JOIN remisiones r ON s.remision_id = r.remision_no
+                    WHERE c.status = 'ensayado'
+                """
+                params = []
+
+                if start_date:
+                    sql += " AND s.cast_date >= ?"
+                    params.append(f"{start_date} 00:00:00")
+                if end_date:
+                    sql += " AND s.cast_date <= ?"
+                    params.append(f"{end_date} 23:59:59")
+
+                sql += " ORDER BY s.cast_date DESC, c.target_age_days ASC LIMIT 500"
+                cur = conn.execute(sql, tuple(params))
+                tested = [dict(row) for row in cur.fetchall()]
+
+            return jsonify({"ok": True, "data": tested})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @qc_bp.route("/reports/trends", methods=["GET"])
+    @route_guard
+    def api_get_qc_trends_page():
+        return render_template("qc_trends_report.html")
 
     app.register_blueprint(qc_bp)

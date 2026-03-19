@@ -688,6 +688,7 @@ function switchView(view) {
   if (isDoser) {
     renderDosificador();
     loadRemisiones();
+    loadGlobalRecipes();
   }
   if (isFleet) loadFleetData();
   if (isInv && typeof window.loadInventoryData === "function") window.loadInventoryData();
@@ -2541,6 +2542,9 @@ function fillDoserSelectorsGlobal() {
 }
 
 function fillDoserSelectors() {
+  if (state.doser.globalRecipes && state.doser.globalRecipes.length > 0) {
+    return fillDoserSelectorsGlobal();
+  }
   fillSelect(doserFields.family, getUniqueValues("family"));
   fillSelect(doserFields.fc, getUniqueValues("fc"));
   fillSelect(doserFields.edad, getUniqueValues("edad"));
@@ -2636,15 +2640,18 @@ function renderRemisionList() {
     return;
   }
   items.forEach((item) => {
+    const snap = item.snapshot || {};
+    const cliente = snap.cliente || item.cliente || "-";
+    const ubicacion = snap.ubicacion || item.ubicacion || "-";
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(item.remision_no || "-")}</td>
-      <td>${escapeHtml(item.cliente || "-")}</td>
-      <td>${escapeHtml(item.ubicacion || "-")}</td>
       <td>${escapeHtml(item.formula || "-")}</td>
       <td>${escapeHtml(item.fc || "-")}</td>
       <td>${escapeHtml(item.tma || "-")}</td>
       <td>${formatNum(item.dosificacion_m3 || 0)}</td>
+      <td>${escapeHtml(cliente)}</td>
+      <td>${escapeHtml(ubicacion)}</td>
       <td>${formatNum(item.peso_real_total || 0)}</td>
       <td>${escapeHtml(item.created_at || "-")}</td>
       <td>${escapeHtml(item.source_file || "-")}</td>
@@ -2687,11 +2694,12 @@ window.openEditRemisionModal = function (item) {
   if (!item || !item.id) return;
   const modal = document.getElementById("editRemisionModal");
   if (!modal) return;
+  const snap = item.snapshot || {};
   document.getElementById("editRemisionId").value = item.id;
   document.getElementById("erNo").value = item.remision_no || "";
   document.getElementById("erFormula").value = item.formula || "";
-  document.getElementById("erCliente").value = item.cliente || "";
-  document.getElementById("erUbicacion").value = item.ubicacion || "";
+  document.getElementById("erCliente").value = snap.cliente || item.cliente || "";
+  document.getElementById("erUbicacion").value = snap.ubicacion || item.ubicacion || "";
   document.getElementById("erM3").value = item.dosificacion_m3 || 0;
   document.getElementById("erWeight").value = item.peso_real_total || 0;
 
@@ -2843,7 +2851,7 @@ function onQcFieldChange(aggName, field, rawValue, source = "editor") {
   state.doser.quality[aggName][field] = toNumber(rawValue);
   setQcDirty(true);
   syncQcStamps();
-  if (state.view === "dosificador") renderDosificador();
+  if (state.view === "dosificador") renderDosificador({ skipQc: source === "dosificador" });
   if (state.selectedQueryRow !== null) renderRecipeAndCosts(state.rows[state.selectedQueryRow]);
 }
 
@@ -2895,7 +2903,7 @@ function renderQcTable() {
       input.disabled = !editable;
       if (!editable) input.classList.add("qc-input--readonly");
       if (editable) {
-        input.addEventListener("change", () => onQcFieldChange(aggName, field, input.value, "dosificador"));
+        input.addEventListener("input", () => onQcFieldChange(aggName, field, input.value, "dosificador"));
       }
       td.appendChild(input);
       tr.appendChild(td);
@@ -2916,8 +2924,8 @@ function computeTheoreticalLoads(recipeItems) {
   }));
 }
 
-function renderDosificador() {
-  renderQcTable();
+function renderDosificador(options = {}) {
+  if (!options.skipQc) renderQcTable();
   renderRemisionList();
   state.doser.tolerances.cemento = toNumber(tolCementoInput.value || "1");
   state.doser.tolerances.agregados = toNumber(tolAgregadosInput.value || "3");
@@ -3347,7 +3355,8 @@ async function saveQcHumidityData() {
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       if (response.status === 409) {
-        throw new Error("Conflicto de version en humedad. Recarga y vuelve a intentar.");
+        await loadQcData(state.file);
+        throw new Error(payload.error || "Conflicto de versión. Los datos fueron recargados; verifica e intenta de nuevo.");
       }
       throw new Error(payload.error || "No se pudo guardar la humedad.");
     }
@@ -4141,4 +4150,3 @@ window.AppGlobals = {
   getTodayPuertoMorelos,
   getFullTodayPuertoMorelos
 };
-

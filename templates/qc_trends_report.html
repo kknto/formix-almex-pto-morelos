@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analisis de Tendencias de Calidad | FORMIX Puerto Morelos</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/qc_lab.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f1f5f9;
+      color: #0f172a;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+
+    .qc-trend-container {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #dbe4ee;
+    }
+
+    .report-title h1 {
+      margin: 0 0 4px;
+      color: #0d3762;
+      font-size: 1.8rem;
+    }
+
+    .report-title p {
+      margin: 0;
+      color: #475569;
+    }
+
+    .report-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .report-block {
+      background: #ffffff;
+      border: 1px solid #dbe4ee;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+
+    .report-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: end;
+      padding: 18px 20px;
+      margin-bottom: 24px;
+    }
+
+    .report-filters label {
+      display: block;
+      margin-bottom: 6px;
+      color: #475569;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .report-filters input {
+      min-width: 170px;
+    }
+
+    .report-status {
+      margin-left: auto;
+      color: #475569;
+      font-size: 0.95rem;
+      font-style: italic;
+    }
+
+    .report-table-wrap {
+      overflow-x: auto;
+    }
+
+    .report-table-title {
+      margin: 0 0 14px;
+      font-size: 1.15rem;
+      color: #0d3762;
+    }
+
+    .report-section {
+      padding: 20px;
+      margin-top: 24px;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 16px;
+      }
+
+      .report-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .report-status {
+        margin-left: 0;
+      }
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background: #ffffff;
+      }
+
+      .report-actions {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="qc-trend-container">
+    <header class="report-header">
+      <div class="report-title">
+        <h1>Analisis de Tendencias de Calidad</h1>
+        <p>FORMIX Puerto Morelos | Historial de cilindros ensayados</p>
+      </div>
+      <div class="report-actions">
+        <button class="btn btn--muted" type="button" onclick="window.close()">Cerrar</button>
+        <button class="btn btn--primary" type="button" onclick="window.print()">Imprimir</button>
+      </div>
+    </header>
+
+    <section class="report-block report-filters">
+      <div>
+        <label for="qcTrendStart">Desde (fecha de colado)</label>
+        <input type="date" id="qcTrendStart" class="form-input">
+      </div>
+      <div>
+        <label for="qcTrendEnd">Hasta</label>
+        <input type="date" id="qcTrendEnd" class="form-input">
+      </div>
+      <button class="btn btn--primary" type="button" onclick="loadData()">Actualizar analisis</button>
+      <div id="qcTrendStatus" class="report-status"></div>
+    </section>
+
+    <section class="qc-trend-grid">
+      <article class="qc-trend-card">
+        <h3>Dispersion: edad vs porcentaje de logro</h3>
+        <div style="height: 400px; position: relative;">
+          <canvas id="qcScatterChart"></canvas>
+        </div>
+        <p class="qc-chart-tip">Ayuda a detectar muestras fuera de comportamiento esperado por edad.</p>
+      </article>
+      <article class="qc-trend-card">
+        <h3>Tendencia de resistencia promedio</h3>
+        <div style="height: 400px; position: relative;">
+          <canvas id="qcTrendLineChart"></canvas>
+        </div>
+        <p class="qc-chart-tip">Promedios por fecha de colado para 3, 7 y 28 dias.</p>
+      </article>
+    </section>
+
+    <section class="report-block report-section">
+      <h3 class="report-table-title">Tabla maestra de resultados</h3>
+      <div id="qcTrendTableContainer" class="report-table-wrap">
+        <p style="text-align:center; padding:30px; color:#475569;">Cargando datos historicos...</p>
+      </div>
+    </section>
+
+    <section class="qc-anomalies-section report-section">
+      <h3>Alertas de variabilidad extrema</h3>
+      <div class="report-table-wrap">
+        <table class="qc-main-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Muestra</th>
+              <th>Edad</th>
+              <th>Resistencia</th>
+              <th>% Logro</th>
+              <th>Aviso</th>
+            </tr>
+          </thead>
+          <tbody id="qcAnomaliesBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let scatterChart = null;
+    let trendLineChart = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const startInput = document.getElementById("qcTrendStart");
+      const endInput = document.getElementById("qcTrendEnd");
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(endDate.getDate() - 30);
+
+      startInput.value = startDate.toISOString().split("T")[0];
+      endInput.value = endDate.toISOString().split("T")[0];
+
+      loadData();
+    });
+
+    async function loadData() {
+      const statusEl = document.getElementById("qcTrendStatus");
+      const startVal = document.getElementById("qcTrendStart").value;
+      const endVal = document.getElementById("qcTrendEnd").value;
+
+      statusEl.textContent = "Cargando...";
+
+      try {
+        const params = new URLSearchParams();
+        if (startVal) params.append("start_date", startVal);
+        if (endVal) params.append("end_date", endVal);
+
+        const response = await fetch(`/api/qclab/stats/trends?${params.toString()}`, {
+          credentials: "same-origin",
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "No se pudo cargar el historial.");
+        }
+
+        const data = Array.isArray(payload.data) ? payload.data : [];
+        statusEl.textContent = `Mostrando ${data.length} registros ensayados.`;
+
+        renderCharts(data);
+        renderTable(data);
+        renderAnomalies(data);
+      } catch (error) {
+        statusEl.textContent = `Error: ${error.message}`;
+      }
+    }
+
+    function renderCharts(data) {
+      if (scatterChart) scatterChart.destroy();
+      if (trendLineChart) trendLineChart.destroy();
+
+      const scatterPoints = data.map((item) => {
+        const strength = parseFloat(item.strength_kgcm2 || 0);
+        const design = parseFloat(item.fc_expected || 250);
+        const pct = design > 0 ? (strength / design) * 100 : 0;
+        return {
+          x: parseInt(item.target_age_days || 0, 10),
+          y: Number(pct.toFixed(2)),
+          label: item.sample_code || "-",
+        };
+      });
+
+      scatterChart = new Chart(document.getElementById("qcScatterChart"), {
+        type: "scatter",
+        data: {
+          datasets: [
+            {
+              label: "Cilindros ensayados",
+              data: scatterPoints,
+              backgroundColor: "#2563eb",
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              min: 0,
+              title: { display: true, text: "Edad (dias)" },
+            },
+            y: {
+              min: 0,
+              title: { display: true, text: "% Logro" },
+            },
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `Muestra: ${ctx.raw.label} | ${ctx.raw.y}%`,
+              },
+            },
+          },
+        },
+      });
+
+      const grouped = {};
+      data.forEach((item) => {
+        const castDate = String(item.cast_date || "").split(" ")[0];
+        const age = parseInt(item.target_age_days || 0, 10);
+        const strength = parseFloat(item.strength_kgcm2 || 0);
+        const design = parseFloat(item.fc_expected || 0);
+        const pct = design > 0 ? (strength / design) * 100 : 0;
+        if (!castDate) return;
+        if (!grouped[castDate]) grouped[castDate] = {};
+        if (!grouped[castDate][age]) grouped[castDate][age] = [];
+        grouped[castDate][age].push(pct);
+      });
+
+      const dates = Object.keys(grouped).sort();
+      const ages = [3, 7, 28];
+      const colors = {
+        3: "#f59e0b",
+        7: "#2563eb",
+        28: "#059669",
+      };
+
+      trendLineChart = new Chart(document.getElementById("qcTrendLineChart"), {
+        type: "line",
+        data: {
+          labels: dates,
+          datasets: ages.map((age) => ({
+            label: `${age} dias`,
+            data: dates.map((date) => {
+              const values = grouped[date][age] || [];
+              if (!values.length) return null;
+              return values.reduce((acc, value) => acc + value, 0) / values.length;
+            }),
+            borderColor: colors[age],
+            tension: 0.25,
+            spanGaps: true,
+          })),
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              min: 0,
+              max: 200,
+              title: { display: true, text: "% Logro promedio" },
+            },
+          },
+        },
+      });
+    }
+
+    function renderTable(data) {
+      const container = document.getElementById("qcTrendTableContainer");
+      const grouped = {};
+
+      data.forEach((item) => {
+        const sampleCode = item.sample_code || "-";
+        if (!grouped[sampleCode]) {
+          grouped[sampleCode] = {
+            sample_code: sampleCode,
+            remision_id: item.remision_id || "-",
+            cast_date: item.cast_date || "",
+            fc_expected: item.fc_expected || "",
+            cylinders: {},
+          };
+        }
+        grouped[sampleCode].cylinders[item.target_age_days] = item;
+      });
+
+      const rows = Object.values(grouped).sort((a, b) => String(b.cast_date).localeCompare(String(a.cast_date)));
+      if (!rows.length) {
+        container.innerHTML = "<p style='text-align:center; padding:30px; color:#475569;'>Sin resultados para el periodo seleccionado.</p>";
+        return;
+      }
+
+      const getAgeCell = (row, age) => {
+        const cylinder = row.cylinders[age];
+        if (!cylinder) return "<td class='col-center'>-</td>";
+        const strength = parseFloat(cylinder.strength_kgcm2 || 0);
+        const design = parseFloat(row.fc_expected || 0);
+        const pct = design > 0 ? (strength / design) * 100 : 0;
+        const cls = pct < 75 ? "val-pct-low" : (pct > 120 ? "val-pct-high" : "val-pct-ok");
+        return `<td class="col-center"><div class="val-strength">${strength.toFixed(1)}</div><div class="val-pct ${cls}">${pct.toFixed(1)}%</div></td>`;
+      };
+
+      let html = `
+        <table class="qc-main-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Muestra</th>
+              <th>Remision</th>
+              <th>f'c Esp.</th>
+              <th>3d</th>
+              <th>7d</th>
+              <th>28d</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      rows.forEach((row) => {
+        html += `
+          <tr>
+            <td>${String(row.cast_date || "").split(" ")[0] || "-"}</td>
+            <td><strong>${row.sample_code}</strong></td>
+            <td>${row.remision_id}</td>
+            <td>${row.fc_expected}</td>
+            ${getAgeCell(row, 3)}
+            ${getAgeCell(row, 7)}
+            ${getAgeCell(row, 28)}
+          </tr>
+        `;
+      });
+
+      html += "</tbody></table>";
+      container.innerHTML = html;
+    }
+
+    function renderAnomalies(data) {
+      const tbody = document.getElementById("qcAnomaliesBody");
+      const anomalies = data.filter((item) => {
+        const design = parseFloat(item.fc_expected || 0);
+        const strength = parseFloat(item.strength_kgcm2 || 0);
+        if (!(design > 0)) return false;
+        const pct = (strength / design) * 100;
+        return pct < 60 || pct > 140;
+      });
+
+      if (!anomalies.length) {
+        tbody.innerHTML = "<tr><td colspan='6' style='text-align:center;'>Sin anomalias relevantes.</td></tr>";
+        return;
+      }
+
+      tbody.innerHTML = anomalies.map((item) => {
+        const design = parseFloat(item.fc_expected || 0);
+        const strength = parseFloat(item.strength_kgcm2 || 0);
+        const pct = design > 0 ? (strength / design) * 100 : 0;
+        return `
+          <tr>
+            <td>${String(item.cast_date || "").split(" ")[0] || "-"}</td>
+            <td>${item.sample_code || "-"}</td>
+            <td>${item.target_age_days || "-"}d</td>
+            <td>${strength.toFixed(1)}</td>
+            <td>${pct.toFixed(1)}%</td>
+            <td style="color:#b91c1c;">Fuera de rango</td>
+          </tr>
+        `;
+      }).join("");
+    }
+  </script>
+</body>
+</html>
