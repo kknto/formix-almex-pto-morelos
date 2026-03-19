@@ -858,6 +858,8 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                     (fam, int(row["id"])),
                 )
 
+        self.recalculate_all_fuel_metrics()
+
     def _active_id(self, conn) -> int | None:
         row = conn.execute("SELECT value FROM app_state WHERE key='active_dataset_id'").fetchone()
         if row:

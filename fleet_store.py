@@ -46,6 +46,47 @@ def _row_to_dict(cursor) -> dict | None:
 class FleetStoreMixin:
     """Mixin providing fleet management methods. Expects `self._conn()` from host class."""
 
+    def _recalculate_vehicle_fuel_metrics(self, conn, vehicle_id: int) -> None:
+        rows = _rows_to_dicts(conn.execute(
+            """
+            SELECT id, odometer_km, liters, total_cost
+            FROM fuel_records
+            WHERE vehicle_id=?
+            ORDER BY record_date ASC, id ASC
+            """,
+            (vehicle_id,),
+        ))
+        previous_odometer: float | None = None
+        for row in rows:
+            odometer = float(row.get("odometer_km") or 0)
+            liters = float(row.get("liters") or 0)
+            total_cost = float(row.get("total_cost") or 0)
+            price_per_liter = (total_cost / liters) if liters > 0 else 0.0
+            km_traveled = 0.0
+            kml_real = 0.0
+            cost_per_km = 0.0
+            if previous_odometer is not None and odometer > 0:
+                km_traveled = max(0.0, odometer - previous_odometer)
+                if km_traveled > 0 and liters > 0:
+                    kml_real = km_traveled / liters
+                    cost_per_km = total_cost / km_traveled
+            conn.execute(
+                """
+                UPDATE fuel_records
+                SET price_per_liter=?, km_traveled=?, kml_real=?, cost_per_km=?
+                WHERE id=?
+                """,
+                (price_per_liter, km_traveled, kml_real, cost_per_km, int(row["id"])),
+            )
+            previous_odometer = odometer if odometer > 0 else previous_odometer
+
+    def recalculate_all_fuel_metrics(self) -> None:
+        with self._conn() as conn:
+            rows = _rows_to_dicts(conn.execute("SELECT DISTINCT vehicle_id FROM fuel_records ORDER BY vehicle_id"))
+            for row in rows:
+                self._recalculate_vehicle_fuel_metrics(conn, int(row["vehicle_id"]))
+            conn.commit()
+
     # ── Vehicles ─────────────────────────────────────────────────
 
     def list_vehicles(self, include_inactive: bool = False) -> list[dict]:
@@ -140,48 +181,64 @@ class FleetStoreMixin:
         station = data.get("station", "")
         notes = data.get("notes", "")
 
-        km_traveled = 0.0
-        kml_real = 0.0
-        cost_per_km = 0.0
         with self._conn() as conn:
-            prev = _row_to_dict(conn.execute(
-                "SELECT odometer_km FROM fuel_records WHERE vehicle_id=? ORDER BY record_date DESC, id DESC LIMIT 1",
-                (vid,)))
-            if prev and prev.get("odometer_km") and odometer > 0:
-                km_traveled = max(0, odometer - float(prev["odometer_km"]))
-                if km_traveled > 0 and liters > 0:
-                    kml_real = km_traveled / liters
-                if km_traveled > 0:
-                    cost_per_km = total_cost / km_traveled
-
             conn.execute(
                 """INSERT INTO fuel_records (vehicle_id, record_date, odometer_km, liters, total_cost,
                    price_per_liter, driver, station, km_traveled, kml_real, cost_per_km, notes,
                    created_by, created_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (vid, record_date, odometer, liters, total_cost, price_per_liter,
-                 driver, station, km_traveled, kml_real, cost_per_km, notes, actor, now))
+                 driver, station, 0.0, 0.0, 0.0, notes, actor, now))
+            self._recalculate_vehicle_fuel_metrics(conn, vid)
+            row = _row_to_dict(conn.execute(
+                """
+                SELECT km_traveled, kml_real, cost_per_km
+                FROM fuel_records
+                WHERE vehicle_id=? AND record_date=? AND odometer_km=? AND liters=? AND total_cost=? AND created_at=?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (vid, record_date, odometer, liters, total_cost, now),
+            ))
             conn.commit()
-            return {"saved": True, "km_traveled": km_traveled, "kml_real": round(kml_real, 2),
-                    "cost_per_km": round(cost_per_km, 2)}
+            return {
+                "saved": True,
+                "km_traveled": round(float((row or {}).get("km_traveled") or 0), 2),
+                "kml_real": round(float((row or {}).get("kml_real") or 0), 2),
+                "cost_per_km": round(float((row or {}).get("cost_per_km") or 0), 2),
+            }
 
     def edit_fuel_record(self, record_id: int, data: dict) -> dict:
         now = self.get_now().strftime("%Y-%m-%d %H:%M:%S")
         liters = max(float(data.get("liters", 1)), 0.01)
         cost = float(data.get("total_cost", 0))
         with self._conn() as conn:
+            current = _row_to_dict(conn.execute(
+                "SELECT vehicle_id FROM fuel_records WHERE id=? LIMIT 1",
+                (record_id,),
+            ))
+            if not current:
+                raise ValueError("No se encontro la carga a editar.")
+            vehicle_id = int(current["vehicle_id"])
             conn.execute(
                 """UPDATE fuel_records SET record_date=?, odometer_km=?, liters=?, total_cost=?,
                    price_per_liter=?, driver=?, station=?, notes=? WHERE id=?""",
                 (data.get("record_date", now), float(data.get("odometer_km", 0)),
                  liters, cost, cost / liters,
                  data.get("driver", ""), data.get("station", ""), data.get("notes", ""), record_id))
+            self._recalculate_vehicle_fuel_metrics(conn, vehicle_id)
             conn.commit()
             return {"saved": True}
 
     def delete_fuel_record(self, record_id: int) -> bool:
         with self._conn() as conn:
+            current = _row_to_dict(conn.execute(
+                "SELECT vehicle_id FROM fuel_records WHERE id=? LIMIT 1",
+                (record_id,),
+            ))
             conn.execute("DELETE FROM fuel_records WHERE id=?", (record_id,))
+            if current and current.get("vehicle_id"):
+                self._recalculate_vehicle_fuel_metrics(conn, int(current["vehicle_id"]))
             conn.commit()
             return True
 
