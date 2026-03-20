@@ -287,7 +287,7 @@ class InventoryStoreMixin:
 
             # 4. Current Inventory
             cur = conn.execute(
-                "SELECT name, current_stock, unit, min_stock FROM materials WHERE status='activo' ORDER BY name"
+                "SELECT name, current_stock, unit, min_stock, doser_alias FROM materials WHERE status='activo' ORDER BY name"
             )
             current_inv = _rows_to_dicts(cur)
 

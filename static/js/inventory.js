@@ -33,6 +33,7 @@
   const invGenDailyReportBtn = document.getElementById("invGenDailyReportBtn");
   const invDailyReportDate = document.getElementById("invDailyReportDate");
   const printDailyReportBtn = document.getElementById("printDailyReportBtn");
+  const FIBER_M3_FACTOR = 0.30;
 
   // --- State ---
   let invMaterials = [];
@@ -63,6 +64,23 @@
     if (!invStatusBar) return;
     invStatusBar.textContent = msg;
     invStatusBar.className = `status ${tone === "warn" ? "status--warn" : tone === "err" ? "status--error" : ""}`;
+  }
+
+  function isFiberInventoryMaterial(material) {
+    const alias = String(material && material.doser_alias ? material.doser_alias : "").trim().toLowerCase();
+    const unit = String(material && material.unit ? material.unit : "").trim().toLowerCase();
+    return alias === "fibra" && unit === "kg";
+  }
+
+  function formatInventoryStockDisplay(material) {
+    const stock = Number(material && material.current_stock ? material.current_stock : 0);
+    const unit = escapeHtml(String(material && material.unit ? material.unit : ""));
+    const stockText = `${formatNum(stock)} ${unit}`;
+    if (!isFiberInventoryMaterial(material)) {
+      return stockText;
+    }
+    const stockM3 = stock / FIBER_M3_FACTOR;
+    return `${stockText} / ${formatNum(stockM3)} m3`;
   }
 
   // --- Main Data Loaders ---
@@ -120,7 +138,7 @@
           <div style="padding: 16px;">
             <h3 style="margin:0 0 8px 0; font-size:1.1rem">${escapeHtml(mat.name)}</h3>
             <div style="font-size:1.8rem; font-weight:600; color:${isLow ? 'var(--color-danger)' : 'var(--text-color)'};">
-              ${formatNum(mat.current_stock)} <span style="font-size:1rem">${escapeHtml(mat.unit)}</span>
+              ${formatInventoryStockDisplay(mat)}
             </div>
             ${isLow ? `<div style="color:var(--color-danger); font-size:0.85rem; margin-top:4px;">&#9888; Stock Bajo (Min: ${formatNum(mat.min_stock)})</div>` : ''}
           </div>
@@ -613,7 +631,7 @@
       return `
         <div class="card ${isLow ? 'card--warn' : ''}">
           <div class="card-label">${escapeHtml(m.name)}</div>
-          <div class="card-val">${formatNum(m.current_stock)} <span>${escapeHtml(m.unit)}</span></div>
+          <div class="card-val">${formatInventoryStockDisplay(m)}</div>
         </div>
       `;
     }).join("");
