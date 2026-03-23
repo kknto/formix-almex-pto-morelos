@@ -1265,51 +1265,74 @@ td.cell.cell-readonly {
   width: 24%;
 }
 
-#doserRemisionTable th:nth-child(1) {
-  width: 11%;
-}
-
-#doserRemisionTable th:nth-child(2) {
-  width: 15%;
-}
-
-#doserRemisionTable th:nth-child(3),
-#doserRemisionTable th:nth-child(4),
-#doserRemisionTable th:nth-child(5),
-#doserRemisionTable th:nth-child(6) {
-  width: 8%;
-}
-
-#doserRemisionTable th:nth-child(7) {
-  width: 14%;
-}
-
-#doserRemisionTable th:nth-child(8) {
-  width: 12%;
-}
-
-#doserRemisionTable th:nth-child(9) {
-  width: 16%;
-}
-
-#doserRemisionTable th:nth-child(10) {
-  width: 14%;
-}
-
-#doserRemisionTable th:nth-child(11) {
+#doserRemisionTable th:nth-child(1),
+#remisionesTable th:nth-child(1) {
   width: 10%;
 }
 
-#doserRemisionTable th:nth-child(12) {
-  width: 11%;
+#doserRemisionTable th:nth-child(2),
+#remisionesTable th:nth-child(2) {
+  width: 13%;
 }
 
-#doserRemisionTable {
+#doserRemisionTable th:nth-child(3),
+#remisionesTable th:nth-child(3) {
+  width: 7%;
+}
+
+#doserRemisionTable th:nth-child(4),
+#remisionesTable th:nth-child(4) {
+  width: 7%;
+}
+
+#doserRemisionTable th:nth-child(5),
+#remisionesTable th:nth-child(5) {
+  width: 7%;
+}
+
+#doserRemisionTable th:nth-child(6),
+#remisionesTable th:nth-child(6) {
+  width: 15%;
+}
+
+#doserRemisionTable th:nth-child(7),
+#remisionesTable th:nth-child(7) {
+  width: 15%;
+}
+
+#doserRemisionTable th:nth-child(8),
+#remisionesTable th:nth-child(8) {
+  width: 10%;
+}
+
+#doserRemisionTable th:nth-child(9),
+#remisionesTable th:nth-child(9) {
+  width: 13%;
+}
+
+#doserRemisionTable th:nth-child(10),
+#remisionesTable th:nth-child(10) {
+  width: 13%;
+}
+
+#doserRemisionTable th:nth-child(11),
+#remisionesTable th:nth-child(11) {
+  width: 10%;
+}
+
+#doserRemisionTable th:nth-child(12),
+#remisionesTable th:nth-child(12) {
+  width: 10%;
+}
+
+#doserRemisionTable,
+#remisionesTable {
   table-layout: fixed;
   min-width: 1480px;
 }
 
-#doserRemisionTable td {
+#doserRemisionTable td,
+#remisionesTable td {
   vertical-align: middle;
 }
 
@@ -1324,7 +1347,9 @@ td.cell.cell-readonly {
 #doserRealTable td:nth-child(4),
 #doserRealTable td:nth-child(5),
 #doserRemisionTable td:nth-child(5),
-#doserRemisionTable td:nth-child(6) {
+#doserRemisionTable td:nth-child(8),
+#remisionesTable td:nth-child(5),
+#remisionesTable td:nth-child(8) {
   text-align: right;
 }
 
@@ -1336,7 +1361,9 @@ td.cell.cell-readonly {
 #doserRealTable td:nth-child(6),
 #doserQueryTable td,
 #doserRemisionTable td:nth-child(3),
-#doserRemisionTable td:nth-child(4) {
+#doserRemisionTable td:nth-child(4),
+#remisionesTable td:nth-child(3),
+#remisionesTable td:nth-child(4) {
   text-align: center;
 }
 
@@ -1377,6 +1404,43 @@ td.cell.cell-readonly {
   background: #fff;
   color: var(--text-main);
   min-width: 190px;
+}
+
+.remisiones-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.remisiones-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.remisiones-toolbar input {
+  border: 1px solid #c6d5e5;
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: #fff;
+  color: var(--text-main);
+  min-width: 160px;
+}
+
+.remisiones-toolbar__search {
+  flex: 1 1 320px;
+}
+
+.remisiones-toolbar__search input {
+  min-width: 240px;
+}
+
+.remisiones-result-shell {
+  margin-top: 12px;
 }
 
 .remision-actions {

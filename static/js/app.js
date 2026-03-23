@@ -37,6 +37,10 @@ const state = {
   haulCosts: {},
   quoteMode: false,
   quoteOverrides: {},
+  remisiones: {
+    items: [],
+    initialized: false,
+  },
   doser: {
     dosageM3: 7.0,
     paramsVersion: 0,
@@ -93,10 +97,7 @@ function getPuertoMorelosDate() {
 
 function getTodayPuertoMorelos() {
   const d = getPuertoMorelosDate();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return formatPuertoMorelosDate(d);
 }
 
 function getFullTodayPuertoMorelos() {
@@ -107,6 +108,19 @@ function getFullTodayPuertoMorelos() {
   const hrs = String(d.getHours()).padStart(2, '0');
   const min = String(d.getMinutes()).padStart(2, '0');
   return `${year}-${month}-${day} ${hrs}:${min}`;
+}
+
+function formatPuertoMorelosDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getPuertoMorelosDateOffset(days) {
+  const d = getPuertoMorelosDate();
+  d.setDate(d.getDate() + Number(days || 0));
+  return formatPuertoMorelosDate(d);
 }
 
 function updatePuertoMorelosClock() {
@@ -152,9 +166,11 @@ const uploadInput = document.getElementById("uploadInput");
 const editorView = document.getElementById("editorView");
 const consultaView = document.getElementById("consultaView");
 const dosificadorView = document.getElementById("dosificadorView");
+const remisionesView = document.getElementById("remisionesView");
 const tabEditor = document.getElementById("tabEditor");
 const tabConsulta = document.getElementById("tabConsulta");
 const tabDosificador = document.getElementById("tabDosificador");
+const tabRemisiones = document.getElementById("tabRemisiones");
 const tabFlotilla = document.getElementById("tabFlotilla");
 const tabInventario = document.getElementById("tabInventario");
 const tabLaboratorio = document.getElementById("tabLaboratorio");
@@ -207,6 +223,12 @@ const refreshRemisionBtn = document.getElementById("dRefreshRemisionBtn");
 const remisionFilterDate = document.getElementById("dRemisionFilterDate");
 const remisionMeta = document.getElementById("dRemisionMeta");
 const doserRemisionBody = document.getElementById("doserRemisionBody");
+const remisionesSearchInput = document.getElementById("remisionesSearchInput");
+const remisionesDateFrom = document.getElementById("remisionesDateFrom");
+const remisionesDateTo = document.getElementById("remisionesDateTo");
+const remisionesRefreshBtn = document.getElementById("remisionesRefreshBtn");
+const remisionesMeta = document.getElementById("remisionesMeta");
+const remisionesBody = document.getElementById("remisionesBody");
 const tolCementoInput = document.getElementById("tolCemento");
 const tolAgregadosInput = document.getElementById("tolAgregados");
 const tolAguaInput = document.getElementById("tolAgua");
@@ -572,9 +594,9 @@ function canAccessView(view) {
 }
 
 function defaultView() {
-  if (canAccessView("editor")) return "editor";
-  if (canAccessView("consulta")) return "consulta";
-  if (canAccessView("dosificador")) return "dosificador";
+  const preferredViews = ["editor", "consulta", "dosificador", "inventario", "laboratorio", "flotilla", "remisiones", "usuarios"];
+  const firstAllowed = preferredViews.find((view) => canAccessView(view));
+  if (firstAllowed) return firstAllowed;
   return "consulta";
 }
 
@@ -582,6 +604,7 @@ function applyRoleAccessUi() {
   tabEditor.style.display = canAccessView("editor") ? "" : "none";
   tabConsulta.style.display = canAccessView("consulta") ? "" : "none";
   tabDosificador.style.display = canAccessView("dosificador") ? "" : "none";
+  if (tabRemisiones) tabRemisiones.style.display = canAccessView("remisiones") ? "" : "none";
   if (tabFlotilla) tabFlotilla.style.display = canAccessView("flotilla") ? "" : "none";
   if (tabInventario) tabInventario.style.display = canAccessView("inventario") ? "" : "none";
   if (tabLaboratorio) tabLaboratorio.style.display = canAccessView("laboratorio") ? "" : "none";
@@ -664,6 +687,7 @@ function switchView(view) {
   const isEditor = view === "editor";
   const isConsulta = view === "consulta";
   const isDoser = view === "dosificador";
+  const isRemisiones = view === "remisiones";
   const isFleet = view === "flotilla";
   const isInv = view === "inventario";
   const isLab = view === "laboratorio";
@@ -671,6 +695,7 @@ function switchView(view) {
   editorView.classList.toggle("is-hidden", !isEditor);
   consultaView.classList.toggle("is-hidden", !isConsulta);
   dosificadorView.classList.toggle("is-hidden", !isDoser);
+  if (remisionesView) remisionesView.classList.toggle("is-hidden", !isRemisiones);
   if (flotillaView) flotillaView.classList.toggle("is-hidden", !isFleet);
   if (inventarioView) inventarioView.classList.toggle("is-hidden", !isInv);
   if (laboratorioView) laboratorioView.classList.toggle("is-hidden", !isLab);
@@ -678,6 +703,7 @@ function switchView(view) {
   tabEditor.classList.toggle("view-tab--active", isEditor);
   tabConsulta.classList.toggle("view-tab--active", isConsulta);
   tabDosificador.classList.toggle("view-tab--active", isDoser);
+  if (tabRemisiones) tabRemisiones.classList.toggle("view-tab--active", isRemisiones);
   if (tabFlotilla) tabFlotilla.classList.toggle("view-tab--active", isFleet);
   if (tabInventario) tabInventario.classList.toggle("view-tab--active", isInv);
   if (tabLaboratorio) tabLaboratorio.classList.toggle("view-tab--active", isLab);
@@ -690,6 +716,10 @@ function switchView(view) {
     renderDosificador();
     loadRemisiones();
     loadGlobalRecipes();
+  }
+  if (isRemisiones) {
+    ensureRemisionesFilters();
+    loadRemisionesView();
   }
   if (isFleet) loadFleetData();
   if (isInv && typeof window.loadInventoryData === "function") window.loadInventoryData();
@@ -2629,49 +2659,83 @@ async function selectDoserRecipe(entry) {
   renderDosificador();
 }
 
-function renderRemisionList() {
-  if (!doserRemisionBody) return;
-  doserRemisionBody.innerHTML = "";
-  const items = Array.isArray(state.doser.remisiones) ? state.doser.remisiones : [];
-  if (!items.length) {
+function getRemisionDisplayFields(item) {
+  const snap = item?.snapshot || {};
+  return {
+    cliente: snap.cliente || item?.cliente || "-",
+    ubicacion: snap.ubicacion || item?.ubicacion || "-",
+  };
+}
+
+function buildRemisionRow(item) {
+  const { cliente, ubicacion } = getRemisionDisplayFields(item);
+  const canEdit = state.auth.role === "administrador";
+  const canDelete = canAccessView("dosificador");
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${escapeHtml(item.remision_no || "-")}</td>
+    <td title="${escapeHtml(item.formula || "-")}"><span class="remision-cell-text">${escapeHtml(item.formula || "-")}</span></td>
+    <td>${escapeHtml(item.fc || "-")}</td>
+    <td>${escapeHtml(item.tma || "-")}</td>
+    <td>${formatNum(item.dosificacion_m3 || 0)}</td>
+    <td title="${escapeHtml(cliente)}"><span class="remision-cell-text">${escapeHtml(cliente)}</span></td>
+    <td title="${escapeHtml(ubicacion)}"><span class="remision-cell-text">${escapeHtml(ubicacion)}</span></td>
+    <td>${formatNum(item.peso_real_total || 0)}</td>
+    <td>${escapeHtml(item.created_at || "-")}</td>
+    <td title="${escapeHtml(item.source_file || "-")}"><span class="remision-cell-text">${escapeHtml(item.source_file || "-")}</span></td>
+    <td title="${escapeHtml(item.created_by || "-")}"><span class="remision-cell-text">${escapeHtml(item.created_by || "-")}</span></td>
+    <td class="remision-actions">
+      <button type="button" class="btn btn--secondary btn--small remision-report-btn">Reporte</button>
+      ${canEdit ? '<button type="button" class="btn btn--muted btn--small remision-edit-btn">Editar</button>' : ''}
+      ${canDelete ? '<button type="button" class="btn btn--danger btn--small remision-delete-btn">Eliminar</button>' : ''}
+    </td>
+  `;
+  const reportBtn = tr.querySelector(".remision-report-btn");
+  if (reportBtn) reportBtn.addEventListener("click", () => openRemisionReport(item.id));
+  const deleteBtn = tr.querySelector(".remision-delete-btn");
+  if (deleteBtn) deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no, item.source_file));
+  const editBtn = tr.querySelector(".remision-edit-btn");
+  if (editBtn) editBtn.addEventListener("click", () => openEditRemisionModal(item));
+  return tr;
+}
+
+function renderRemisionTable(targetBody, items, emptyMessage, metaTarget, metaLabel = "Remisiones") {
+  if (!targetBody) return;
+  targetBody.innerHTML = "";
+  if (!Array.isArray(items) || !items.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="12">Sin remisiones guardadas para esta fecha.</td>`;
-    doserRemisionBody.appendChild(tr);
-    if (remisionMeta) remisionMeta.textContent = "Remisiones: 0";
+    tr.innerHTML = `<td colspan="12">${escapeHtml(emptyMessage)}</td>`;
+    targetBody.appendChild(tr);
+    if (metaTarget) metaTarget.textContent = `${metaLabel}: 0`;
     return;
   }
-  items.forEach((item) => {
-    const snap = item.snapshot || {};
-    const cliente = snap.cliente || item.cliente || "-";
-    const ubicacion = snap.ubicacion || item.ubicacion || "-";
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(item.remision_no || "-")}</td>
-      <td title="${escapeHtml(item.formula || "-")}"><span class="remision-cell-text">${escapeHtml(item.formula || "-")}</span></td>
-      <td>${escapeHtml(item.fc || "-")}</td>
-      <td>${escapeHtml(item.tma || "-")}</td>
-      <td>${formatNum(item.dosificacion_m3 || 0)}</td>
-      <td title="${escapeHtml(cliente)}"><span class="remision-cell-text">${escapeHtml(cliente)}</span></td>
-      <td title="${escapeHtml(ubicacion)}"><span class="remision-cell-text">${escapeHtml(ubicacion)}</span></td>
-      <td>${formatNum(item.peso_real_total || 0)}</td>
-      <td>${escapeHtml(item.created_at || "-")}</td>
-      <td title="${escapeHtml(item.source_file || "-")}"><span class="remision-cell-text">${escapeHtml(item.source_file || "-")}</span></td>
-      <td title="${escapeHtml(item.created_by || "-")}"><span class="remision-cell-text">${escapeHtml(item.created_by || "-")}</span></td>
-      <td class="remision-actions">
-        <button type="button" class="btn btn--secondary btn--small remision-report-btn">Reporte</button>
-        ${state.auth.role === 'administrador' ? '<button type="button" class="btn btn--muted btn--small remision-edit-btn">Editar</button>' : ''}
-        <button type="button" class="btn btn--danger btn--small remision-delete-btn">Eliminar</button>
-      </td>
-    `;
-    const reportBtn = tr.querySelector(".remision-report-btn");
-    if (reportBtn) reportBtn.addEventListener("click", () => openRemisionReport(item.id));
-    const deleteBtn = tr.querySelector(".remision-delete-btn");
-    if (deleteBtn) deleteBtn.addEventListener("click", () => deleteRemision(item.id, item.remision_no, item.source_file));
-    const editBtn = tr.querySelector(".remision-edit-btn");
-    if (editBtn) editBtn.addEventListener("click", () => openEditRemisionModal(item));
-    doserRemisionBody.appendChild(tr);
-  });
-  if (remisionMeta) remisionMeta.textContent = `Remisiones: ${items.length}`;
+  items.forEach((item) => targetBody.appendChild(buildRemisionRow(item)));
+  if (metaTarget) metaTarget.textContent = `${metaLabel}: ${items.length}`;
+}
+
+function renderRemisionList() {
+  renderRemisionTable(
+    doserRemisionBody,
+    Array.isArray(state.doser.remisiones) ? state.doser.remisiones : [],
+    "Sin remisiones guardadas para esta fecha.",
+    remisionMeta
+  );
+}
+
+function ensureRemisionesFilters() {
+  if (!remisionesDateTo || !remisionesDateFrom) return;
+  if (!remisionesDateTo.value) remisionesDateTo.value = getTodayPuertoMorelos();
+  if (!remisionesDateFrom.value) remisionesDateFrom.value = getPuertoMorelosDateOffset(-30);
+}
+
+function renderRemisionesViewTable() {
+  renderRemisionTable(
+    remisionesBody,
+    Array.isArray(state.remisiones.items) ? state.remisiones.items : [],
+    "No se encontraron remisiones para los filtros seleccionados.",
+    remisionesMeta,
+    "Resultados"
+  );
 }
 
 async function loadRemisiones() {
@@ -2691,6 +2755,31 @@ async function loadRemisiones() {
   renderRemisionList();
 }
 
+async function loadRemisionesView() {
+  if (!canAccessView("remisiones")) return;
+  ensureRemisionesFilters();
+  const dateFrom = remisionesDateFrom?.value || "";
+  const dateTo = remisionesDateTo?.value || "";
+  const query = (remisionesSearchInput?.value || "").trim();
+  try {
+    if (remisionesMeta) remisionesMeta.textContent = "Cargando remisiones...";
+    const params = new URLSearchParams({ limit: "500" });
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    if (query) params.set("q", query);
+    const response = await apiFetch(`/api/remisiones?${params.toString()}`);
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "No se pudo cargar remisiones.");
+    state.remisiones.items = Array.isArray(payload.items) ? payload.items : [];
+    state.remisiones.initialized = true;
+  } catch (error) {
+    state.remisiones.items = [];
+    console.error("loadRemisionesView error:", error);
+    setStatus(`Error al cargar remisiones: ${error.message}`, "err");
+  }
+  renderRemisionesViewTable();
+}
+
 window.openEditRemisionModal = function (item) {
   if (!item || !item.id) return;
   const modal = document.getElementById("editRemisionModal");
@@ -2703,6 +2792,7 @@ window.openEditRemisionModal = function (item) {
   document.getElementById("erUbicacion").value = snap.ubicacion || item.ubicacion || "";
   document.getElementById("erM3").value = item.dosificacion_m3 || 0;
   document.getElementById("erWeight").value = item.peso_real_total || 0;
+  document.getElementById("editRemisionSourceFile").value = item.source_file || "";
 
   // Formatear fecha para datetime-local (YYYY-MM-DDTHH:mm)
   if (item.created_at) {
@@ -2729,6 +2819,7 @@ document.addEventListener("DOMContentLoaded", () => {
     editForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const id = document.getElementById("editRemisionId").value;
+      const sourceFile = document.getElementById("editRemisionSourceFile").value;
       const payload = {
         remision_no: document.getElementById("erNo").value,
         formula: document.getElementById("erFormula").value,
@@ -2740,7 +2831,8 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       try {
-        const res = await apiFetch(`/api/remisiones/${id}?file=${encodeURIComponent(state.file || "")}`, {
+        const fileQuery = sourceFile ? `?file=${encodeURIComponent(sourceFile)}` : "";
+        const res = await apiFetch(`/api/remisiones/${id}${fileQuery}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
@@ -2749,7 +2841,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if (data.ok) {
           setStatus("Remisión actualizada correctamente.", "ok");
           closeEditRemisionModal();
-          loadRemisiones();
+          await Promise.all([
+            canAccessView("dosificador") ? loadRemisiones() : Promise.resolve(),
+            canAccessView("remisiones") ? loadRemisionesView() : Promise.resolve(),
+          ]);
         } else {
           throw new Error(data.error || "Error al actualizar");
         }
@@ -2783,7 +2878,10 @@ async function deleteRemision(remisionId, remisionNo, sourceFile) {
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || "No se pudo eliminar la remision.");
     }
-    await loadRemisiones();
+    await Promise.all([
+      canAccessView("dosificador") ? loadRemisiones() : Promise.resolve(),
+      canAccessView("remisiones") ? loadRemisionesView() : Promise.resolve(),
+    ]);
     setStatus(`Remision eliminada: ${payload.remision_no || code}`, "ok");
   } catch (error) {
     setStatus(String(error), "err");
@@ -2838,7 +2936,10 @@ async function saveRemision() {
     if (remisionNoInput) remisionNoInput.value = "";
     if (remisionClienteInput) remisionClienteInput.value = "";
     if (remisionUbicacionInput) remisionUbicacionInput.value = "";
-    await loadRemisiones();
+    await Promise.all([
+      canAccessView("dosificador") ? loadRemisiones() : Promise.resolve(),
+      canAccessView("remisiones") ? loadRemisionesView() : Promise.resolve(),
+    ]);
     setStatus(`Remision guardada: ${payload.remision_no}`, "ok");
     pushToast(`Remisión guardada con éxito: ${payload.remision_no}`, "ok");
   } catch (error) {
@@ -4001,6 +4102,12 @@ if (tabDosificador) {
     loadGlobalRecipes();
   });
 }
+if (tabRemisiones) {
+  tabRemisiones.addEventListener("click", () => {
+    ensureRemisionesFilters();
+    switchView("remisiones");
+  });
+}
 if (consultaPrevBtn) {
   consultaPrevBtn.addEventListener("click", () => setConsultaStep(state.consultaStep - 1));
 }
@@ -4052,6 +4159,11 @@ if (refreshRemisionBtn) {
     loadRemisiones();
   });
 }
+if (remisionesRefreshBtn) {
+  remisionesRefreshBtn.addEventListener("click", () => {
+    loadRemisionesView();
+  });
+}
 if (remisionDateInput && !remisionDateInput.value) {
   remisionDateInput.value = getTodayPuertoMorelos();
 }
@@ -4060,6 +4172,19 @@ if (remisionFilterDate) {
     loadRemisiones();
   });
 }
+if (remisionesSearchInput) {
+  remisionesSearchInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    loadRemisionesView();
+  });
+}
+[remisionesDateFrom, remisionesDateTo].forEach((el) => {
+  if (!el) return;
+  el.addEventListener("change", () => {
+    loadRemisionesView();
+  });
+});
 if (remisionNoInput) {
   remisionNoInput.addEventListener("input", () => {
     remisionNoInput.value = remisionNoInput.value.toUpperCase();

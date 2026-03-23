@@ -57,15 +57,16 @@ DOSER_PARAM_FIELDS = (
     "densidad_agregado_fallback",
 )
 ROLE_ALLOWED_VIEWS = {
-    "administrador": {"editor", "consulta", "dosificador", "flotilla", "inventario", "laboratorio", "usuarios"},
-    "jefe-de-planta": {"editor", "consulta", "dosificador", "flotilla", "inventario", "laboratorio"},
-    "dosificador": {"dosificador", "flotilla", "inventario"},
+    "administrador": {"editor", "consulta", "dosificador", "remisiones", "flotilla", "inventario", "laboratorio", "usuarios"},
+    "jefe-de-planta": {"editor", "consulta", "dosificador", "remisiones", "flotilla", "inventario", "laboratorio"},
+    "dosificador": {"dosificador", "remisiones", "flotilla", "inventario"},
     "presupuestador": {"consulta"},
-    "laboratorista": {"laboratorio"},
+    "laboratorista": {"remisiones", "laboratorio"},
 }
 EDITOR_ROLES = {"administrador", "jefe-de-planta"}
 QC_HUMIDITY_ROLES = {"dosificador"}
 DOSIFICADOR_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "dosificador" in views))
+REMISIONES_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "remisiones" in views))
 FLEET_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "flotilla" in views))
 INVENTORY_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "inventario" in views))
 LAB_ROLES = tuple(sorted(role for role, views in ROLE_ALLOWED_VIEWS.items() if "laboratorio" in views))
@@ -1621,17 +1622,16 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         query: str = "",
         limit: int = 80,
         date_filter: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> dict:
         max_limit = max(1, min(int(limit or 80), 500))
         q = (query or "").strip().upper()
-        
-        # Si no hay filtro de fecha y es una consulta global (o incluso especifica),
-        # podriamos querer por defecto el dia de hoy para no saturar.
-        # Pero si el usuario borra el filtro de fecha explicitamente, tal vez quiera ver todo.
-        # Por ahora, si date_filter es None, usaremos el dia de hoy como sugiere el usuario.
-        final_date = date_filter
-        if final_date is None:
-             final_date = get_now().strftime("%Y-%m-%d")
+        exact_date = (date_filter or "").strip() or None
+        range_from = (date_from or "").strip() or None
+        range_to = (date_to or "").strip() or None
+        if exact_date is None and range_from is None and range_to is None:
+            exact_date = get_now().strftime("%Y-%m-%d")
 
         with self.lock:
             with self._conn() as conn:
@@ -1655,12 +1655,27 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                         return {"file": target_name, "items": [], "global": False}
 
                 if q:
-                    sql_where.append("(r.remision_no LIKE ? OR r.formula LIKE ?)")
-                    params.extend([f"%{q}%", f"%{q}%"])
+                    like_q = f"%{q}%"
+                    sql_where.append(
+                        "("
+                        "UPPER(COALESCE(r.remision_no, '')) LIKE ? OR "
+                        "UPPER(COALESCE(r.formula, '')) LIKE ? OR "
+                        "UPPER(COALESCE(r.cliente, '')) LIKE ? OR "
+                        "UPPER(COALESCE(r.ubicacion, '')) LIKE ?"
+                        ")"
+                    )
+                    params.extend([like_q, like_q, like_q, like_q])
 
-                if final_date:
+                if exact_date:
                     sql_where.append("r.created_at LIKE ?")
-                    params.append(f"{final_date}%")
+                    params.append(f"{exact_date}%")
+                else:
+                    if range_from:
+                        sql_where.append("r.created_at >= ?")
+                        params.append(f"{range_from} 00:00:00")
+                    if range_to:
+                        sql_where.append("r.created_at <= ?")
+                        params.append(f"{range_to} 23:59:59")
 
                 where_clause = ""
                 if sql_where:
@@ -1681,7 +1696,9 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 
                 return {
                     "file": dataset_name or "Global",
-                    "date_filter": final_date,
+                    "date_filter": exact_date,
+                    "date_from": range_from,
+                    "date_to": range_to,
                     "is_global": not bool(dataset_name),
                     "items": [
                         {
@@ -3076,18 +3093,22 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.get("/api/remisiones")
-    @require_roles(*DOSIFICADOR_ROLES)
+    @require_roles(*REMISIONES_ROLES)
     def api_remisiones_list():
         file_name = request.args.get("file")
-        query = request.args.get("q", "")
+        query = request.args.get("q", request.args.get("query", ""))
         limit = request.args.get("limit", "80")
         date_filter = request.args.get("date")
+        date_from = request.args.get("date_from")
+        date_to = request.args.get("date_to")
         try:
             out = store.list_remisiones(
                 dataset_name=file_name, 
                 query=query, 
                 limit=int(limit),
-                date_filter=date_filter
+                date_filter=date_filter,
+                date_from=date_from,
+                date_to=date_to,
             )
             return jsonify({"ok": True, **out})
         except Exception as exc:
@@ -3124,7 +3145,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
     @app.get("/api/remisiones/<int:remision_id>")
-    @require_roles(*DOSIFICADOR_ROLES)
+    @require_roles(*REMISIONES_ROLES)
     def api_remisiones_get(remision_id: int):
         file_name = request.args.get("file")
         try:

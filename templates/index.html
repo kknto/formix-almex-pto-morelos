@@ -45,6 +45,7 @@
     <button id="tabEditor" class="view-tab view-tab--active">Editor CSV</button>
     <button id="tabConsulta" class="view-tab">Consulta Mix</button>
     <button id="tabDosificador" class="view-tab">Dosificador</button>
+    <button id="tabRemisiones" class="view-tab">Remisiones</button>
     <button id="tabInventario" class="view-tab">Inventario</button>
     <button id="tabLaboratorio" class="view-tab">Laboratorio</button>
     <button id="tabFlotilla" class="view-tab">Flotilla</button>
@@ -518,6 +519,50 @@
               <span id="doserRealWeight">0.00</span>
             </div>
           </article>
+        </div>
+      </section>
+    </section>
+
+    <section id="remisionesView" class="view-pane is-hidden">
+      <section class="panel panel--consulta">
+        <div class="consulta-head">
+          <h2>Consulta de Remisiones</h2>
+          <p>Historial amplio con filtros por rango de fecha y busqueda operativa</p>
+        </div>
+        <div class="remisiones-toolbar">
+          <label class="remisiones-toolbar__search">Buscar
+            <input id="remisionesSearchInput" type="search"
+              placeholder="No. Remision, formula, cliente o ubicacion">
+          </label>
+          <label>Fecha inicial
+            <input id="remisionesDateFrom" type="date" class="form-input">
+          </label>
+          <label>Fecha final
+            <input id="remisionesDateTo" type="date" class="form-input">
+          </label>
+          <button id="remisionesRefreshBtn" class="btn btn--primary">Actualizar</button>
+        </div>
+        <div id="remisionesMeta" class="meta">Resultados: 0</div>
+        <div class="result-shell remisiones-result-shell">
+          <table id="remisionesTable">
+            <thead>
+              <tr>
+                <th>Remision</th>
+                <th>Formula</th>
+                <th>f'c</th>
+                <th>T.M.A.</th>
+                <th>m3</th>
+                <th>Cliente</th>
+                <th>Ubicacion</th>
+                <th>Peso Real</th>
+                <th>Fecha</th>
+                <th>Archivo</th>
+                <th>Usuario</th>
+                <th>Accion</th>
+              </tr>
+            </thead>
+            <tbody id="remisionesBody"></tbody>
+          </table>
         </div>
       </section>
     </section>
@@ -1082,6 +1127,7 @@
       <div class="ui-dialog__body">
         <form id="editRemisionForm" class="fleet-form">
           <input type="hidden" id="editRemisionId">
+          <input type="hidden" id="editRemisionSourceFile">
           <div class="form-group">
             <label for="erNo">No. Remisión</label>
             <input type="text" id="erNo" class="ui-dialog__input" required>
