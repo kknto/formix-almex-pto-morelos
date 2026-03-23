@@ -1442,6 +1442,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
         ubicacion: str,
         dataset_name: str | None = None,
         created_by: str = "",
+        created_at: str | None = None,
     ) -> dict:
         remision = normalize_remision_no(remision_no)
         snap = snapshot if isinstance(snapshot, dict) else {}
@@ -1466,7 +1467,7 @@ class AppStore(FleetStoreMixin, InventoryStoreMixin, QCLabStoreMixin, UserStoreM
                 exists = conn.execute("SELECT 1 FROM remisiones WHERE remision_no=?", (remision,)).fetchone()
                 if exists:
                     raise ValueError(f"La remision '{remision}' ya existe.")
-                ts = now_str()
+                ts = str(created_at or "").strip() or now_str()
                 conn.execute(
                     """
                     INSERT INTO remisiones(
@@ -3101,11 +3102,14 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
             snapshot = payload.get("snapshot", {})
             cliente = payload.get("cliente", "")
             ubicacion = payload.get("ubicacion", "")
+            created_at = payload.get("created_at", "")
             file_name = payload.get("file")
             if file_name is not None and not isinstance(file_name, str):
                 return jsonify({"ok": False, "error": "file must be string."}), 400
             if not isinstance(cliente, str) or not isinstance(ubicacion, str):
                 return jsonify({"ok": False, "error": "cliente y ubicacion deben ser texto."}), 400
+            if created_at and not isinstance(created_at, str):
+                return jsonify({"ok": False, "error": "created_at debe ser texto."}), 400
             out = store.save_remision(
                 remision_no=remision_no,
                 snapshot=snapshot,
@@ -3113,6 +3117,7 @@ def create_app(base_dir: Path, csv_file: str | None = None) -> Flask:
                 ubicacion=ubicacion,
                 dataset_name=file_name,
                 created_by=request.current_user["username"],
+                created_at=created_at,
             )
             return jsonify({"ok": True, **out})
         except Exception as exc:

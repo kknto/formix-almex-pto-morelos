@@ -201,6 +201,7 @@ const doseM3Input = document.getElementById("doseM3");
 const remisionNoInput = document.getElementById("dRemisionNo");
 const remisionClienteInput = document.getElementById("dCliente");
 const remisionUbicacionInput = document.getElementById("dUbicacion");
+const remisionDateInput = document.getElementById("dRemisionDate");
 const saveRemisionBtn = document.getElementById("dSaveRemisionBtn");
 const refreshRemisionBtn = document.getElementById("dRefreshRemisionBtn");
 const remisionFilterDate = document.getElementById("dRemisionFilterDate");
@@ -2794,6 +2795,7 @@ async function saveRemision() {
     const remisionNo = ((remisionNoInput?.value || "").toString().trim().toUpperCase());
     const cliente = ((remisionClienteInput?.value || "").toString().trim());
     const ubicacion = ((remisionUbicacionInput?.value || "").toString().trim());
+    const remisionDate = ((remisionDateInput?.value || "").toString().trim());
     if (!remisionNo) {
       setStatus("Ingresa el numero de remision.", "warn");
       return;
@@ -2806,11 +2808,17 @@ async function saveRemision() {
       setStatus("Ingresa la ubicacion.", "warn");
       return;
     }
+    if (!remisionDate) {
+      setStatus("Selecciona la fecha de la remision.", "warn");
+      return;
+    }
     const snap = buildDoserReportSnapshot();
     if (!snap) {
       setStatus("Selecciona una mezcla para guardar la remision.", "warn");
       return;
     }
+    const nowPm = getPuertoMorelosDate();
+    const remisionCreatedAt = `${remisionDate} ${String(nowPm.getHours()).padStart(2, '0')}:${String(nowPm.getMinutes()).padStart(2, '0')}:${String(nowPm.getSeconds()).padStart(2, '0')}`;
     const response = await apiFetch("/api/remisiones/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2820,6 +2828,7 @@ async function saveRemision() {
         cliente,
         ubicacion,
         snapshot: snap,
+        created_at: remisionCreatedAt,
       }),
     });
     const payload = await response.json();
@@ -4042,6 +4051,9 @@ if (refreshRemisionBtn) {
   refreshRemisionBtn.addEventListener("click", () => {
     loadRemisiones();
   });
+}
+if (remisionDateInput && !remisionDateInput.value) {
+  remisionDateInput.value = getTodayPuertoMorelos();
 }
 if (remisionFilterDate) {
   remisionFilterDate.addEventListener("change", () => {
