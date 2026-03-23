@@ -1292,6 +1292,27 @@ td.cell.cell-readonly {
   width: 16%;
 }
 
+#doserRemisionTable th:nth-child(10) {
+  width: 14%;
+}
+
+#doserRemisionTable th:nth-child(11) {
+  width: 10%;
+}
+
+#doserRemisionTable th:nth-child(12) {
+  width: 11%;
+}
+
+#doserRemisionTable {
+  table-layout: fixed;
+  min-width: 1480px;
+}
+
+#doserRemisionTable td {
+  vertical-align: middle;
+}
+
 #doserRecipeTable td:nth-child(2),
 #doserTheoreticalTable td:nth-child(2),
 #doserTheoreticalTable td:nth-child(3),
@@ -1359,10 +1380,23 @@ td.cell.cell-readonly {
 }
 
 .remision-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 104px;
+}
+
+.remision-actions .btn {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.remision-cell-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .doser-real-input,

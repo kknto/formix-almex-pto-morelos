@@ -2647,16 +2647,16 @@ function renderRemisionList() {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(item.remision_no || "-")}</td>
-      <td>${escapeHtml(item.formula || "-")}</td>
+      <td title="${escapeHtml(item.formula || "-")}"><span class="remision-cell-text">${escapeHtml(item.formula || "-")}</span></td>
       <td>${escapeHtml(item.fc || "-")}</td>
       <td>${escapeHtml(item.tma || "-")}</td>
       <td>${formatNum(item.dosificacion_m3 || 0)}</td>
-      <td>${escapeHtml(cliente)}</td>
-      <td>${escapeHtml(ubicacion)}</td>
+      <td title="${escapeHtml(cliente)}"><span class="remision-cell-text">${escapeHtml(cliente)}</span></td>
+      <td title="${escapeHtml(ubicacion)}"><span class="remision-cell-text">${escapeHtml(ubicacion)}</span></td>
       <td>${formatNum(item.peso_real_total || 0)}</td>
       <td>${escapeHtml(item.created_at || "-")}</td>
-      <td>${escapeHtml(item.source_file || "-")}</td>
-      <td>${escapeHtml(item.created_by || "-")}</td>
+      <td title="${escapeHtml(item.source_file || "-")}"><span class="remision-cell-text">${escapeHtml(item.source_file || "-")}</span></td>
+      <td title="${escapeHtml(item.created_by || "-")}"><span class="remision-cell-text">${escapeHtml(item.created_by || "-")}</span></td>
       <td class="remision-actions">
         <button type="button" class="btn btn--secondary btn--small remision-report-btn">Reporte</button>
         ${state.auth.role === 'administrador' ? '<button type="button" class="btn btn--muted btn--small remision-edit-btn">Editar</button>' : ''}
